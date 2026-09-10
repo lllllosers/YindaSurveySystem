@@ -124,6 +124,47 @@ def init_database():
                 FOREIGN KEY (parent_id)
                     REFERENCES organization_units(id)
             );
+            CREATE TABLE IF NOT EXISTS canal_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                parent_id INTEGER,
+
+                name TEXT NOT NULL,
+
+                canal_level TEXT NOT NULL
+                    CHECK (
+                        canal_level IN (
+                            '01',
+                            '02',
+                            '03',
+                            '04'
+                        )
+                    ),
+
+                organization_unit_id INTEGER,
+
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (
+                        status IN (
+                            'active',
+                            'inactive'
+                        )
+                    ),
+
+                description TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                FOREIGN KEY (parent_id)
+                    REFERENCES canal_units(id),
+
+                FOREIGN KEY (organization_unit_id)
+                    REFERENCES organization_units(id)
+            );
             """)
 
 
@@ -285,6 +326,63 @@ def create_organization_unit(
                 name.strip(),
                 unit_type,
                 business_code.strip() if business_code else None,
+                description.strip() if description else None,
+            ),
+        )
+
+        return cursor.lastrowid
+
+
+def get_canal_units():
+    """
+    获取全部渠系。
+    """
+    with get_connection() as connection:
+        return connection.execute("""
+            SELECT
+                c.*,
+                o.name AS organization_name
+            FROM canal_units AS c
+            LEFT JOIN organization_units AS o
+                ON c.organization_unit_id = o.id
+            ORDER BY c.id
+            """).fetchall()
+
+
+def create_canal_unit(
+    name,
+    canal_level,
+    parent_id=None,
+    organization_unit_id=None,
+    description=None,
+):
+    """
+    新增渠系。
+    """
+
+    if not name or not name.strip():
+        raise ValueError("渠道名称不能为空。")
+
+    if canal_level not in ("01", "02", "03", "04"):
+        raise ValueError("无效的渠道层级。")
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO canal_units (
+                parent_id,
+                name,
+                canal_level,
+                organization_unit_id,
+                description
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                parent_id,
+                name.strip(),
+                canal_level,
+                organization_unit_id,
                 description.strip() if description else None,
             ),
         )

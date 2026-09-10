@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from pages.organization_page import OrganizationPage
+from pages.basic_data_page import BasicDataPage
 
 
 class MainWindow(QMainWindow):
@@ -218,31 +218,21 @@ class MainWindow(QMainWindow):
         self.clear_content()
 
         if page_name == "基础资料":
-            organization_page = OrganizationPage()
+            self.basic_data_page = BasicDataPage()
 
-            self.content_layout.addWidget(
-                organization_page
-            )
+            self.content_layout.addWidget(self.basic_data_page)
 
         else:
             self.content_label = QLabel(
-                f"{page_name}\n\n"
-                "该模块将在后续开发步骤中逐步实现。"
+                f"{page_name}\n\n" "该模块将在后续开发步骤中逐步实现。"
             )
 
-            self.content_label.setAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
+            self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.content_label.setWordWrap(True)
-            self.content_label.setObjectName(
-                "contentLabel"
-            )
+            self.content_label.setObjectName("contentLabel")
 
-            self.content_layout.addWidget(
-                self.content_label
-            )
-
+            self.content_layout.addWidget(self.content_label)
 
     def clear_content(self):
         while self.content_layout.count():
