@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sqlite3
 
 # 项目根目录
@@ -732,6 +733,178 @@ def create_canal_unit(
         return cursor.lastrowid
 
 
+def get_canal_units_for_organization(
+    organization_unit_id,
+):
+    """
+    获取某个管理单位下启用的渠系。
+    """
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM canal_units
+            WHERE organization_unit_id = ?
+            AND status = 'active'
+            ORDER BY id
+            """,
+            (organization_unit_id,),
+        ).fetchall()
+
+
+def get_engineering_business_codes(
+    project_id,
+):
+    """
+    获取当前项目已经使用的工程业务编号。
+    """
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT business_code
+            FROM engineering_assets
+            WHERE project_id = ?
+            ORDER BY id
+            """,
+            (project_id,),
+        ).fetchall()
+
+        return [row["business_code"] for row in rows if row["business_code"]]
+
+
+def get_current_form_version(
+    form_code,
+):
+    """
+    根据 form_code 获取当前启用的表单版本。
+    """
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                fv.*,
+                fd.form_code,
+                fd.form_number,
+                fd.form_name,
+                fd.asset_type
+            FROM form_versions AS fv
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+            WHERE fd.form_code = ?
+            AND fv.is_current = 1
+            ORDER BY fv.id DESC
+            LIMIT 1
+            """,
+            (form_code,),
+        ).fetchone()
+
+
+def create_engineering_survey(
+    project_id,
+    survey_batch_id,
+    form_version_id,
+    asset_name,
+    asset_type,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    single_stake_text=None,
+    single_stake_value=None,
+):
+    """
+    第一次调查时，同时创建：
+
+    1. EngineeringAsset 工程对象
+    2. SurveyRecord 本批次调查记录
+
+    两步处于同一个 SQLite 事务中。
+    任意一步失败时，全部回滚。
+    """
+
+    if not asset_name or not asset_name.strip():
+        raise ValueError("工程名称不能为空。")
+
+    if not business_code:
+        raise ValueError("业务编号不能为空。")
+
+    record_json = json.dumps(
+        record_data,
+        ensure_ascii=False,
+    )
+
+    with get_connection() as connection:
+        asset_cursor = connection.execute(
+            """
+            INSERT INTO engineering_assets (
+                project_id,
+                asset_name,
+                asset_type,
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                code_scheme_version,
+                single_stake_text,
+                single_stake_value,
+                first_survey_batch_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                asset_name.strip(),
+                asset_type,
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                "V1",
+                single_stake_text,
+                single_stake_value,
+                survey_batch_id,
+            ),
+        )
+
+        engineering_asset_id = asset_cursor.lastrowid
+
+        record_cursor = connection.execute(
+            """
+            INSERT INTO survey_records (
+                project_id,
+                survey_batch_id,
+                form_version_id,
+                record_type,
+                organization_unit_id,
+                canal_unit_id,
+                engineering_asset_id,
+                business_code,
+                record_status,
+                record_data_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                survey_batch_id,
+                form_version_id,
+                "engineering",
+                organization_unit_id,
+                canal_unit_id,
+                engineering_asset_id,
+                business_code,
+                "draft",
+                record_json,
+            ),
+        )
+
+        survey_record_id = record_cursor.lastrowid
+
+        return {
+            "engineering_asset_id": (engineering_asset_id),
+            "survey_record_id": (survey_record_id),
+            "business_code": business_code,
+        }
+
+
 def get_current_context():
     """
     获取当前启用的项目和当前调查批次。
@@ -758,7 +931,7 @@ def get_current_context():
             SELECT *
             FROM survey_batches
             WHERE project_id = ?
-              AND status = 'active'
+            AND status = 'active'
             ORDER BY id DESC
             LIMIT 1
             """,
