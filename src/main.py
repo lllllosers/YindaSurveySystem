@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from database import (
     create_demo_data,
     create_initial_forms,
@@ -6,6 +7,7 @@ from database import (
     init_database,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -18,6 +20,24 @@ from PySide6.QtWidgets import (
 )
 from pages.basic_data_page import BasicDataPage
 from pages.survey_page import SurveyPage
+
+
+def resource_path(relative_path):
+    """
+    获取程序资源文件路径。
+
+    开发环境：
+        从项目根目录读取
+
+    PyInstaller 打包环境：
+        从打包资源目录读取
+    """
+    if getattr(sys, "frozen", False):
+        base_path = Path(getattr(sys, "_MEIPASS"))
+    else:
+        base_path = Path(__file__).resolve().parent.parent
+
+    return base_path / relative_path
 
 
 class MainWindow(QMainWindow):
@@ -262,7 +282,11 @@ def main():
 
     app = QApplication(sys.argv)
 
+    icon_path = resource_path("assets/app_icon.ico")
+    app.setWindowIcon(QIcon(str(icon_path)))
+
     window = MainWindow()
+    window.setWindowIcon(QIcon(str(icon_path)))
     window.show()
 
     sys.exit(app.exec())
