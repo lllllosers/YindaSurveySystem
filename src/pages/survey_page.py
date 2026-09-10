@@ -6,6 +6,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pages.sluice_gate_list_page import (
+    SluiceGateListPage,
+)
+
 from pages.sluice_gate_page import (
     SluiceGatePage,
 )
@@ -23,12 +27,29 @@ class SurveyPage(QWidget):
 
         self.stack = QStackedWidget()
 
+        # 本次调查首页
         self.home_page = self.create_home_page()
-        self.sluice_gate_page = SluiceGatePage()
+
+        # 水闸调查列表
+        self.sluice_list_page = SluiceGateListPage()
+
+        # 水闸录入页面
+        self.sluice_edit_page = SluiceGatePage()
 
         self.stack.addWidget(self.home_page)
 
-        self.stack.addWidget(self.sluice_gate_page)
+        self.stack.addWidget(self.sluice_list_page)
+
+        self.stack.addWidget(self.sluice_edit_page)
+
+        # 信号连接
+        self.sluice_list_page.new_requested.connect(self.open_new_sluice)
+
+        self.sluice_list_page.back_requested.connect(self.open_home)
+
+        self.sluice_edit_page.back_requested.connect(self.open_sluice_list)
+
+        self.sluice_edit_page.survey_saved.connect(self.sluice_saved)
 
         layout.addWidget(self.stack)
 
@@ -50,7 +71,7 @@ class SurveyPage(QWidget):
         sluice_button = QPushButton("附表2.2 水闸工程状况调查")
         sluice_button.setMinimumHeight(46)
 
-        sluice_button.clicked.connect(self.open_sluice_gate)
+        sluice_button.clicked.connect(self.open_sluice_list)
 
         layout.addWidget(sluice_button)
 
@@ -63,5 +84,20 @@ class SurveyPage(QWidget):
 
         return page
 
-    def open_sluice_gate(self):
-        self.stack.setCurrentWidget(self.sluice_gate_page)
+    def open_home(self):
+        self.stack.setCurrentWidget(self.home_page)
+
+    def open_sluice_list(self):
+        self.sluice_list_page.load_data()
+
+        self.stack.setCurrentWidget(self.sluice_list_page)
+
+    def open_new_sluice(self):
+        self.sluice_edit_page.update_business_code()
+
+        self.stack.setCurrentWidget(self.sluice_edit_page)
+
+    def sluice_saved(self):
+        self.sluice_list_page.load_data()
+
+        self.stack.setCurrentWidget(self.sluice_list_page)

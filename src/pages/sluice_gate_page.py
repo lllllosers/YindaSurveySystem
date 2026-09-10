@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QComboBox,
@@ -32,6 +32,9 @@ from services.stake import parse_stake
 
 
 class SluiceGatePage(QWidget):
+    survey_saved = Signal()
+    back_requested = Signal()
+
     def __init__(self):
         super().__init__()
 
@@ -140,6 +143,16 @@ class SluiceGatePage(QWidget):
         root_layout.addLayout(form_layout)
 
         button_layout = QHBoxLayout()
+
+        back_button = QPushButton("返回列表")
+        back_button.clicked.connect(
+            self.back_requested.emit
+        )
+
+        button_layout.addWidget(
+            back_button
+        )
+
         button_layout.addStretch()
 
         save_button = QPushButton("保存草稿")
@@ -373,6 +386,7 @@ class SluiceGatePage(QWidget):
             )
 
             self.clear_form()
+            self.survey_saved.emit()
 
         except Exception as error:
             QMessageBox.warning(

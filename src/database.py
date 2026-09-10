@@ -905,6 +905,94 @@ def create_engineering_survey(
         }
 
 
+def get_sluice_gate_records(
+    project_id,
+    survey_batch_id,
+):
+    """
+    获取当前项目、当前调查批次下的附表2.2水闸调查记录。
+    """
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.business_code,
+                sr.record_status,
+                sr.overall_grade,
+                sr.record_data_json,
+                sr.updated_at,
+
+                ea.id AS engineering_asset_id,
+                ea.asset_name,
+
+                office.name AS office_name,
+                department.name AS department_name,
+
+                canal.name AS canal_name
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            LEFT JOIN organization_units AS office
+                ON sr.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            LEFT JOIN canal_units AS canal
+                ON sr.canal_unit_id = canal.id
+
+            WHERE sr.project_id = ?
+              AND sr.survey_batch_id = ?
+              AND fd.form_code = 'form_2_2'
+              AND sr.record_status != 'void'
+
+            ORDER BY sr.id DESC
+            """,
+            (
+                project_id,
+                survey_batch_id,
+            ),
+        ).fetchall()
+
+        result = []
+
+        for row in rows:
+            try:
+                record_data = json.loads(row["record_data_json"] or "{}")
+            except json.JSONDecodeError:
+                record_data = {}
+
+            result.append(
+                {
+                    "survey_record_id": (row["survey_record_id"]),
+                    "engineering_asset_id": (row["engineering_asset_id"]),
+                    "business_code": (row["business_code"] or ""),
+                    "asset_name": (row["asset_name"] or ""),
+                    "department_name": (row["department_name"] or ""),
+                    "office_name": (row["office_name"] or ""),
+                    "canal_name": (row["canal_name"] or ""),
+                    "stake": (record_data.get("stake") or ""),
+                    "design_flow": (record_data.get("design_flow")),
+                    "overall_grade": (row["overall_grade"]),
+                    "record_status": (row["record_status"]),
+                    "updated_at": (row["updated_at"]),
+                }
+            )
+
+        return result
+
+
 def get_current_context():
     """
     获取当前启用的项目和当前调查批次。
