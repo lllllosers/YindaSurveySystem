@@ -88,6 +88,42 @@ def init_database():
                 FOREIGN KEY (project_id)
                     REFERENCES projects(id)
             );
+            CREATE TABLE IF NOT EXISTS organization_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                parent_id INTEGER,
+
+                name TEXT NOT NULL,
+
+                unit_type TEXT NOT NULL
+                    CHECK (
+                        unit_type IN (
+                            'department',
+                            'water_office'
+                        )
+                    ),
+
+                business_code TEXT,
+
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (
+                        status IN (
+                            'active',
+                            'inactive'
+                        )
+                    ),
+
+                description TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                FOREIGN KEY (parent_id)
+                    REFERENCES organization_units(id)
+            );
             """)
 
 
@@ -168,6 +204,92 @@ def create_demo_data():
                     "active",
                 ),
             )
+
+
+def get_departments():
+    """
+    获取所有基层处。
+    """
+    with get_connection() as connection:
+        return connection.execute("""
+            SELECT *
+            FROM organization_units
+            WHERE unit_type = 'department'
+            ORDER BY id
+            """).fetchall()
+
+
+def get_water_offices(department_id=None):
+    """
+    获取水管所。
+
+    如果传入 department_id，
+    则只获取该基层处下面的水管所。
+    """
+    with get_connection() as connection:
+        if department_id is None:
+            return connection.execute("""
+                SELECT *
+                FROM organization_units
+                WHERE unit_type = 'water_office'
+                ORDER BY parent_id, id
+                """).fetchall()
+
+        return connection.execute(
+            """
+            SELECT *
+            FROM organization_units
+            WHERE unit_type = 'water_office'
+              AND parent_id = ?
+            ORDER BY id
+            """,
+            (department_id,),
+        ).fetchall()
+
+
+def create_organization_unit(
+    name,
+    unit_type,
+    business_code=None,
+    parent_id=None,
+    description=None,
+):
+    """
+    新增基层处或水管所。
+    """
+
+    if unit_type not in ("department", "water_office"):
+        raise ValueError("无效的组织机构类型。")
+
+    if not name or not name.strip():
+        raise ValueError("组织机构名称不能为空。")
+
+    # 水管所必须属于一个基层处
+    if unit_type == "water_office" and parent_id is None:
+        raise ValueError("水管所必须选择所属基层处。")
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO organization_units (
+                parent_id,
+                name,
+                unit_type,
+                business_code,
+                description
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                parent_id,
+                name.strip(),
+                unit_type,
+                business_code.strip() if business_code else None,
+                description.strip() if description else None,
+            ),
+        )
+
+        return cursor.lastrowid
 
 
 def get_current_context():
