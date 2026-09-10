@@ -51,6 +51,8 @@ class SurveyPage(QWidget):
 
         self.sluice_edit_page.survey_saved.connect(self.sluice_saved)
 
+        self.sluice_list_page.edit_requested.connect(self.open_edit_sluice)
+
         layout.addWidget(self.stack)
 
     def create_home_page(self):
@@ -93,9 +95,27 @@ class SurveyPage(QWidget):
         self.stack.setCurrentWidget(self.sluice_list_page)
 
     def open_new_sluice(self):
-        self.sluice_edit_page.update_business_code()
+        self.sluice_edit_page.prepare_new()
 
         self.stack.setCurrentWidget(self.sluice_edit_page)
+
+    def open_edit_sluice(
+        self,
+        survey_record_id,
+    ):
+        try:
+            self.sluice_edit_page.load_record(survey_record_id)
+
+            self.stack.setCurrentWidget(self.sluice_edit_page)
+
+        except Exception as error:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self,
+                "打开失败",
+                str(error),
+            )
 
     def sluice_saved(self):
         self.sluice_list_page.load_data()

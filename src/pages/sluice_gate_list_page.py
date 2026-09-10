@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -18,6 +18,7 @@ from database import (
 class SluiceGateListPage(QWidget):
     new_requested = Signal()
     back_requested = Signal()
+    edit_requested = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -81,6 +82,8 @@ class SluiceGateListPage(QWidget):
 
         self.table.setAlternatingRowColors(True)
 
+        self.table.cellDoubleClicked.connect(self.open_record)
+
         self.table.setColumnWidth(0, 150)
         self.table.setColumnWidth(1, 180)
         self.table.setColumnWidth(2, 140)
@@ -138,6 +141,12 @@ class SluiceGateListPage(QWidget):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value or ""))
 
+                if column == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        record["survey_record_id"],
+                    )
+
                 self.table.setItem(
                     row_index,
                     column,
@@ -145,3 +154,24 @@ class SluiceGateListPage(QWidget):
                 )
 
         self.count_label.setText(f"当前共有 {len(records)} 条水闸调查记录")
+
+    def open_record(
+        self,
+        row,
+        column,
+    ):
+        """
+        双击记录后请求打开编辑页面。
+        """
+
+        item = self.table.item(row, 0)
+
+        if item is None:
+            return
+
+        record_id = item.data(Qt.ItemDataRole.UserRole)
+
+        if record_id is None:
+            return
+
+        self.edit_requested.emit(int(record_id))

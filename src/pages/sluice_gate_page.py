@@ -20,6 +20,8 @@ from database import (
     get_departments,
     get_engineering_business_codes,
     get_water_offices,
+    get_sluice_gate_record,
+    update_sluice_gate_draft,
 )
 
 from services.business_code import (
@@ -38,6 +40,7 @@ class SluiceGatePage(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.editing_record_id = None
         self.current_context = get_current_context()
         self.form_version = get_current_form_version("form_2_2")
 
@@ -49,10 +52,11 @@ class SluiceGatePage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(18)
 
-        title = QLabel("附表2.2 水闸工程状况调查")
-        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        self.title_label = QLabel("附表2.2 水闸工程状况调查")
 
-        root_layout.addWidget(title)
+        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+
+        root_layout.addWidget(self.title_label)
 
         description = QLabel(
             "当前为V0.1最小录入版本。"
@@ -145,13 +149,9 @@ class SluiceGatePage(QWidget):
         button_layout = QHBoxLayout()
 
         back_button = QPushButton("返回列表")
-        back_button.clicked.connect(
-            self.back_requested.emit
-        )
+        back_button.clicked.connect(self.back_requested.emit)
 
-        button_layout.addWidget(
-            back_button
-        )
+        button_layout.addWidget(back_button)
 
         button_layout.addStretch()
 
@@ -357,24 +357,22 @@ class SluiceGatePage(QWidget):
                 "design_flow": design_flow,
             }
 
-            result = create_engineering_survey(
-                project_id=self.current_context["project_id"],
-                survey_batch_id=self.current_context["batch_id"],
-                form_version_id=self.form_version["id"],
-                asset_name=asset_name,
-                asset_type=self.form_version["asset_type"],
-                organization_unit_id=(office_data["id"]),
-                canal_unit_id=(canal_data["id"]),
-                business_code=business_code,
-                record_data=record_data,
-                single_stake_text=stake_text,
-                single_stake_value=stake_value,
-            )
+            if self.editing_record_id is None:
+                result = create_engineering_survey(
+                    project_id=self.current_context["project_id"],
+                    survey_batch_id=self.current_context["batch_id"],
+                    form_version_id=self.form_version["id"],
+                    asset_name=asset_name,
+                    asset_type=self.form_version["asset_type"],
+                    organization_unit_id=(office_data["id"]),
+                    canal_unit_id=(canal_data["id"]),
+                    business_code=business_code,
+                    record_data=record_data,
+                    single_stake_text=stake_text,
+                    single_stake_value=stake_value,
+                )
 
-            QMessageBox.information(
-                self,
-                "保存成功",
-                (
+                message = (
                     "水闸调查草稿已保存。\n\n"
                     f"业务编号："
                     f"{result['business_code']}\n"
@@ -382,10 +380,26 @@ class SluiceGatePage(QWidget):
                     f"{result['engineering_asset_id']}\n"
                     f"调查记录ID："
                     f"{result['survey_record_id']}"
-                ),
+                )
+
+            else:
+                update_sluice_gate_draft(
+                    survey_record_id=(self.editing_record_id),
+                    asset_name=asset_name,
+                    record_data=record_data,
+                    single_stake_text=stake_text,
+                    single_stake_value=stake_value,
+                )
+
+                message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
+
+            QMessageBox.information(
+                self,
+                "保存成功",
+                message,
             )
 
-            self.clear_form()
+            self.prepare_new()
             self.survey_saved.emit()
 
         except Exception as error:
@@ -394,12 +408,126 @@ class SluiceGatePage(QWidget):
                 "保存失败",
                 str(error),
             )
+    def prepare_new(self):
+        """
+        切换到新增模式。
+        """
+        self.editing_record_id = None
 
-    def clear_form(self):
+        self.title_label.setText(
+            "附表2.2 水闸工程状况调查 - 新增"
+        )
+
+        self.department_combo.setEnabled(True)
+        self.office_combo.setEnabled(True)
+        self.canal_combo.setEnabled(True)
+
         self.name_edit.clear()
         self.stake_edit.clear()
         self.design_flow_edit.clear()
 
-        # 保存完成后重新计算编号，
-        # 下一条记录会自动建议新的顺序号。
+        self.load_departments()
         self.update_business_code()
+
+    def _set_combo_by_id(
+        self,
+        combo,
+        target_id,
+    ):
+        """
+        根据 combo 中 currentData()['id']
+        找到指定对象。
+        """
+        for index in range(combo.count()):
+            data = combo.itemData(index)
+
+            if (
+                isinstance(data, dict)
+                and data.get("id") == target_id
+            ):
+                combo.setCurrentIndex(index)
+                return True
+
+        return False
+
+    def load_record(
+        self,
+        survey_record_id,
+    ):
+        """
+        打开已有水闸草稿进入编辑模式。
+        """
+        record = get_sluice_gate_record(
+            survey_record_id
+        )
+
+        if record is None:
+            raise ValueError(
+                "没有找到该调查记录。"
+            )
+
+        if record["record_status"] != "draft":
+            raise ValueError(
+                "当前版本只支持编辑草稿记录。"
+            )
+
+        self.editing_record_id = (
+            survey_record_id
+        )
+
+        self.title_label.setText(
+            "附表2.2 水闸工程状况调查 - 编辑草稿"
+        )
+
+        # 先加载基层处
+        self.load_departments()
+
+        self._set_combo_by_id(
+            self.department_combo,
+            record["department_id"],
+        )
+
+        # 按选中的基层处重新加载水管所
+        self.department_changed()
+
+        self._set_combo_by_id(
+            self.office_combo,
+            record["office_id"],
+        )
+
+        # 按选中的水管所重新加载渠系
+        self.office_changed()
+
+        self._set_combo_by_id(
+            self.canal_combo,
+            record["canal_id"],
+        )
+
+        self.business_code_edit.setText(
+            record["business_code"]
+        )
+
+        record_data = record["record_data"]
+
+        self.name_edit.setText(
+            record["asset_name"]
+        )
+
+        self.stake_edit.setText(
+            record_data.get("stake") or ""
+        )
+
+        design_flow = record_data.get(
+            "design_flow"
+        )
+
+        self.design_flow_edit.setText(
+            ""
+            if design_flow is None
+            else str(design_flow)
+        )
+
+        # 编辑模式暂时禁止修改工程归属
+        self.department_combo.setEnabled(False)
+        self.office_combo.setEnabled(False)
+        self.canal_combo.setEnabled(False)

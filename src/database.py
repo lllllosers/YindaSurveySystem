@@ -993,6 +993,159 @@ def get_sluice_gate_records(
         return result
 
 
+def get_sluice_gate_record(
+    survey_record_id,
+):
+    """
+    获取一条附表2.2水闸调查记录，
+    用于重新打开和编辑。
+    """
+
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.record_status,
+                sr.business_code,
+                sr.record_data_json,
+
+                ea.id AS engineering_asset_id,
+                ea.asset_name,
+
+                office.id AS office_id,
+                department.id AS department_id,
+
+                canal.id AS canal_id
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            LEFT JOIN organization_units AS office
+                ON sr.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            LEFT JOIN canal_units AS canal
+                ON sr.canal_unit_id = canal.id
+
+            WHERE sr.id = ?
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        try:
+            record_data = json.loads(row["record_data_json"] or "{}")
+        except json.JSONDecodeError:
+            record_data = {}
+
+        return {
+            "survey_record_id": row["survey_record_id"],
+            "engineering_asset_id": (row["engineering_asset_id"]),
+            "record_status": row["record_status"],
+            "business_code": (row["business_code"] or ""),
+            "asset_name": row["asset_name"] or "",
+            "department_id": row["department_id"],
+            "office_id": row["office_id"],
+            "canal_id": row["canal_id"],
+            "record_data": record_data,
+        }
+
+
+def update_sluice_gate_draft(
+    survey_record_id,
+    asset_name,
+    record_data,
+    single_stake_text=None,
+    single_stake_value=None,
+):
+    """
+    修改已有水闸草稿。
+
+    当前V0.1只修改：
+    - 工程名称
+    - 桩号
+    - 普通调查字段
+
+    不修改：
+    - 所属机构
+    - 渠系
+    - 业务编号
+    """
+
+    if not asset_name or not asset_name.strip():
+        raise ValueError("工程名称不能为空。")
+
+    record_json = json.dumps(
+        record_data,
+        ensure_ascii=False,
+    )
+
+    with get_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT
+                engineering_asset_id,
+                record_status
+            FROM survey_records
+            WHERE id = ?
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if record is None:
+            raise ValueError("没有找到该调查记录。")
+
+        if record["record_status"] != "draft":
+            raise ValueError("当前版本只允许直接编辑草稿记录。")
+
+        engineering_asset_id = record["engineering_asset_id"]
+
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET
+                asset_name = ?,
+                single_stake_text = ?,
+                single_stake_value = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                asset_name.strip(),
+                single_stake_text,
+                single_stake_value,
+                engineering_asset_id,
+            ),
+        )
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                record_data_json = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                record_json,
+                survey_record_id,
+            ),
+        )
+
+
 def get_current_context():
     """
     获取当前启用的项目和当前调查批次。
