@@ -1,0 +1,70 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# =========================
+# VS Code / IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Build / packaging
+# =========================
+build/
+dist/
+*.spec
+
+# =========================
+# Local databases
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Runtime / local data
+# =========================
+local_data/
+data/
+exports/
+backup/
+backups/
+reference/
+
+# =========================
+# Logs / temp files
+# =========================
+*.log
+*.tmp
+*.temp
+
+# =========================
+# Microsoft Office temp
+# =========================
+~$*.xlsx
+~$*.xls
+~$*.docx
+~$*.doc
+
+# =========================
+# Windows
+# =========================
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Python tools
+# =========================
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
