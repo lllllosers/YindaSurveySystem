@@ -1,6 +1,7 @@
 import sys
 from database import (
     create_demo_data,
+    create_initial_forms,
     get_current_context,
     init_database,
 )
@@ -251,6 +252,7 @@ def main():
     # 确保数据库和开发测试数据存在
     init_database()
     create_demo_data()
+    create_initial_forms()
 
     app = QApplication(sys.argv)
 

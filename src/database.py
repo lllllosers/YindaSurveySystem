@@ -36,6 +36,7 @@ def init_database():
 
     with get_connection() as connection:
         connection.executescript("""
+
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -88,6 +89,8 @@ def init_database():
                 FOREIGN KEY (project_id)
                     REFERENCES projects(id)
             );
+
+
             CREATE TABLE IF NOT EXISTS organization_units (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -124,6 +127,8 @@ def init_database():
                 FOREIGN KEY (parent_id)
                     REFERENCES organization_units(id)
             );
+
+
             CREATE TABLE IF NOT EXISTS canal_units (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -164,6 +169,239 @@ def init_database():
 
                 FOREIGN KEY (organization_unit_id)
                     REFERENCES organization_units(id)
+            );
+
+
+            CREATE TABLE IF NOT EXISTS form_definitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                form_code TEXT NOT NULL UNIQUE,
+                form_number TEXT NOT NULL,
+                form_name TEXT NOT NULL,
+
+                series TEXT NOT NULL
+                    CHECK (series IN ('series_1', 'series_2')),
+
+                record_type TEXT NOT NULL
+                    CHECK (
+                        record_type IN (
+                            'comprehensive',
+                            'engineering'
+                        )
+                    ),
+
+                asset_type TEXT,
+
+                is_enabled INTEGER NOT NULL DEFAULT 1
+                    CHECK (is_enabled IN (0, 1)),
+
+                sort_order INTEGER NOT NULL DEFAULT 0,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime'))
+            );
+
+
+            CREATE TABLE IF NOT EXISTS form_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                form_definition_id INTEGER NOT NULL,
+
+                version_code TEXT NOT NULL,
+                version_name TEXT,
+
+                effective_date TEXT,
+
+                schema_json TEXT NOT NULL DEFAULT '{}',
+
+                is_current INTEGER NOT NULL DEFAULT 1
+                    CHECK (is_current IN (0, 1)),
+
+                notes TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                UNIQUE (
+                    form_definition_id,
+                    version_code
+                ),
+
+                FOREIGN KEY (form_definition_id)
+                    REFERENCES form_definitions(id)
+            );
+
+            
+            CREATE TABLE IF NOT EXISTS engineering_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                project_id INTEGER NOT NULL,
+
+                asset_name TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+
+                organization_unit_id INTEGER NOT NULL,
+                canal_unit_id INTEGER NOT NULL,
+
+                business_code TEXT NOT NULL,
+                code_scheme_version TEXT NOT NULL DEFAULT 'V1',
+
+                single_stake_text TEXT,
+                single_stake_value REAL,
+
+                start_stake_text TEXT,
+                start_stake_value REAL,
+
+                end_stake_text TEXT,
+                end_stake_value REAL,
+
+                first_survey_batch_id INTEGER,
+
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (
+                        status IN (
+                            'active',
+                            'inactive',
+                            'retired'
+                        )
+                    ),
+
+                notes TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                UNIQUE (
+                    project_id,
+                    business_code
+                ),
+
+                FOREIGN KEY (project_id)
+                    REFERENCES projects(id),
+
+                FOREIGN KEY (organization_unit_id)
+                    REFERENCES organization_units(id),
+
+                FOREIGN KEY (canal_unit_id)
+                    REFERENCES canal_units(id),
+
+                FOREIGN KEY (first_survey_batch_id)
+                    REFERENCES survey_batches(id)
+            );
+
+
+            CREATE TABLE IF NOT EXISTS survey_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                project_id INTEGER NOT NULL,
+                survey_batch_id INTEGER NOT NULL,
+                form_version_id INTEGER NOT NULL,
+
+                record_type TEXT NOT NULL
+                    CHECK (
+                        record_type IN (
+                            'comprehensive',
+                            'engineering'
+                        )
+                    ),
+
+                organization_unit_id INTEGER,
+                canal_unit_id INTEGER,
+                engineering_asset_id INTEGER,
+
+                business_code TEXT,
+
+                survey_date TEXT,
+
+                overall_grade TEXT
+                    CHECK (
+                        overall_grade IS NULL
+                        OR overall_grade IN (
+                            'A',
+                            'B',
+                            'C',
+                            'D'
+                        )
+                    ),
+
+                survey_comment TEXT,
+
+                record_status TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (
+                        record_status IN (
+                            'draft',
+                            'completed',
+                            'void'
+                        )
+                    ),
+
+                record_data_json TEXT NOT NULL DEFAULT '{}',
+
+                void_reason TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                FOREIGN KEY (project_id)
+                    REFERENCES projects(id),
+
+                FOREIGN KEY (survey_batch_id)
+                    REFERENCES survey_batches(id),
+
+                FOREIGN KEY (form_version_id)
+                    REFERENCES form_versions(id),
+
+                FOREIGN KEY (organization_unit_id)
+                    REFERENCES organization_units(id),
+
+                FOREIGN KEY (canal_unit_id)
+                    REFERENCES canal_units(id),
+
+                FOREIGN KEY (engineering_asset_id)
+                    REFERENCES engineering_assets(id)
+            );
+
+
+            CREATE TABLE IF NOT EXISTS inspection_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                survey_record_id INTEGER NOT NULL,
+
+                item_code TEXT NOT NULL,
+                category TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+
+                grade TEXT
+                    CHECK (
+                        grade IS NULL
+                        OR grade IN (
+                            'A',
+                            'B',
+                            'C',
+                            'D'
+                        )
+                    ),
+
+                description TEXT,
+                remark TEXT,
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                UNIQUE (
+                    survey_record_id,
+                    item_code
+                ),
+
+                FOREIGN KEY (survey_record_id)
+                    REFERENCES survey_records(id)
+                    ON DELETE CASCADE
             );
             """)
 
@@ -213,7 +451,7 @@ def create_demo_data():
             SELECT id
             FROM survey_batches
             WHERE project_id = ?
-              AND batch_code = ?
+            AND batch_code = ?
             """,
             (
                 project_id,
@@ -245,6 +483,110 @@ def create_demo_data():
                     "active",
                 ),
             )
+
+
+def create_initial_forms():
+    """
+    初始化当前 V0.1 Demo 使用的调查表定义。
+
+    当前先建立：
+    - 附表2.1 防渗衬砌渠道
+    - 附表2.2 水闸
+    """
+
+    forms = [
+        {
+            "form_code": "form_2_1",
+            "form_number": "2.1",
+            "form_name": "防渗衬砌渠道渠段工程状况调查表",
+            "series": "series_2",
+            "record_type": "engineering",
+            "asset_type": "lined_channel_section",
+            "sort_order": 201,
+        },
+        {
+            "form_code": "form_2_2",
+            "form_number": "2.2",
+            "form_name": "水闸工程状况调查表",
+            "series": "series_2",
+            "record_type": "engineering",
+            "asset_type": "sluice_gate",
+            "sort_order": 202,
+        },
+    ]
+
+    with get_connection() as connection:
+        for form in forms:
+            existing = connection.execute(
+                """
+                SELECT id
+                FROM form_definitions
+                WHERE form_code = ?
+                """,
+                (form["form_code"],),
+            ).fetchone()
+
+            if existing is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO form_definitions (
+                        form_code,
+                        form_number,
+                        form_name,
+                        series,
+                        record_type,
+                        asset_type,
+                        sort_order
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        form["form_code"],
+                        form["form_number"],
+                        form["form_name"],
+                        form["series"],
+                        form["record_type"],
+                        form["asset_type"],
+                        form["sort_order"],
+                    ),
+                )
+
+                form_definition_id = cursor.lastrowid
+            else:
+                form_definition_id = existing["id"]
+
+            version = connection.execute(
+                """
+                SELECT id
+                FROM form_versions
+                WHERE form_definition_id = ?
+                AND version_code = 'V1'
+                """,
+                (form_definition_id,),
+            ).fetchone()
+
+            if version is None:
+                connection.execute(
+                    """
+                    INSERT INTO form_versions (
+                        form_definition_id,
+                        version_code,
+                        version_name,
+                        effective_date,
+                        schema_json,
+                        is_current
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        form_definition_id,
+                        "V1",
+                        "2026版",
+                        "2026-09-01",
+                        "{}",
+                        1,
+                    ),
+                )
 
 
 def get_departments():
