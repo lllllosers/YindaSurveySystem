@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from pages.basic_data_page import BasicDataPage
+from pages.survey_page import SurveyPage
 
 
 class MainWindow(QMainWindow):
@@ -218,7 +219,12 @@ class MainWindow(QMainWindow):
 
         self.clear_content()
 
-        if page_name == "基础资料":
+        if page_name == "本次调查":
+            self.survey_page = SurveyPage()
+
+            self.content_layout.addWidget(self.survey_page)
+
+        elif page_name == "基础资料":
             self.basic_data_page = BasicDataPage()
 
             self.content_layout.addWidget(self.basic_data_page)
