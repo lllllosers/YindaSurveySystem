@@ -1,11 +1,9 @@
 import sys
-
 from database import (
     create_demo_data,
     get_current_context,
     init_database,
 )
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from pages.organization_page import OrganizationPage
 
 
 class MainWindow(QMainWindow):
@@ -128,8 +127,8 @@ class MainWindow(QMainWindow):
         content = QFrame()
         content.setObjectName("contentCard")
 
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(30, 30, 30, 30)
+        self.content_layout = QVBoxLayout(content)
+        self.content_layout.setContentsMargins(30, 30, 30, 30)
 
         self.content_label = QLabel(
             "引大灌区调查数据采集系统\n\n"
@@ -141,7 +140,7 @@ class MainWindow(QMainWindow):
         self.content_label.setWordWrap(True)
         self.content_label.setObjectName("contentLabel")
 
-        content_layout.addWidget(self.content_label)
+        self.content_layout.addWidget(self.content_label)
 
         workspace_layout.addWidget(content, 1)
 
@@ -215,9 +214,47 @@ class MainWindow(QMainWindow):
 
     def change_page(self, page_name):
         self.page_title.setText(page_name)
-        self.content_label.setText(
-            f"{page_name}\n\n" "该模块将在后续开发步骤中逐步实现。"
-        )
+
+        self.clear_content()
+
+        if page_name == "基础资料":
+            organization_page = OrganizationPage()
+
+            self.content_layout.addWidget(
+                organization_page
+            )
+
+        else:
+            self.content_label = QLabel(
+                f"{page_name}\n\n"
+                "该模块将在后续开发步骤中逐步实现。"
+            )
+
+            self.content_label.setAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
+
+            self.content_label.setWordWrap(True)
+            self.content_label.setObjectName(
+                "contentLabel"
+            )
+
+            self.content_layout.addWidget(
+                self.content_label
+            )
+
+
+    def clear_content(self):
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+
+            if item is None:
+                continue
+
+            widget = item.widget()
+
+            if widget is not None:
+                widget.deleteLater()
 
 
 def main():
