@@ -1,5 +1,11 @@
 import sys
 
+from database import (
+    create_demo_data,
+    get_current_context,
+    init_database,
+)
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +22,8 @@ from PySide6.QtWidgets import (
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.current_context = get_current_context()
 
         self.setWindowTitle("引大灌区调查数据采集系统")
         self.resize(1200, 760)
@@ -95,8 +103,15 @@ class MainWindow(QMainWindow):
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(18, 12, 18, 12)
 
-        project_label = QLabel("当前项目：引大入秦灌区现状调查")
-        batch_label = QLabel("当前调查批次：2026年度全面调查")
+        if self.current_context:
+            project_name = self.current_context["project_name"]
+            batch_name = self.current_context["batch_name"] or "未选择调查批次"
+        else:
+            project_name = "未选择项目"
+            batch_name = "未选择调查批次"
+
+        project_label = QLabel(f"当前项目：{project_name}")
+        batch_label = QLabel(f"当前调查批次：{batch_name}")
 
         top_layout.addWidget(project_label)
         top_layout.addStretch()
@@ -206,6 +221,10 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # 确保数据库和开发测试数据存在
+    init_database()
+    create_demo_data()
+
     app = QApplication(sys.argv)
 
     window = MainWindow()

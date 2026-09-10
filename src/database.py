@@ -170,6 +170,49 @@ def create_demo_data():
             )
 
 
+def get_current_context():
+    """
+    获取当前启用的项目和当前调查批次。
+
+    当前 V0.1 规则：
+    - 取第一个处于 active 状态的项目；
+    - 在该项目下取最新一个 active 调查批次。
+    """
+
+    with get_connection() as connection:
+        project = connection.execute("""
+            SELECT *
+            FROM projects
+            WHERE status = 'active'
+            ORDER BY id
+            LIMIT 1
+            """).fetchone()
+
+        if project is None:
+            return None
+
+        batch = connection.execute(
+            """
+            SELECT *
+            FROM survey_batches
+            WHERE project_id = ?
+              AND status = 'active'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (project["id"],),
+        ).fetchone()
+
+        return {
+            "project_id": project["id"],
+            "project_name": project["name"],
+            "project_short_name": project["short_name"],
+            "batch_id": batch["id"] if batch else None,
+            "batch_name": batch["batch_name"] if batch else None,
+            "batch_code": batch["batch_code"] if batch else None,
+        }
+
+
 def show_database_info():
     """
     在终端显示当前数据库中的项目和调查批次，
