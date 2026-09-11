@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 from pages.basic_data_page import BasicDataPage
 from pages.survey_page import SurveyPage
+from pages.engineering_asset_page import EngineeringAssetPage
 
 
 class MainWindow(QMainWindow):
@@ -223,6 +224,11 @@ class MainWindow(QMainWindow):
             self.survey_page = SurveyPage()
 
             self.content_layout.addWidget(self.survey_page)
+
+        elif page_name == "工程台账":
+            self.engineering_asset_page = EngineeringAssetPage()
+
+            self.content_layout.addWidget(self.engineering_asset_page)
 
         elif page_name == "基础资料":
             self.basic_data_page = BasicDataPage()

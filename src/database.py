@@ -1164,6 +1164,101 @@ def update_sluice_gate_draft(
         )
 
 
+def get_engineering_assets(
+    project_id,
+    survey_batch_id=None,
+):
+    """
+    获取工程台账。
+
+    EngineeringAsset 是长期工程对象。
+    如果提供 survey_batch_id，
+    同时带出该工程在当前调查批次中的调查状态。
+    """
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                ea.id AS engineering_asset_id,
+                ea.business_code,
+                ea.asset_name,
+                ea.asset_type,
+
+                ea.single_stake_text,
+                ea.start_stake_text,
+                ea.end_stake_text,
+
+                ea.status AS asset_status,
+                ea.created_at,
+
+                office.name AS office_name,
+                department.name AS department_name,
+
+                canal.name AS canal_name,
+                canal.canal_level,
+
+                first_batch.batch_name
+                    AS first_batch_name,
+
+                (
+                    SELECT sr.record_status
+                    FROM survey_records AS sr
+                    WHERE sr.engineering_asset_id = ea.id
+                      AND (
+                            ? IS NULL
+                            OR sr.survey_batch_id = ?
+                          )
+                      AND sr.record_status != 'void'
+                    ORDER BY sr.id DESC
+                    LIMIT 1
+                ) AS survey_status,
+
+                (
+                    SELECT sr.overall_grade
+                    FROM survey_records AS sr
+                    WHERE sr.engineering_asset_id = ea.id
+                      AND (
+                            ? IS NULL
+                            OR sr.survey_batch_id = ?
+                          )
+                      AND sr.record_status != 'void'
+                    ORDER BY sr.id DESC
+                    LIMIT 1
+                ) AS overall_grade
+
+            FROM engineering_assets AS ea
+
+            LEFT JOIN organization_units AS office
+                ON ea.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            LEFT JOIN canal_units AS canal
+                ON ea.canal_unit_id = canal.id
+
+            LEFT JOIN survey_batches AS first_batch
+                ON ea.first_survey_batch_id = first_batch.id
+
+            WHERE ea.project_id = ?
+
+            ORDER BY
+                ea.business_code,
+                ea.id
+            """,
+            (
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
+                project_id,
+            ),
+        ).fetchall()
+
+        return rows
+
+
 def get_current_context():
     """
     获取当前启用的项目和当前调查批次。
