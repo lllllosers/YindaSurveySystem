@@ -1,3 +1,4 @@
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -13,6 +14,9 @@ from database import (
     get_engineering_assets,
 )
 
+from pages.engineering_asset_detail_dialog import (
+    EngineeringAssetDetailDialog,
+)
 
 ASSET_TYPE_NAMES = {
     "lined_channel_section": "防渗衬砌渠道",
@@ -37,14 +41,11 @@ class EngineeringAssetPage(QWidget):
         top_layout = QHBoxLayout()
 
         description = QLabel(
-            "工程台账用于管理长期工程对象。"
-            "同一工程以后可以关联多个调查批次。"
+            "工程台账用于管理长期工程对象。" "同一工程以后可以关联多个调查批次。"
         )
 
         refresh_button = QPushButton("刷新")
-        refresh_button.clicked.connect(
-            self.load_data
-        )
+        refresh_button.clicked.connect(self.load_data)
 
         top_layout.addWidget(description)
         top_layout.addStretch()
@@ -56,6 +57,8 @@ class EngineeringAssetPage(QWidget):
         layout.addWidget(self.count_label)
 
         self.table = QTableWidget()
+
+        self.table.cellDoubleClicked.connect(self.open_asset_detail)
 
         self.table.setColumnCount(10)
 
@@ -74,13 +77,9 @@ class EngineeringAssetPage(QWidget):
             ]
         )
 
-        self.table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
-        self.table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         self.table.setAlternatingRowColors(True)
 
@@ -103,23 +102,15 @@ class EngineeringAssetPage(QWidget):
     def load_data(self):
         if not self.current_context:
             self.table.setRowCount(0)
-            self.count_label.setText(
-                "当前没有可用项目。"
-            )
+            self.count_label.setText("当前没有可用项目。")
             return
 
         assets = get_engineering_assets(
-            project_id=self.current_context[
-                "project_id"
-            ],
-            survey_batch_id=self.current_context[
-                "batch_id"
-            ],
+            project_id=self.current_context["project_id"],
+            survey_batch_id=self.current_context["batch_id"],
         )
 
-        self.table.setRowCount(
-            len(assets)
-        )
+        self.table.setRowCount(len(assets))
 
         for row_index, asset in enumerate(assets):
             asset_type_text = ASSET_TYPE_NAMES.get(
@@ -128,13 +119,8 @@ class EngineeringAssetPage(QWidget):
             )
 
             if asset["single_stake_text"]:
-                stake_text = asset[
-                    "single_stake_text"
-                ]
-            elif (
-                asset["start_stake_text"]
-                or asset["end_stake_text"]
-            ):
+                stake_text = asset["single_stake_text"]
+            elif asset["start_stake_text"] or asset["end_stake_text"]:
                 stake_text = (
                     f"{asset['start_stake_text'] or ''}"
                     " ～ "
@@ -176,9 +162,13 @@ class EngineeringAssetPage(QWidget):
             ]
 
             for column, value in enumerate(values):
-                item = QTableWidgetItem(
-                    str(value or "")
-                )
+                item = QTableWidgetItem(str(value or ""))
+
+                if column == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        asset["engineering_asset_id"],
+                    )
 
                 self.table.setItem(
                     row_index,
@@ -186,6 +176,30 @@ class EngineeringAssetPage(QWidget):
                     item,
                 )
 
-        self.count_label.setText(
-            f"当前工程台账共 {len(assets)} 个工程对象"
+        self.count_label.setText(f"当前工程台账共 {len(assets)} 个工程对象")
+
+    def open_asset_detail(
+        self,
+        row,
+        column,
+    ):
+        """
+        双击工程台账行，打开工程详情。
+        """
+        item = self.table.item(
+            row,
+            0,
         )
+
+        if item is None:
+            return
+        engineering_asset_id = item.data(Qt.ItemDataRole.UserRole)
+
+        if engineering_asset_id is None:
+            return
+        dialog = EngineeringAssetDetailDialog(
+            engineering_asset_id=int(engineering_asset_id),
+            parent=self,
+        )
+
+        dialog.exec()

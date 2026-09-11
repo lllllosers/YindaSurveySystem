@@ -1259,6 +1259,110 @@ def get_engineering_assets(
         return rows
 
 
+def get_engineering_asset_detail(
+    engineering_asset_id,
+):
+    """
+    获取单个长期工程对象的基本信息。
+    """
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                ea.id AS engineering_asset_id,
+                ea.business_code,
+                ea.asset_name,
+                ea.asset_type,
+
+                ea.single_stake_text,
+                ea.start_stake_text,
+                ea.end_stake_text,
+
+                ea.status AS asset_status,
+                ea.code_scheme_version,
+                ea.notes,
+                ea.created_at,
+                ea.updated_at,
+
+                office.name AS office_name,
+                department.name AS department_name,
+
+                canal.name AS canal_name,
+                canal.canal_level,
+
+                first_batch.batch_name
+                    AS first_batch_name
+
+            FROM engineering_assets AS ea
+
+            LEFT JOIN organization_units AS office
+                ON ea.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            LEFT JOIN canal_units AS canal
+                ON ea.canal_unit_id = canal.id
+
+            LEFT JOIN survey_batches AS first_batch
+                ON ea.first_survey_batch_id = first_batch.id
+
+            WHERE ea.id = ?
+            """,
+            (engineering_asset_id,),
+        ).fetchone()
+
+
+def get_engineering_asset_history(
+    engineering_asset_id,
+):
+    """
+    获取某个工程对象的历次调查记录。
+    """
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.business_code,
+                sr.survey_date,
+                sr.overall_grade,
+                sr.record_status,
+                sr.created_at,
+                sr.updated_at,
+
+                sb.batch_name,
+                sb.batch_code,
+
+                fd.form_number,
+                fd.form_name,
+
+                fv.version_code,
+                fv.version_name
+
+            FROM survey_records AS sr
+
+            JOIN survey_batches AS sb
+                ON sr.survey_batch_id = sb.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            WHERE sr.engineering_asset_id = ?
+
+            ORDER BY
+                sb.id DESC,
+                sr.id DESC
+            """,
+            (engineering_asset_id,),
+        ).fetchall()
+
+
 def get_current_context():
     """
     获取当前启用的项目和当前调查批次。
