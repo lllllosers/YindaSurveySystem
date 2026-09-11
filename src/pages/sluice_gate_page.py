@@ -1,13 +1,19 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtCore import QRegularExpression, Qt, Signal
+from PySide6.QtGui import (
+    QDoubleValidator,
+    QIntValidator,
+    QRegularExpressionValidator,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -53,23 +59,47 @@ class SluiceGatePage(QWidget):
         root_layout.setSpacing(18)
 
         self.title_label = QLabel("附表2.2 水闸工程状况调查")
-
         self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
 
         root_layout.addWidget(self.title_label)
 
         description = QLabel(
-            "当前为V0.1最小录入版本。"
-            "先验证工程对象、调查记录和业务编号完整保存流程。"
+            "当前正在补全附表2.2基本信息。"
+            "新增字段本阶段仅完成界面，"
+            "下一阶段再接入保存和草稿回填。"
         )
+        description.setWordWrap(True)
         description.setStyleSheet("color: #607080; font-size: 14px;")
 
         root_layout.addWidget(description)
 
-        form_layout = QFormLayout()
-        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        form_layout.setHorizontalSpacing(20)
-        form_layout.setVerticalSpacing(14)
+        # =========================
+        # 可滚动表单区域
+        # =========================
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+
+        form_container = QWidget()
+        form_container_layout = QVBoxLayout(form_container)
+        form_container_layout.setContentsMargins(
+            4,
+            4,
+            12,
+            4,
+        )
+        form_container_layout.setSpacing(16)
+
+        # =========================
+        # 1. 归属与编号
+        # =========================
+
+        ownership_group = QGroupBox("一、归属与编号")
+
+        ownership_layout = QFormLayout(ownership_group)
+        ownership_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        ownership_layout.setHorizontalSpacing(20)
+        ownership_layout.setVerticalSpacing(12)
 
         # 基层处
         self.department_combo = QComboBox()
@@ -88,63 +118,180 @@ class SluiceGatePage(QWidget):
         self.business_code_edit.setReadOnly(True)
         self.business_code_edit.setPlaceholderText("选择基层处、水管所和渠系后自动生成")
 
+        ownership_layout.addRow(
+            "所属基层处：",
+            self.department_combo,
+        )
+        ownership_layout.addRow(
+            "所属水管所：",
+            self.office_combo,
+        )
+        ownership_layout.addRow(
+            "所属渠系：",
+            self.canal_combo,
+        )
+        ownership_layout.addRow(
+            "业务编号：",
+            self.business_code_edit,
+        )
+
+        form_container_layout.addWidget(ownership_group)
+
+        # =========================
+        # 2. 工程基本信息
+        # =========================
+
+        basic_group = QGroupBox("二、工程基本信息")
+
+        basic_layout = QFormLayout(basic_group)
+        basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        basic_layout.setHorizontalSpacing(20)
+        basic_layout.setVerticalSpacing(12)
+
         # 工程名称
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("例如：测试节制闸")
+        self.name_edit.setPlaceholderText("例如：1号节制闸")
 
         # 桩号
         self.stake_edit = QLineEdit()
         self.stake_edit.setPlaceholderText("例如：K12+350")
 
         # 设计流量
-        self.design_flow_edit = QLineEdit()
-        self.design_flow_edit.setPlaceholderText("例如：4.5，可留空")
+        self.design_flow_edit = self._create_decimal_edit("例如：4.5，可留空")
 
-        validator = QDoubleValidator(
-            0.0,
-            999999999.0,
-            6,
-            self,
-        )
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-        self.design_flow_edit.setValidator(validator)
+        # 建筑物等级
+        self.structure_grade_edit = QLineEdit()
+        self.structure_grade_edit.setPlaceholderText("按原始资料填写，可留空")
 
-        form_layout.addRow(
-            "所属基层处：",
-            self.department_combo,
-        )
+        # 建成年月
+        self.build_date_edit = self._create_month_edit()
+        self.build_date_edit.setPlaceholderText("例如：2008-06，可留空")
 
-        form_layout.addRow(
-            "所属水管所：",
-            self.office_combo,
-        )
+        # 加固改造年月
+        self.renovation_date_edit = self._create_month_edit()
+        self.renovation_date_edit.setPlaceholderText("例如：2021-09，可留空")
 
-        form_layout.addRow(
-            "所属渠系：",
-            self.canal_combo,
-        )
+        # 加大流量
+        self.increased_flow_edit = self._create_decimal_edit("可留空")
 
-        form_layout.addRow(
-            "业务编号：",
-            self.business_code_edit,
-        )
-
-        form_layout.addRow(
+        basic_layout.addRow(
             "工程名称：",
             self.name_edit,
         )
-
-        form_layout.addRow(
+        basic_layout.addRow(
             "桩号：",
             self.stake_edit,
         )
-
-        form_layout.addRow(
+        basic_layout.addRow(
             "设计流量（m³/s）：",
             self.design_flow_edit,
         )
+        basic_layout.addRow(
+            "建筑物等级：",
+            self.structure_grade_edit,
+        )
+        basic_layout.addRow(
+            "建成年月：",
+            self.build_date_edit,
+        )
+        basic_layout.addRow(
+            "加固改造年月：",
+            self.renovation_date_edit,
+        )
+        basic_layout.addRow(
+            "加大流量（m³/s）：",
+            self.increased_flow_edit,
+        )
 
-        root_layout.addLayout(form_layout)
+        form_container_layout.addWidget(basic_group)
+
+        # =========================
+        # 3. 结构与材料参数
+        # =========================
+
+        structure_group = QGroupBox("三、结构与材料参数")
+
+        structure_layout = QFormLayout(structure_group)
+        structure_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        structure_layout.setHorizontalSpacing(20)
+        structure_layout.setVerticalSpacing(12)
+
+        # 孔数
+        self.opening_count_edit = self._create_integer_edit("可留空")
+
+        # 孔宽
+        self.opening_width_edit = self._create_decimal_edit("可留空")
+
+        # 孔高
+        self.opening_height_edit = self._create_decimal_edit("可留空")
+
+        # 主要构件材料
+        self.main_component_material_edit = QLineEdit()
+        self.main_component_material_edit.setPlaceholderText("例如：钢筋混凝土，可留空")
+
+        # 混凝土强度
+        self.concrete_strength_edit = QLineEdit()
+        self.concrete_strength_edit.setPlaceholderText("例如：C30，可留空")
+
+        # 钢筋混凝土强度
+        self.reinforced_concrete_strength_edit = QLineEdit()
+        self.reinforced_concrete_strength_edit.setPlaceholderText(
+            "按原始资料填写，可留空"
+        )
+
+        # 保护层厚度
+        self.cover_thickness_edit = self._create_decimal_edit("可留空")
+
+        # 裂缝限宽
+        self.crack_width_limit_edit = self._create_decimal_edit("可留空")
+
+        structure_layout.addRow(
+            "孔数：",
+            self.opening_count_edit,
+        )
+        structure_layout.addRow(
+            "孔宽（m）：",
+            self.opening_width_edit,
+        )
+        structure_layout.addRow(
+            "孔高（m）：",
+            self.opening_height_edit,
+        )
+        structure_layout.addRow(
+            "主要构件材料：",
+            self.main_component_material_edit,
+        )
+        structure_layout.addRow(
+            "混凝土强度：",
+            self.concrete_strength_edit,
+        )
+        structure_layout.addRow(
+            "钢筋混凝土强度：",
+            self.reinforced_concrete_strength_edit,
+        )
+        structure_layout.addRow(
+            "保护层厚度（mm）：",
+            self.cover_thickness_edit,
+        )
+        structure_layout.addRow(
+            "裂缝限宽（mm）：",
+            self.crack_width_limit_edit,
+        )
+
+        form_container_layout.addWidget(structure_group)
+
+        form_container_layout.addStretch()
+
+        scroll_area.setWidget(form_container)
+
+        root_layout.addWidget(
+            scroll_area,
+            1,
+        )
+
+        # =========================
+        # 底部按钮
+        # =========================
 
         button_layout = QHBoxLayout()
 
@@ -163,7 +310,125 @@ class SluiceGatePage(QWidget):
 
         root_layout.addLayout(button_layout)
 
-        root_layout.addStretch()
+    def _create_decimal_edit(
+        self,
+        placeholder="",
+    ):
+        """
+        创建允许为空的非负小数输入框。
+        """
+        edit = QLineEdit()
+
+        if placeholder:
+            edit.setPlaceholderText(placeholder)
+
+        validator = QDoubleValidator(
+            0.0,
+            999999999.0,
+            6,
+            edit,
+        )
+        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+
+        edit.setValidator(validator)
+
+        return edit
+
+    def _create_integer_edit(
+        self,
+        placeholder="",
+    ):
+        """
+        创建允许为空的非负整数输入框。
+        """
+        edit = QLineEdit()
+
+        if placeholder:
+            edit.setPlaceholderText(placeholder)
+
+        validator = QIntValidator(
+            0,
+            999999,
+            edit,
+        )
+
+        edit.setValidator(validator)
+
+        return edit
+
+    def _create_month_edit(self):
+        """
+        创建 YYYY-MM 格式的年月输入框。
+
+        当前只负责输入格式控制，
+        下一阶段保存时再做最终业务校验。
+        """
+        edit = QLineEdit()
+        edit.setMaxLength(7)
+
+        expression = QRegularExpression(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+        validator = QRegularExpressionValidator(
+            expression,
+            edit,
+        )
+
+        edit.setValidator(validator)
+
+        return edit
+
+    def _get_optional_float(
+        self,
+        edit,
+    ):
+        """
+        获取可为空的小数字段。
+        空值返回 None。
+        """
+        text = edit.text().strip()
+
+        if not text:
+            return None
+
+        return float(text)
+
+    def _get_optional_int(
+        self,
+        edit,
+    ):
+        """
+        获取可为空的整数字段。
+        空值返回 None。
+        """
+        text = edit.text().strip()
+
+        if not text:
+            return None
+
+        return int(text)
+
+    def _get_optional_month(
+        self,
+        edit,
+        field_name,
+    ):
+        """
+        获取 YYYY-MM 格式年月。
+
+        空值返回 None；
+        非空但格式不完整时阻止保存。
+        """
+        text = edit.text().strip()
+
+        if not text:
+            return None
+
+        expression = QRegularExpression(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+        if not expression.match(text).hasMatch():
+            raise ValueError(f"{field_name}格式应为 YYYY-MM，" "例如：2020-06。")
+
+        return text
 
     def load_departments(self):
         self.department_combo.blockSignals(True)
@@ -343,18 +608,59 @@ class SluiceGatePage(QWidget):
 
             stake_text, stake_value = parse_stake(self.stake_edit.text())
 
-            design_flow_text = self.design_flow_edit.text().strip()
+            design_flow = self._get_optional_float(self.design_flow_edit)
 
-            design_flow = None
+            structure_grade = self.structure_grade_edit.text().strip() or None
 
-            if design_flow_text:
-                design_flow = float(design_flow_text)
+            build_date = self._get_optional_month(
+                self.build_date_edit,
+                "建成年月",
+            )
+
+            renovation_date = self._get_optional_month(
+                self.renovation_date_edit,
+                "加固改造年月",
+            )
+
+            opening_count = self._get_optional_int(self.opening_count_edit)
+
+            opening_width = self._get_optional_float(self.opening_width_edit)
+
+            opening_height = self._get_optional_float(self.opening_height_edit)
+
+            increased_flow = self._get_optional_float(self.increased_flow_edit)
+
+            main_component_material = (
+                self.main_component_material_edit.text().strip() or None
+            )
+
+            concrete_strength = self.concrete_strength_edit.text().strip() or None
+
+            reinforced_concrete_strength = (
+                self.reinforced_concrete_strength_edit.text().strip() or None
+            )
+
+            cover_thickness = self._get_optional_float(self.cover_thickness_edit)
+
+            crack_width_limit = self._get_optional_float(self.crack_width_limit_edit)
 
             record_data = {
                 "asset_name": asset_name,
                 "stake": stake_text,
                 "stake_value": stake_value,
                 "design_flow": design_flow,
+                "structure_grade": structure_grade,
+                "build_date": build_date,
+                "renovation_date": renovation_date,
+                "opening_count": opening_count,
+                "opening_width": opening_width,
+                "opening_height": opening_height,
+                "increased_flow": increased_flow,
+                "main_component_material": (main_component_material),
+                "concrete_strength": (concrete_strength),
+                "reinforced_concrete_strength": (reinforced_concrete_strength),
+                "cover_thickness": cover_thickness,
+                "crack_width_limit": (crack_width_limit),
             }
 
             if self.editing_record_id is None:
@@ -408,15 +714,14 @@ class SluiceGatePage(QWidget):
                 "保存失败",
                 str(error),
             )
+
     def prepare_new(self):
         """
         切换到新增模式。
         """
         self.editing_record_id = None
 
-        self.title_label.setText(
-            "附表2.2 水闸工程状况调查 - 新增"
-        )
+        self.title_label.setText("附表2.2 水闸工程状况调查 - 新增")
 
         self.department_combo.setEnabled(True)
         self.office_combo.setEnabled(True)
@@ -425,6 +730,23 @@ class SluiceGatePage(QWidget):
         self.name_edit.clear()
         self.stake_edit.clear()
         self.design_flow_edit.clear()
+
+        self.structure_grade_edit.clear()
+        self.build_date_edit.clear()
+        self.renovation_date_edit.clear()
+
+        self.opening_count_edit.clear()
+        self.opening_width_edit.clear()
+        self.opening_height_edit.clear()
+
+        self.increased_flow_edit.clear()
+
+        self.main_component_material_edit.clear()
+        self.concrete_strength_edit.clear()
+        self.reinforced_concrete_strength_edit.clear()
+
+        self.cover_thickness_edit.clear()
+        self.crack_width_limit_edit.clear()
 
         self.load_departments()
         self.update_business_code()
@@ -441,10 +763,7 @@ class SluiceGatePage(QWidget):
         for index in range(combo.count()):
             data = combo.itemData(index)
 
-            if (
-                isinstance(data, dict)
-                and data.get("id") == target_id
-            ):
+            if isinstance(data, dict) and data.get("id") == target_id:
                 combo.setCurrentIndex(index)
                 return True
 
@@ -457,27 +776,17 @@ class SluiceGatePage(QWidget):
         """
         打开已有水闸草稿进入编辑模式。
         """
-        record = get_sluice_gate_record(
-            survey_record_id
-        )
+        record = get_sluice_gate_record(survey_record_id)
 
         if record is None:
-            raise ValueError(
-                "没有找到该调查记录。"
-            )
+            raise ValueError("没有找到该调查记录。")
 
         if record["record_status"] != "draft":
-            raise ValueError(
-                "当前版本只支持编辑草稿记录。"
-            )
+            raise ValueError("当前版本只支持编辑草稿记录。")
 
-        self.editing_record_id = (
-            survey_record_id
-        )
+        self.editing_record_id = survey_record_id
 
-        self.title_label.setText(
-            "附表2.2 水闸工程状况调查 - 编辑草稿"
-        )
+        self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
 
         # 先加载基层处
         self.load_departments()
@@ -503,28 +812,76 @@ class SluiceGatePage(QWidget):
             record["canal_id"],
         )
 
-        self.business_code_edit.setText(
-            record["business_code"]
-        )
+        self.business_code_edit.setText(record["business_code"])
 
         record_data = record["record_data"]
 
-        self.name_edit.setText(
-            record["asset_name"]
+        self.name_edit.setText(record["asset_name"])
+
+        self.stake_edit.setText(record_data.get("stake") or "")
+
+        # =========================
+        # 工程基本信息回填
+        # =========================
+
+        design_flow = record_data.get("design_flow")
+
+        self.design_flow_edit.setText("" if design_flow is None else str(design_flow))
+
+        self.structure_grade_edit.setText(record_data.get("structure_grade") or "")
+
+        self.build_date_edit.setText(record_data.get("build_date") or "")
+
+        self.renovation_date_edit.setText(record_data.get("renovation_date") or "")
+
+        increased_flow = record_data.get("increased_flow")
+
+        self.increased_flow_edit.setText(
+            "" if increased_flow is None else str(increased_flow)
         )
 
-        self.stake_edit.setText(
-            record_data.get("stake") or ""
+        # =========================
+        # 结构与材料参数回填
+        # =========================
+
+        opening_count = record_data.get("opening_count")
+
+        self.opening_count_edit.setText(
+            "" if opening_count is None else str(opening_count)
         )
 
-        design_flow = record_data.get(
-            "design_flow"
+        opening_width = record_data.get("opening_width")
+
+        self.opening_width_edit.setText(
+            "" if opening_width is None else str(opening_width)
         )
 
-        self.design_flow_edit.setText(
-            ""
-            if design_flow is None
-            else str(design_flow)
+        opening_height = record_data.get("opening_height")
+
+        self.opening_height_edit.setText(
+            "" if opening_height is None else str(opening_height)
+        )
+
+        self.main_component_material_edit.setText(
+            record_data.get("main_component_material") or ""
+        )
+
+        self.concrete_strength_edit.setText(record_data.get("concrete_strength") or "")
+
+        self.reinforced_concrete_strength_edit.setText(
+            record_data.get("reinforced_concrete_strength") or ""
+        )
+
+        cover_thickness = record_data.get("cover_thickness")
+
+        self.cover_thickness_edit.setText(
+            "" if cover_thickness is None else str(cover_thickness)
+        )
+
+        crack_width_limit = record_data.get("crack_width_limit")
+
+        self.crack_width_limit_edit.setText(
+            "" if crack_width_limit is None else str(crack_width_limit)
         )
 
         # 编辑模式暂时禁止修改工程归属
