@@ -381,9 +381,9 @@ class SluiceGatePage(QWidget):
 
         button_layout.addStretch()
 
-        save_button = QPushButton("保存草稿")
-        save_button.setMinimumWidth(120)
-        save_button.clicked.connect(self.save_draft)
+        self.save_button = QPushButton("保存草稿")
+        self.save_button.setMinimumWidth(120)
+        self.save_button.clicked.connect(self.save_draft)
 
         self.complete_button = QPushButton("完成调查")
         self.complete_button.setMinimumWidth(120)
@@ -394,9 +394,9 @@ class SluiceGatePage(QWidget):
 
         self.complete_button.clicked.connect(self.complete_survey)
 
-        button_layout.addWidget(self.complete_button)
+        button_layout.addWidget(self.save_button)
 
-        button_layout.addWidget(save_button)
+        button_layout.addWidget(self.complete_button)
 
         root_layout.addLayout(button_layout)
 
@@ -537,6 +537,54 @@ class SluiceGatePage(QWidget):
         standard = item["standards"].get(grade) or ""
 
         label.setText(f"{grade}级标准：{standard}")
+
+    def _set_record_read_only(
+        self,
+        read_only,
+    ):
+        """
+        设置调查内容是否只读。
+
+        只处理调查内容控件；
+        工程归属控件由新增/编辑模式单独控制。
+        """
+        enabled = not read_only
+
+        # 工程基本信息
+        self.name_edit.setEnabled(enabled)
+        self.stake_edit.setEnabled(enabled)
+        self.design_flow_edit.setEnabled(enabled)
+        self.structure_grade_edit.setEnabled(enabled)
+        self.build_date_edit.setEnabled(enabled)
+        self.renovation_date_edit.setEnabled(enabled)
+        self.increased_flow_edit.setEnabled(enabled)
+
+        # 结构与材料参数
+        self.opening_count_edit.setEnabled(enabled)
+        self.opening_width_edit.setEnabled(enabled)
+        self.opening_height_edit.setEnabled(enabled)
+
+        self.main_component_material_edit.setEnabled(enabled)
+        self.concrete_strength_edit.setEnabled(enabled)
+        self.reinforced_concrete_strength_edit.setEnabled(enabled)
+
+        self.cover_thickness_edit.setEnabled(enabled)
+        self.crack_width_limit_edit.setEnabled(enabled)
+
+        # 分项评价
+        for combo in self.evaluation_grade_combos.values():
+            combo.setEnabled(enabled)
+
+        # 调查结论
+        self.overall_grade_combo.setEnabled(enabled)
+        self.survey_date_edit.setEnabled(enabled)
+        self.survey_comment_edit.setEnabled(enabled)
+
+        # 操作按钮
+        self.save_button.setEnabled(enabled)
+
+        if read_only:
+            self.complete_button.setEnabled(False)
 
     def _clear_evaluation_controls(self):
         """
@@ -1137,6 +1185,10 @@ class SluiceGatePage(QWidget):
 
         self.complete_button.setEnabled(False)
 
+        self._set_record_read_only(False)
+
+        self.complete_button.setEnabled(False)
+
         self.title_label.setText("附表2.2 水闸工程状况调查 - 新增")
 
         self.department_combo.setEnabled(True)
@@ -1204,10 +1256,13 @@ class SluiceGatePage(QWidget):
 
         self._clear_evaluation_controls()
 
-        if record["record_status"] != "draft":
-            raise ValueError("当前版本只支持编辑草稿记录。")
+        record_status = record["record_status"]
 
-        self.complete_button.setEnabled(True)
+        if record_status not in (
+            "draft",
+            "completed",
+        ):
+            raise ValueError("当前记录状态暂不支持打开。")
 
         self.editing_record_id = survey_record_id
 
@@ -1348,3 +1403,28 @@ class SluiceGatePage(QWidget):
         self.department_combo.setEnabled(False)
         self.office_combo.setEnabled(False)
         self.canal_combo.setEnabled(False)
+
+        # =========================
+        # 根据记录状态设置页面模式
+        # =========================
+
+        if record_status == "draft":
+            self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
+
+            self._set_record_read_only(False)
+
+            # 已登记工程的归属暂不允许修改
+            self.department_combo.setEnabled(False)
+            self.office_combo.setEnabled(False)
+            self.canal_combo.setEnabled(False)
+
+            self.complete_button.setEnabled(True)
+
+        elif record_status == "completed":
+            self.title_label.setText("附表2.2 水闸工程状况调查 - 已完成 / 只读")
+
+            self._set_record_read_only(True)
+
+            self.department_combo.setEnabled(False)
+            self.office_combo.setEnabled(False)
+            self.canal_combo.setEnabled(False)
