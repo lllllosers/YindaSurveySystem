@@ -23,6 +23,12 @@ from pages.engineering_asset_page import EngineeringAssetPage
 from services.database_backup import (
     create_database_backup,
 )
+from version import (
+    APP_AUTHOR,
+    APP_NAME,
+    APP_STAGE,
+    APP_VERSION_LABEL,
+)
 
 
 class MainWindow(QMainWindow):
@@ -32,7 +38,7 @@ class MainWindow(QMainWindow):
         self.current_context = get_current_context()
         self.current_page_name = "首页"
 
-        self.setWindowTitle("引大灌区调查数据采集系统")
+        self.setWindowTitle(f"{APP_NAME} - {APP_VERSION_LABEL}")
         self.resize(1200, 760)
 
         self.init_ui()
@@ -88,7 +94,7 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addStretch()
 
-        version_label = QLabel("V0.1 Demo")
+        version_label = QLabel(f"{APP_VERSION_LABEL} {APP_STAGE}")
         version_label.setObjectName("versionLabel")
         sidebar_layout.addWidget(version_label)
 
@@ -139,10 +145,11 @@ class MainWindow(QMainWindow):
         self.content_layout.setContentsMargins(30, 30, 30, 30)
 
         self.content_label = QLabel(
-            "引大灌区调查数据采集系统\n\n"
-            "V0.1 开发版本\n\n"
-            "当前先完成程序框架，后续逐步接入调查批次、基础资料、"
-            "工程调查、工程台账、查询和 Excel 导出。"
+            f"{APP_NAME}\n\n"
+            f"{APP_VERSION_LABEL} {APP_STAGE}\n\n"
+            "当前已完成附表2.2水闸工程状况调查"
+            "完整数据采集闭环。\n\n"
+            f"开发者：{APP_AUTHOR}"
         )
         self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.content_label.setWordWrap(True)
@@ -362,6 +369,7 @@ def main():
     window.show()
 
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
