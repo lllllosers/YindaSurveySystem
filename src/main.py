@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.current_context = get_current_context()
+        self.current_page_name = "首页"
 
         self.setWindowTitle("引大灌区调查数据采集系统")
         self.resize(1200, 760)
@@ -216,6 +217,24 @@ class MainWindow(QMainWindow):
             """)
 
     def change_page(self, page_name):
+
+        # 已经在当前模块时不重复销毁和创建页面。
+        if page_name == self.current_page_name:
+            return
+
+        # 如果正在“本次调查”中编辑表单，
+        # 离开主模块前先检查未保存修改。
+        if self.current_page_name == "本次调查":
+            survey_page = getattr(
+                self,
+                "survey_page",
+                None,
+            )
+
+            if survey_page is not None:
+                if not survey_page.can_leave_page():
+                    return
+
         self.page_title.setText(page_name)
 
         self.clear_content()
@@ -246,6 +265,27 @@ class MainWindow(QMainWindow):
             self.content_label.setObjectName("contentLabel")
 
             self.content_layout.addWidget(self.content_label)
+
+        self.current_page_name = page_name
+
+    def closeEvent(self, event):
+        """
+        关闭软件前检查是否存在未保存的调查修改。
+        """
+
+        if self.current_page_name == "本次调查":
+            survey_page = getattr(
+                self,
+                "survey_page",
+                None,
+            )
+
+            if survey_page is not None:
+                if not survey_page.can_leave_page():
+                    event.ignore()
+                    return
+
+        event.accept()
 
     def clear_content(self):
         while self.content_layout.count():

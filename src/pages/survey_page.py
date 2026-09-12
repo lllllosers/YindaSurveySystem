@@ -86,6 +86,19 @@ class SurveyPage(QWidget):
 
         return page
 
+    def can_leave_page(self):
+        """
+        主程序准备离开“本次调查”模块时调用。
+
+        如果当前正在编辑水闸调查，
+        则先处理未保存修改。
+        """
+
+        if self.stack.currentWidget() is self.sluice_edit_page:
+            return self.sluice_edit_page.confirm_leave_changes()
+
+        return True
+
     def open_home(self):
         self.stack.setCurrentWidget(self.home_page)
 

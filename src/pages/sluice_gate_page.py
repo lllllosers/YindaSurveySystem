@@ -1,3 +1,4 @@
+from datetime import datetime
 from PySide6.QtCore import QRegularExpression, Qt, Signal
 from PySide6.QtGui import (
     QDoubleValidator,
@@ -52,6 +53,8 @@ class SluiceGatePage(QWidget):
         super().__init__()
 
         self.editing_record_id = None
+        self.editing_record_status = None
+        self.is_dirty = False
         self.current_context = get_current_context()
         self.form_version = get_current_form_version("form_2_2")
 
@@ -61,6 +64,8 @@ class SluiceGatePage(QWidget):
         self.evaluation_standard_labels = {}
 
         self.init_ui()
+
+        self._connect_dirty_tracking()
 
     def init_ui(self):
         root_layout = QVBoxLayout(self)
@@ -375,7 +380,7 @@ class SluiceGatePage(QWidget):
         button_layout = QHBoxLayout()
 
         back_button = QPushButton("返回列表")
-        back_button.clicked.connect(self.back_requested.emit)
+        back_button.clicked.connect(self.request_back)
 
         button_layout.addWidget(back_button)
 
@@ -399,6 +404,107 @@ class SluiceGatePage(QWidget):
         button_layout.addWidget(self.complete_button)
 
         root_layout.addLayout(button_layout)
+
+    def _connect_dirty_tracking(self):
+        """
+        监听用户对调查表内容的实际修改。
+        """
+
+        line_edits = [
+            self.name_edit,
+            self.stake_edit,
+            self.design_flow_edit,
+            self.structure_grade_edit,
+            self.build_date_edit,
+            self.renovation_date_edit,
+            self.increased_flow_edit,
+            self.opening_count_edit,
+            self.opening_width_edit,
+            self.opening_height_edit,
+            self.main_component_material_edit,
+            self.concrete_strength_edit,
+            self.reinforced_concrete_strength_edit,
+            self.cover_thickness_edit,
+            self.crack_width_limit_edit,
+            self.survey_date_edit,
+        ]
+
+        for edit in line_edits:
+            # textEdited 只在用户实际编辑时触发，
+            # 程序 setText() 回填不会触发。
+            edit.textEdited.connect(self._mark_dirty)
+
+        user_combos = [
+            self.department_combo,
+            self.office_combo,
+            self.canal_combo,
+            self.overall_grade_combo,
+        ]
+
+        for combo in user_combos:
+            # activated 只在用户操作下拉框时触发。
+            combo.activated.connect(self._mark_dirty)
+
+        for combo in self.evaluation_grade_combos.values():
+            combo.activated.connect(self._mark_dirty)
+
+        # QPlainTextEdit 没有 textEdited，
+        # 因此使用 textChanged。
+        self.survey_comment_edit.textChanged.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *args):
+        """
+        标记当前页面存在尚未保存的修改。
+        """
+        self.is_dirty = True
+
+    def confirm_leave_changes(self):
+        """
+        页面存在未保存修改时，询问用户如何处理。
+
+        返回：
+        True  -> 允许离开当前页面
+        False -> 保留在当前页面
+        """
+
+        if not self.is_dirty:
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            "存在未保存修改",
+            (
+                "当前调查表存在尚未保存的修改。\n\n"
+                "选择“保存”将先保存当前内容再离开；\n"
+                "选择“不保存”将放弃本次修改；\n"
+                "选择“取消”将继续留在当前页面。"
+            ),
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+
+        if reply == QMessageBox.StandardButton.Save:
+            saved = self._save_current_draft(show_message=True)
+
+            return bool(saved)
+
+        if reply == QMessageBox.StandardButton.Discard:
+            self.is_dirty = False
+            return True
+
+        return False
+
+    def request_back(self):
+        """
+        用户点击“返回列表”。
+        """
+
+        if not self.confirm_leave_changes():
+            return
+
+        self.back_requested.emit()
 
     def _create_evaluation_group(self):
         """
@@ -968,6 +1074,12 @@ class SluiceGatePage(QWidget):
         show_message=True,
     ):
         try:
+
+            # 已完成记录修改后仍必须保持完整，
+            # 不能通过直接编辑把 completed 记录改成缺项状态。
+            if self.editing_record_status == "completed":
+                self._validate_completion_fields()
+
             if not self.current_context:
                 raise ValueError("当前没有可用项目。")
 
@@ -1090,6 +1202,7 @@ class SluiceGatePage(QWidget):
                 )
 
                 self.editing_record_id = result["survey_record_id"]
+                self.editing_record_status = "draft"
 
                 message = (
                     "水闸调查草稿已保存。\n\n"
@@ -1114,19 +1227,29 @@ class SluiceGatePage(QWidget):
                     survey_comment=survey_comment,
                 )
 
-                message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
+                if self.editing_record_status == "completed":
+                    message = "已完成调查记录已更新。\n\n" f"业务编号：{business_code}"
+                else:
+                    message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
 
-            # 第一次保存以后直接进入草稿编辑模式，
-            # 不再清空页面。
-            self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
-
-            # 工程归属和业务编号一旦建立，
-            # 当前阶段不再允许直接修改。
+            # 工程归属一旦建立，不允许直接修改。
             self.department_combo.setEnabled(False)
             self.office_combo.setEnabled(False)
             self.canal_combo.setEnabled(False)
 
-            self.complete_button.setEnabled(True)
+            if self.editing_record_status == "completed":
+                self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑已完成记录")
+
+                self.save_button.setText("保存修改")
+                self.complete_button.setEnabled(False)
+
+            else:
+                self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
+
+                self.save_button.setText("保存草稿")
+                self.complete_button.setEnabled(True)
+
+            self.is_dirty = False
 
             self.survey_saved.emit()
 
@@ -1154,9 +1277,154 @@ class SluiceGatePage(QWidget):
         """
         用户点击“保存草稿”。
         """
-        self._save_current_draft(
-            show_message=True
-        )
+        self._save_current_draft(show_message=True)
+
+    def _validate_completion_fields(self):
+        """
+        校验“完成调查”所需的全部必填内容。
+
+        草稿保存不调用本方法，因此草稿仍允许不完整。
+        """
+
+        missing_fields = []
+
+        # =========================
+        # 1. 归属与编号
+        # =========================
+
+        if not self.department_combo.currentData():
+            missing_fields.append("所属基层处")
+
+        if not self.office_combo.currentData():
+            missing_fields.append("所属水管所")
+
+        if not self.canal_combo.currentData():
+            missing_fields.append("所属渠系")
+
+        if not self.business_code_edit.text().strip():
+            missing_fields.append("业务编号")
+
+        # =========================
+        # 2. 工程基本信息
+        # =========================
+
+        required_line_edits = [
+            (self.name_edit, "工程名称"),
+            (self.stake_edit, "桩号"),
+            (self.design_flow_edit, "设计流量"),
+            (self.structure_grade_edit, "建筑物等级"),
+            (self.build_date_edit, "建成年月"),
+            (self.increased_flow_edit, "加大流量"),
+            # 结构与材料参数
+            (self.opening_count_edit, "孔数"),
+            (self.opening_width_edit, "孔宽"),
+            (self.opening_height_edit, "孔高"),
+            (
+                self.main_component_material_edit,
+                "主要构件材料",
+            ),
+            (
+                self.concrete_strength_edit,
+                "混凝土强度",
+            ),
+            (
+                self.reinforced_concrete_strength_edit,
+                "钢筋混凝土强度",
+            ),
+            (
+                self.cover_thickness_edit,
+                "保护层厚度",
+            ),
+            (
+                self.crack_width_limit_edit,
+                "裂缝限宽",
+            ),
+            # 调查结论
+            (self.survey_date_edit, "调查时间"),
+        ]
+
+        for edit, field_name in required_line_edits:
+            if not edit.text().strip():
+                missing_fields.append(field_name)
+
+        # 调查意见与建议
+        if not self.survey_comment_edit.toPlainText().strip():
+            missing_fields.append("调查意见与建议")
+
+        # 工程状况类别
+        if self.overall_grade_combo.currentData() not in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            missing_fields.append("工程状况类别")
+
+        # =========================
+        # 3. 分项评价
+        # =========================
+
+        evaluation_results = self._collect_evaluation_results()
+
+        evaluation_total = len(SLUICE_GATE_EVALUATION_ITEMS)
+
+        if len(evaluation_results) != evaluation_total:
+            missing_count = evaluation_total - len(evaluation_results)
+
+            missing_fields.append(f"分项评价（还缺 {missing_count} 项）")
+
+        # =========================
+        # 4. 汇总缺失字段
+        # =========================
+
+        if missing_fields:
+            field_text = "\n".join(f"• {field_name}" for field_name in missing_fields)
+
+            raise ValueError("完成调查前请补充以下必填内容：\n\n" f"{field_text}")
+
+        # =========================
+        # 5. 内容格式进一步校验
+        # =========================
+
+        # 桩号必须是真正可解析的桩号
+        parse_stake(self.stake_edit.text())
+
+        # 建成年月必须是真实年月
+        try:
+            datetime.strptime(
+                self.build_date_edit.text().strip(),
+                "%Y-%m",
+            )
+        except ValueError:
+            raise ValueError(
+                "建成年月格式或日期无效，" "应填写为 YYYY-MM，例如：2008-06。"
+            )
+
+        # 加固改造年月允许为空；
+        # 如果填写，则必须是真实年月。
+        renovation_date = self.renovation_date_edit.text().strip()
+
+        if renovation_date:
+            try:
+                datetime.strptime(
+                    renovation_date,
+                    "%Y-%m",
+                )
+            except ValueError:
+                raise ValueError(
+                    "加固改造年月格式或日期无效，" "应填写为 YYYY-MM，例如：2021-09。"
+                )
+
+        # 调查时间必须是真实日期
+        try:
+            datetime.strptime(
+                self.survey_date_edit.text().strip(),
+                "%Y-%m-%d",
+            )
+        except ValueError:
+            raise ValueError(
+                "调查时间不是有效日期，" "应填写为 YYYY-MM-DD，" "例如：2026-09-12。"
+            )
 
     def complete_survey(self):
         """
@@ -1164,53 +1432,46 @@ class SluiceGatePage(QWidget):
         将调查记录标记为 completed。
         """
         try:
+            # =========================
+            # 完成调查前先检查完整性
+            # =========================
+
+            self._validate_completion_fields()
+
             reply = QMessageBox.question(
                 self,
                 "确认完成调查",
                 (
                     "系统将先保存当前页面的全部修改，"
                     "然后把本次调查标记为“已完成”。\n\n"
-                    "完成后当前阶段将进入只读状态，"
-                    "不能直接修改。\n\n"
+                    "完成后仍可从调查列表重新打开并修改记录。\n\n"
                     "是否确认完成本次调查？"
                 ),
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
 
-            if (
-                reply
-                != QMessageBox.StandardButton.Yes
-            ):
+            if reply != QMessageBox.StandardButton.Yes:
                 return
 
             # =========================
             # 1. 先保存当前页面最新内容
             # =========================
 
-            saved = self._save_current_draft(
-                show_message=False
-            )
+            saved = self._save_current_draft(show_message=False)
 
             if not saved:
-                raise ValueError(
-                    "当前页面保存失败，"
-                    "因此没有执行完成调查。"
-                )
+                raise ValueError("当前页面保存失败，" "因此没有执行完成调查。")
 
             if self.editing_record_id is None:
-                raise ValueError(
-                    "没有有效的调查记录ID。"
-                )
+                raise ValueError("没有有效的调查记录ID。")
 
             # =========================
             # 2. 再推进为 completed
             # =========================
 
-            result = complete_sluice_gate_record(
-                self.editing_record_id
-            )
+            result = complete_sluice_gate_record(self.editing_record_id)
+            self.editing_record_status = "completed"
 
             QMessageBox.information(
                 self,
@@ -1240,11 +1501,11 @@ class SluiceGatePage(QWidget):
         切换到新增模式。
         """
         self.editing_record_id = None
-
-        self.complete_button.setEnabled(True)
+        self.editing_record_status = None
 
         self._set_record_read_only(False)
 
+        self.save_button.setText("保存草稿")
         self.complete_button.setEnabled(True)
 
         self.title_label.setText("附表2.2 水闸工程状况调查 - 新增")
@@ -1281,6 +1542,10 @@ class SluiceGatePage(QWidget):
 
         self.load_departments()
         self.update_business_code()
+
+        # 页面初始化产生的程序性变化
+        # 不属于用户未保存修改。
+        self.is_dirty = False
 
     def _set_combo_by_id(
         self,
@@ -1323,6 +1588,7 @@ class SluiceGatePage(QWidget):
             raise ValueError("当前记录状态暂不支持打开。")
 
         self.editing_record_id = survey_record_id
+        self.editing_record_status = record_status
 
         self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
 
@@ -1471,18 +1737,28 @@ class SluiceGatePage(QWidget):
 
             self._set_record_read_only(False)
 
-            # 已登记工程的归属暂不允许修改
             self.department_combo.setEnabled(False)
             self.office_combo.setEnabled(False)
             self.canal_combo.setEnabled(False)
 
+            self.save_button.setText("保存草稿")
             self.complete_button.setEnabled(True)
 
         elif record_status == "completed":
-            self.title_label.setText("附表2.2 水闸工程状况调查 - 已完成 / 只读")
+            self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑已完成记录")
 
-            self._set_record_read_only(True)
+            # 已完成记录允许直接修改调查内容。
+            self._set_record_read_only(False)
 
+            # 工程身份信息仍然锁定。
             self.department_combo.setEnabled(False)
             self.office_combo.setEnabled(False)
             self.canal_combo.setEnabled(False)
+
+            self.save_button.setText("保存修改")
+
+            # 已经是 completed，不需要再次执行“完成调查”。
+            self.complete_button.setEnabled(False)
+
+        # 数据库回填不是用户修改。
+        self.is_dirty = False
