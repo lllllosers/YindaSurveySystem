@@ -388,9 +388,9 @@ class SluiceGatePage(QWidget):
         self.complete_button = QPushButton("完成调查")
         self.complete_button.setMinimumWidth(120)
 
-        # 新增模式下还没有 survey_record_id，
-        # 因此暂时不能直接完成。
-        self.complete_button.setEnabled(False)
+        # 新增记录也允许直接完成。
+        # 点击完成时会先自动创建并保存草稿。
+        self.complete_button.setEnabled(True)
 
         self.complete_button.clicked.connect(self.complete_survey)
 
@@ -963,7 +963,10 @@ class SluiceGatePage(QWidget):
                 str(error),
             )
 
-    def save_draft(self):
+    def _save_current_draft(
+        self,
+        show_message=True,
+    ):
         try:
             if not self.current_context:
                 raise ValueError("当前没有可用项目。")
@@ -1086,6 +1089,8 @@ class SluiceGatePage(QWidget):
                     survey_comment=survey_comment,
                 )
 
+                self.editing_record_id = result["survey_record_id"]
+
                 message = (
                     "水闸调查草稿已保存。\n\n"
                     f"业务编号："
@@ -1111,54 +1116,107 @@ class SluiceGatePage(QWidget):
 
                 message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
 
-            QMessageBox.information(
-                self,
-                "保存成功",
-                message,
-            )
+            # 第一次保存以后直接进入草稿编辑模式，
+            # 不再清空页面。
+            self.title_label.setText("附表2.2 水闸工程状况调查 - 编辑草稿")
 
-            self.prepare_new()
+            # 工程归属和业务编号一旦建立，
+            # 当前阶段不再允许直接修改。
+            self.department_combo.setEnabled(False)
+            self.office_combo.setEnabled(False)
+            self.canal_combo.setEnabled(False)
+
+            self.complete_button.setEnabled(True)
+
             self.survey_saved.emit()
 
+            if show_message:
+                QMessageBox.information(
+                    self,
+                    "保存成功",
+                    message,
+                )
+
+            return True
+
         except Exception as error:
-            QMessageBox.warning(
-                self,
-                "保存失败",
-                str(error),
-            )
+            if show_message:
+                QMessageBox.warning(
+                    self,
+                    "保存失败",
+                    str(error),
+                )
+                return False
+
+            raise
+
+    def save_draft(self):
+        """
+        用户点击“保存草稿”。
+        """
+        self._save_current_draft(
+            show_message=True
+        )
 
     def complete_survey(self):
         """
-        将当前已经保存的草稿标记为完成。
-
-        D2-1阶段暂不自动保存页面上的未保存修改。
+        保存当前页面最新内容后，
+        将调查记录标记为 completed。
         """
         try:
-            if self.editing_record_id is None:
-                raise ValueError("请先保存草稿，再从列表重新打开该草稿后完成调查。")
-
             reply = QMessageBox.question(
                 self,
                 "确认完成调查",
                 (
-                    "完成后该记录将变为“已完成”，"
-                    "当前阶段将不再允许直接编辑。\n\n"
-                    "请确认当前修改已经通过“保存草稿”保存。\n\n"
+                    "系统将先保存当前页面的全部修改，"
+                    "然后把本次调查标记为“已完成”。\n\n"
+                    "完成后当前阶段将进入只读状态，"
+                    "不能直接修改。\n\n"
                     "是否确认完成本次调查？"
                 ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
 
-            if reply != QMessageBox.StandardButton.Yes:
+            if (
+                reply
+                != QMessageBox.StandardButton.Yes
+            ):
                 return
 
-            result = complete_sluice_gate_record(self.editing_record_id)
+            # =========================
+            # 1. 先保存当前页面最新内容
+            # =========================
+
+            saved = self._save_current_draft(
+                show_message=False
+            )
+
+            if not saved:
+                raise ValueError(
+                    "当前页面保存失败，"
+                    "因此没有执行完成调查。"
+                )
+
+            if self.editing_record_id is None:
+                raise ValueError(
+                    "没有有效的调查记录ID。"
+                )
+
+            # =========================
+            # 2. 再推进为 completed
+            # =========================
+
+            result = complete_sluice_gate_record(
+                self.editing_record_id
+            )
 
             QMessageBox.information(
                 self,
                 "完成成功",
                 (
+                    "当前修改已保存，"
                     "本次水闸调查已标记为已完成。\n\n"
                     f"调查记录ID："
                     f"{result['survey_record_id']}\n"
@@ -1183,11 +1241,11 @@ class SluiceGatePage(QWidget):
         """
         self.editing_record_id = None
 
-        self.complete_button.setEnabled(False)
+        self.complete_button.setEnabled(True)
 
         self._set_record_read_only(False)
 
-        self.complete_button.setEnabled(False)
+        self.complete_button.setEnabled(True)
 
         self.title_label.setText("附表2.2 水闸工程状况调查 - 新增")
 

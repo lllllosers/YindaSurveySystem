@@ -118,6 +118,8 @@ class SurveyPage(QWidget):
             )
 
     def sluice_saved(self):
+        """
+        调查记录保存后刷新列表数据，
+        但不主动切换页面。
+        """
         self.sluice_list_page.load_data()
-
-        self.stack.setCurrentWidget(self.sluice_list_page)
