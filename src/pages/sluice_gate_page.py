@@ -28,6 +28,7 @@ from database import (
     get_water_offices,
     get_sluice_gate_record,
     update_sluice_gate_draft,
+    get_inspection_results,
 )
 
 from services.business_code import (
@@ -35,7 +36,9 @@ from services.business_code import (
     get_engineering_type_code,
     suggest_next_sequence,
 )
-
+from services.sluice_gate_evaluation import (
+    SLUICE_GATE_EVALUATION_ITEMS,
+)
 from services.stake import parse_stake
 
 
@@ -50,8 +53,12 @@ class SluiceGatePage(QWidget):
         self.current_context = get_current_context()
         self.form_version = get_current_form_version("form_2_2")
 
+        # 动态评价控件
+        # key = item_code
+        self.evaluation_grade_combos = {}
+        self.evaluation_standard_labels = {}
+
         self.init_ui()
-        self.load_departments()
 
     def init_ui(self):
         root_layout = QVBoxLayout(self)
@@ -280,6 +287,14 @@ class SluiceGatePage(QWidget):
 
         form_container_layout.addWidget(structure_group)
 
+        # =========================
+        # 4. 分项评价
+        # =========================
+
+        evaluation_group = self._create_evaluation_group()
+
+        form_container_layout.addWidget(evaluation_group)
+
         form_container_layout.addStretch()
 
         scroll_area.setWidget(form_container)
@@ -309,6 +324,219 @@ class SluiceGatePage(QWidget):
         button_layout.addWidget(save_button)
 
         root_layout.addLayout(button_layout)
+
+    def _create_evaluation_group(self):
+        """
+        根据附表2.2评价配置，
+        动态生成全部分项评价控件。
+        """
+        evaluation_group = QGroupBox("四、分项评价")
+
+        evaluation_layout = QVBoxLayout(evaluation_group)
+        evaluation_layout.setSpacing(14)
+
+        description = QLabel(
+            "各分项可选择 A、B、C、D。"
+            "选择等级后，下方显示对应评价标准。"
+            "当前阶段评价结果暂不保存。"
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #607080;")
+
+        evaluation_layout.addWidget(description)
+
+        # 按 category 分组
+        categories = {}
+
+        for item in SLUICE_GATE_EVALUATION_ITEMS:
+            category = item["category"]
+
+            if category not in categories:
+                categories[category] = []
+
+            categories[category].append(item)
+
+        for category, items in categories.items():
+            category_group = QGroupBox(category)
+
+            category_layout = QVBoxLayout(category_group)
+            category_layout.setSpacing(12)
+
+            for item in items:
+                item_widget = QWidget()
+
+                item_layout = QVBoxLayout(item_widget)
+                item_layout.setContentsMargins(
+                    8,
+                    4,
+                    8,
+                    8,
+                )
+                item_layout.setSpacing(6)
+
+                # -------------------------
+                # 第一行：项目名称 + 等级选择
+                # -------------------------
+
+                header_layout = QHBoxLayout()
+
+                item_label = QLabel(item["item_name"])
+                item_label.setMinimumWidth(180)
+
+                grade_combo = QComboBox()
+                grade_combo.setMinimumWidth(120)
+
+                grade_combo.addItem(
+                    "未评价",
+                    None,
+                )
+                grade_combo.addItem(
+                    "A",
+                    "A",
+                )
+                grade_combo.addItem(
+                    "B",
+                    "B",
+                )
+                grade_combo.addItem(
+                    "C",
+                    "C",
+                )
+                grade_combo.addItem(
+                    "D",
+                    "D",
+                )
+
+                header_layout.addWidget(item_label)
+                header_layout.addStretch()
+                header_layout.addWidget(grade_combo)
+
+                item_layout.addLayout(header_layout)
+
+                # -------------------------
+                # 第二行：对应等级标准
+                # -------------------------
+
+                standard_label = QLabel("尚未选择评价等级。")
+                standard_label.setWordWrap(True)
+                standard_label.setStyleSheet("color: #607080;" "padding: 4px 8px;")
+
+                item_layout.addWidget(standard_label)
+
+                item_code = item["item_code"]
+
+                self.evaluation_grade_combos[item_code] = grade_combo
+
+                self.evaluation_standard_labels[item_code] = standard_label
+
+                grade_combo.currentIndexChanged.connect(
+                    lambda checked=False, current_item=item, current_combo=grade_combo, current_label=standard_label: self._update_evaluation_standard(
+                        current_item,
+                        current_combo,
+                        current_label,
+                    )
+                )
+
+                category_layout.addWidget(item_widget)
+
+            evaluation_layout.addWidget(category_group)
+
+        return evaluation_group
+
+    def _update_evaluation_standard(
+        self,
+        item,
+        combo,
+        label,
+    ):
+        """
+        根据当前选择的 A/B/C/D，
+        显示对应评价标准。
+        """
+        grade = combo.currentData()
+
+        if grade is None:
+            label.setText("尚未选择评价等级。")
+            return
+
+        standard = item["standards"].get(grade) or ""
+
+        label.setText(f"{grade}级标准：{standard}")
+
+    def _clear_evaluation_controls(self):
+        """
+        将全部分项评价恢复为未评价。
+        """
+        for combo in self.evaluation_grade_combos.values():
+            combo.setCurrentIndex(0)
+
+
+    def _load_evaluation_results(
+        self,
+        results,
+    ):
+        """
+        将数据库中已有的分项评价结果
+        回填到动态生成的评价控件。
+        """
+
+        # 先全部恢复为“未评价”
+        self._clear_evaluation_controls()
+
+        for result in results:
+            item_code = result["item_code"]
+            grade = result["grade"]
+
+            combo = self.evaluation_grade_combos.get(item_code)
+
+            # 数据库里如果存在旧版本/未知项目，
+            # 当前页面直接忽略，避免报错。
+            if combo is None:
+                continue
+
+            if grade not in (
+                "A",
+                "B",
+                "C",
+                "D",
+            ):
+                continue
+
+            index = combo.findData(grade)
+
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+    def _collect_evaluation_results(self):
+        """
+        收集当前页面已经选择等级的分项评价。
+
+        未评价项目不提交数据库。
+        """
+        results = []
+
+        for item in SLUICE_GATE_EVALUATION_ITEMS:
+            item_code = item["item_code"]
+
+            combo = self.evaluation_grade_combos[item_code]
+
+            grade = combo.currentData()
+
+            if grade is None:
+                continue
+
+            results.append(
+                {
+                    "item_code": item_code,
+                    "category": item["category"],
+                    "item_name": item["item_name"],
+                    "grade": grade,
+                    "description": None,
+                    "remark": None,
+                }
+            )
+
+        return results
 
     def _create_decimal_edit(
         self,
@@ -663,6 +891,8 @@ class SluiceGatePage(QWidget):
                 "crack_width_limit": (crack_width_limit),
             }
 
+            inspection_results = self._collect_evaluation_results()
+
             if self.editing_record_id is None:
                 result = create_engineering_survey(
                     project_id=self.current_context["project_id"],
@@ -676,6 +906,7 @@ class SluiceGatePage(QWidget):
                     record_data=record_data,
                     single_stake_text=stake_text,
                     single_stake_value=stake_value,
+                    inspection_results=inspection_results,
                 )
 
                 message = (
@@ -690,11 +921,12 @@ class SluiceGatePage(QWidget):
 
             else:
                 update_sluice_gate_draft(
-                    survey_record_id=(self.editing_record_id),
+                    survey_record_id=self.editing_record_id,
                     asset_name=asset_name,
                     record_data=record_data,
                     single_stake_text=stake_text,
                     single_stake_value=stake_value,
+                    inspection_results=inspection_results,
                 )
 
                 message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
@@ -747,6 +979,7 @@ class SluiceGatePage(QWidget):
 
         self.cover_thickness_edit.clear()
         self.crack_width_limit_edit.clear()
+        self._clear_evaluation_controls()
 
         self.load_departments()
         self.update_business_code()
@@ -780,6 +1013,8 @@ class SluiceGatePage(QWidget):
 
         if record is None:
             raise ValueError("没有找到该调查记录。")
+
+        self._clear_evaluation_controls()
 
         if record["record_status"] != "draft":
             raise ValueError("当前版本只支持编辑草稿记录。")
@@ -883,6 +1118,14 @@ class SluiceGatePage(QWidget):
         self.crack_width_limit_edit.setText(
             "" if crack_width_limit is None else str(crack_width_limit)
         )
+
+        # =========================
+        # 分项评价结果回填
+        # =========================
+
+        inspection_results = get_inspection_results(survey_record_id)
+
+        self._load_evaluation_results(inspection_results)
 
         # 编辑模式暂时禁止修改工程归属
         self.department_combo.setEnabled(False)

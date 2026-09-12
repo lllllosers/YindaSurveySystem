@@ -817,6 +817,58 @@ def get_current_form_version(
         ).fetchone()
 
 
+def _replace_inspection_results(
+    connection,
+    survey_record_id,
+    inspection_results,
+):
+    """
+    用当前页面提交的分项评价，
+    完整替换某条调查记录已有的评价结果。
+
+    当前只保存已经选择 A/B/C/D 的项目。
+    未评价项目不写入 inspection_results。
+    """
+
+    connection.execute(
+        """
+        DELETE FROM inspection_results
+        WHERE survey_record_id = ?
+        """,
+        (survey_record_id,),
+    )
+
+    for result in inspection_results:
+        grade = result.get("grade")
+
+        if grade not in ("A", "B", "C", "D"):
+            continue
+
+        connection.execute(
+            """
+            INSERT INTO inspection_results (
+                survey_record_id,
+                item_code,
+                category,
+                item_name,
+                grade,
+                description,
+                remark
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                survey_record_id,
+                result["item_code"],
+                result["category"],
+                result["item_name"],
+                grade,
+                result.get("description"),
+                result.get("remark"),
+            ),
+        )
+
+
 def create_engineering_survey(
     project_id,
     survey_batch_id,
@@ -829,6 +881,7 @@ def create_engineering_survey(
     record_data,
     single_stake_text=None,
     single_stake_value=None,
+    inspection_results=None,
 ):
     """
     第一次调查时，同时创建：
@@ -915,6 +968,13 @@ def create_engineering_survey(
         )
 
         survey_record_id = record_cursor.lastrowid
+
+        if inspection_results is not None:
+            _replace_inspection_results(
+                connection,
+                survey_record_id,
+                inspection_results,
+            )
 
         return {
             "engineering_asset_id": (engineering_asset_id),
@@ -1076,12 +1136,37 @@ def get_sluice_gate_record(
         }
 
 
+def get_inspection_results(
+    survey_record_id,
+):
+    """
+    获取某条调查记录已经保存的分项评价结果。
+    """
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                item_code,
+                category,
+                item_name,
+                grade,
+                description,
+                remark
+            FROM inspection_results
+            WHERE survey_record_id = ?
+            ORDER BY id
+            """,
+            (survey_record_id,),
+        ).fetchall()
+
+
 def update_sluice_gate_draft(
     survey_record_id,
     asset_name,
     record_data,
     single_stake_text=None,
     single_stake_value=None,
+    inspection_results=None,
 ):
     """
     修改已有水闸草稿。
@@ -1163,6 +1248,13 @@ def update_sluice_gate_draft(
             ),
         )
 
+        if inspection_results is not None:
+            _replace_inspection_results(
+                connection,
+                survey_record_id,
+                inspection_results,
+            )
+
 
 def get_engineering_assets(
     project_id,
@@ -1205,11 +1297,11 @@ def get_engineering_assets(
                     SELECT sr.record_status
                     FROM survey_records AS sr
                     WHERE sr.engineering_asset_id = ea.id
-                      AND (
+                    AND (
                             ? IS NULL
                             OR sr.survey_batch_id = ?
-                          )
-                      AND sr.record_status != 'void'
+                    )
+                    AND sr.record_status != 'void'
                     ORDER BY sr.id DESC
                     LIMIT 1
                 ) AS survey_status,
