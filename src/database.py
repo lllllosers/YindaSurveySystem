@@ -1280,6 +1280,86 @@ def update_sluice_gate_draft(
             )
 
 
+def complete_sluice_gate_record(
+    survey_record_id,
+):
+    """
+    将水闸调查草稿正式标记为 completed。
+
+    当前最小完成条件：
+    1. 记录必须存在；
+    2. 当前必须是 draft；
+    3. 必须填写调查时间；
+    4. 必须确定工程状况类别；
+    5. 至少存在一项分项评价。
+
+    当前暂不强制14项全部评价，
+    因为不同闸型存在评价项目适用性差异。
+    """
+
+    with get_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT
+                id,
+                record_status,
+                survey_date,
+                overall_grade
+            FROM survey_records
+            WHERE id = ?
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if record is None:
+            raise ValueError("没有找到该调查记录。")
+
+        if record["record_status"] != "draft":
+            raise ValueError("只有草稿记录可以执行完成调查。")
+
+        if not record["survey_date"]:
+            raise ValueError("完成调查前必须填写调查时间。")
+
+        if record["overall_grade"] not in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            raise ValueError("完成调查前必须确定工程状况类别。")
+
+        inspection_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM inspection_results
+            WHERE survey_record_id = ?
+            """,
+            (survey_record_id,),
+        ).fetchone()["count"]
+
+        if inspection_count <= 0:
+            raise ValueError("完成调查前至少需要填写一项分项评价。")
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                record_status = 'completed',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (survey_record_id,),
+        )
+
+        return {
+            "survey_record_id": survey_record_id,
+            "inspection_count": inspection_count,
+        }
+
+
 def get_engineering_assets(
     project_id,
     survey_batch_id=None,
