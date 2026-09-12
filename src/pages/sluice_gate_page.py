@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QPlainTextEdit,
 )
 
 from database import (
@@ -295,6 +296,68 @@ class SluiceGatePage(QWidget):
 
         form_container_layout.addWidget(evaluation_group)
 
+        # =========================
+        # 5. 调查结论
+        # =========================
+
+        conclusion_group = QGroupBox("五、调查结论")
+
+        conclusion_layout = QFormLayout(conclusion_group)
+
+        conclusion_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        conclusion_layout.setHorizontalSpacing(20)
+        conclusion_layout.setVerticalSpacing(12)
+
+        # 工程状况类别
+        self.overall_grade_combo = QComboBox()
+
+        self.overall_grade_combo.addItem(
+            "未确定",
+            None,
+        )
+        self.overall_grade_combo.addItem(
+            "A",
+            "A",
+        )
+        self.overall_grade_combo.addItem(
+            "B",
+            "B",
+        )
+        self.overall_grade_combo.addItem(
+            "C",
+            "C",
+        )
+        self.overall_grade_combo.addItem(
+            "D",
+            "D",
+        )
+
+        # 调查时间
+        self.survey_date_edit = self._create_date_edit()
+        self.survey_date_edit.setPlaceholderText("例如：2026-09-12，可留空")
+
+        # 调查意见与建议
+        self.survey_comment_edit = QPlainTextEdit()
+        self.survey_comment_edit.setPlaceholderText("填写调查意见与建议，可留空")
+        self.survey_comment_edit.setMinimumHeight(100)
+
+        conclusion_layout.addRow(
+            "工程状况类别：",
+            self.overall_grade_combo,
+        )
+
+        conclusion_layout.addRow(
+            "调查时间：",
+            self.survey_date_edit,
+        )
+
+        conclusion_layout.addRow(
+            "调查意见与建议：",
+            self.survey_comment_edit,
+        )
+
+        form_container_layout.addWidget(conclusion_group)
+
         form_container_layout.addStretch()
 
         scroll_area.setWidget(form_container)
@@ -470,7 +533,6 @@ class SluiceGatePage(QWidget):
         for combo in self.evaluation_grade_combos.values():
             combo.setCurrentIndex(0)
 
-
     def _load_evaluation_results(
         self,
         results,
@@ -583,6 +645,49 @@ class SluiceGatePage(QWidget):
         edit.setValidator(validator)
 
         return edit
+
+    def _create_date_edit(self):
+        """
+        创建 YYYY-MM-DD 格式日期输入框。
+        """
+        edit = QLineEdit()
+        edit.setMaxLength(10)
+
+        expression = QRegularExpression(
+            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
+        )
+
+        validator = QRegularExpressionValidator(
+            expression,
+            edit,
+        )
+
+        edit.setValidator(validator)
+
+        return edit
+
+    def _get_optional_date(
+        self,
+        edit,
+        field_name,
+    ):
+        """
+        获取 YYYY-MM-DD 格式日期。
+        空值返回 None。
+        """
+        text = edit.text().strip()
+
+        if not text:
+            return None
+
+        expression = QRegularExpression(
+            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
+        )
+
+        if not expression.match(text).hasMatch():
+            raise ValueError(f"{field_name}格式应为 YYYY-MM-DD，" "例如：2026-09-12。")
+
+        return text
 
     def _create_month_edit(self):
         """
@@ -893,6 +998,15 @@ class SluiceGatePage(QWidget):
 
             inspection_results = self._collect_evaluation_results()
 
+            survey_date = self._get_optional_date(
+                self.survey_date_edit,
+                "调查时间",
+            )
+
+            overall_grade = self.overall_grade_combo.currentData()
+
+            survey_comment = self.survey_comment_edit.toPlainText().strip() or None
+
             if self.editing_record_id is None:
                 result = create_engineering_survey(
                     project_id=self.current_context["project_id"],
@@ -907,6 +1021,9 @@ class SluiceGatePage(QWidget):
                     single_stake_text=stake_text,
                     single_stake_value=stake_value,
                     inspection_results=inspection_results,
+                    survey_date=survey_date,
+                    overall_grade=overall_grade,
+                    survey_comment=survey_comment,
                 )
 
                 message = (
@@ -927,6 +1044,9 @@ class SluiceGatePage(QWidget):
                     single_stake_text=stake_text,
                     single_stake_value=stake_value,
                     inspection_results=inspection_results,
+                    survey_date=survey_date,
+                    overall_grade=overall_grade,
+                    survey_comment=survey_comment,
                 )
 
                 message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
@@ -980,6 +1100,10 @@ class SluiceGatePage(QWidget):
         self.cover_thickness_edit.clear()
         self.crack_width_limit_edit.clear()
         self._clear_evaluation_controls()
+
+        self.overall_grade_combo.setCurrentIndex(0)
+        self.survey_date_edit.clear()
+        self.survey_comment_edit.clear()
 
         self.load_departments()
         self.update_business_code()
@@ -1126,6 +1250,33 @@ class SluiceGatePage(QWidget):
         inspection_results = get_inspection_results(survey_record_id)
 
         self._load_evaluation_results(inspection_results)
+
+        # =========================
+        # 调查结论回填
+        # =========================
+
+        survey_date = record.get("survey_date")
+
+        self.survey_date_edit.setText(survey_date or "")
+
+        survey_comment = record.get("survey_comment")
+
+        self.survey_comment_edit.setPlainText(survey_comment or "")
+
+        overall_grade = record.get("overall_grade")
+
+        if overall_grade in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            index = self.overall_grade_combo.findData(overall_grade)
+
+            if index >= 0:
+                self.overall_grade_combo.setCurrentIndex(index)
+        else:
+            self.overall_grade_combo.setCurrentIndex(0)
 
         # 编辑模式暂时禁止修改工程归属
         self.department_combo.setEnabled(False)

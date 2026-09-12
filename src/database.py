@@ -882,6 +882,9 @@ def create_engineering_survey(
     single_stake_text=None,
     single_stake_value=None,
     inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
 ):
     """
     第一次调查时，同时创建：
@@ -948,10 +951,13 @@ def create_engineering_survey(
                 canal_unit_id,
                 engineering_asset_id,
                 business_code,
+                survey_date,
+                overall_grade,
+                survey_comment,
                 record_status,
                 record_data_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 project_id,
@@ -962,6 +968,9 @@ def create_engineering_survey(
                 canal_unit_id,
                 engineering_asset_id,
                 business_code,
+                survey_date,
+                overall_grade,
+                survey_comment,
                 "draft",
                 record_json,
             ),
@@ -1087,6 +1096,9 @@ def get_sluice_gate_record(
                 sr.record_status,
                 sr.business_code,
                 sr.record_data_json,
+                sr.survey_date,
+                sr.overall_grade,
+                sr.survey_comment,
 
                 ea.id AS engineering_asset_id,
                 ea.asset_name,
@@ -1133,6 +1145,9 @@ def get_sluice_gate_record(
             "office_id": row["office_id"],
             "canal_id": row["canal_id"],
             "record_data": record_data,
+            "survey_date": row["survey_date"],
+            "overall_grade": row["overall_grade"],
+            "survey_comment": (row["survey_comment"] or ""),
         }
 
 
@@ -1167,6 +1182,9 @@ def update_sluice_gate_draft(
     single_stake_text=None,
     single_stake_value=None,
     inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
 ):
     """
     修改已有水闸草稿。
@@ -1235,6 +1253,9 @@ def update_sluice_gate_draft(
             """
             UPDATE survey_records
             SET
+                survey_date = ?,
+                overall_grade = ?,
+                survey_comment = ?,
                 record_data_json = ?,
                 updated_at = datetime(
                     'now',
@@ -1243,6 +1264,9 @@ def update_sluice_gate_draft(
             WHERE id = ?
             """,
             (
+                survey_date,
+                overall_grade,
+                survey_comment,
                 record_json,
                 survey_record_id,
             ),
@@ -1310,11 +1334,11 @@ def get_engineering_assets(
                     SELECT sr.overall_grade
                     FROM survey_records AS sr
                     WHERE sr.engineering_asset_id = ea.id
-                      AND (
+                    AND (
                             ? IS NULL
                             OR sr.survey_batch_id = ?
-                          )
-                      AND sr.record_status != 'void'
+                        )
+                    AND sr.record_status != 'void'
                     ORDER BY sr.id DESC
                     LIMIT 1
                 ) AS overall_grade
