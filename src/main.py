@@ -15,10 +15,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 from pages.basic_data_page import BasicDataPage
 from pages.survey_page import SurveyPage
 from pages.engineering_asset_page import EngineeringAssetPage
+from services.database_backup import (
+    create_database_backup,
+)
 
 
 class MainWindow(QMainWindow):
@@ -269,9 +273,9 @@ class MainWindow(QMainWindow):
         self.current_page_name = page_name
 
     def closeEvent(self, event):
-        """
-        关闭软件前检查是否存在未保存的调查修改。
-        """
+        # =========================
+        # 1. 未保存修改保护
+        # =========================
 
         if self.current_page_name == "本次调查":
             survey_page = getattr(
@@ -284,6 +288,30 @@ class MainWindow(QMainWindow):
                 if not survey_page.can_leave_page():
                     event.ignore()
                     return
+
+        # =========================
+        # 2. 正常退出前自动备份
+        # =========================
+
+        try:
+            backup_path = create_database_backup(
+                reason="exit",
+            )
+
+            if backup_path is not None:
+                print("数据库退出备份：" f"{backup_path}")
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "数据库备份失败",
+                (
+                    "程序退出前未能创建数据库备份。\n\n"
+                    f"原因：{error}\n\n"
+                    "正式数据库本身不会因此被删除，"
+                    "但建议检查磁盘空间或备份目录。"
+                ),
+            )
 
         event.accept()
 
@@ -301,7 +329,29 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    # 确保数据库和开发测试数据存在
+    # =========================
+    # 启动前自动备份
+    # =========================
+    #
+    # 如果数据库已经存在，并且自上次备份后
+    # 有过修改，则先保存一份启动前快照。
+    #
+    # 首次运行数据库不存在时会自动跳过。
+
+    try:
+        backup_path = create_database_backup(
+            reason="startup",
+        )
+
+        if backup_path is not None:
+            print("数据库自动备份：" f"{backup_path}")
+
+    except Exception as error:
+        # 自动备份失败不能导致整个软件无法启动，
+        # 但开发阶段必须在终端明确看到。
+        print("数据库启动备份失败：" f"{error}")
+
+    # 确保数据库和基础数据存在
     init_database()
     create_demo_data()
     create_initial_forms()
@@ -312,7 +362,6 @@ def main():
     window.show()
 
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()

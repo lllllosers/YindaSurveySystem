@@ -694,6 +694,80 @@ def create_organization_unit(
 
         return cursor.lastrowid
 
+def get_canal_lineage(
+    canal_unit_id,
+):
+    """
+    获取某个渠系节点从根节点到当前节点的完整层级链。
+
+    例如：
+        总干渠(01)
+        -> 某支渠(03)
+        -> 某分支渠(04)
+
+    返回顺序：
+        上级 -> 下级
+    """
+
+    if canal_unit_id is None:
+        return []
+
+    lineage = []
+    visited_ids = set()
+
+    with get_connection() as connection:
+        current_id = canal_unit_id
+
+        while current_id is not None:
+
+            # 防止基础资料异常形成循环引用
+            if current_id in visited_ids:
+                raise ValueError(
+                    "渠系层级存在循环引用，"
+                    "无法确定上级渠系。"
+                )
+
+            visited_ids.add(
+                current_id
+            )
+
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    parent_id,
+                    name,
+                    canal_level
+                FROM canal_units
+                WHERE id = ?
+                """,
+                (current_id,),
+            ).fetchone()
+
+            if row is None:
+                break
+
+            lineage.append(
+                {
+                    "id": row["id"],
+                    "parent_id":
+                        row["parent_id"],
+                    "name":
+                        row["name"] or "",
+                    "canal_level":
+                        row["canal_level"],
+                }
+            )
+
+            current_id = row[
+                "parent_id"
+            ]
+
+    # 查询过程是 当前 -> 上级，
+    # 对外返回 上级 -> 当前。
+    lineage.reverse()
+
+    return lineage
 
 def get_canal_units():
     """

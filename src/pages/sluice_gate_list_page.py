@@ -11,12 +11,18 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
+    QMenu,
 )
 
 from database import (
     delete_sluice_gate_record,
     get_current_context,
     get_sluice_gate_records,
+)
+from services.sluice_gate_export import (
+    export_sluice_gate_original_form,
+    export_sluice_gate_summary,
 )
 
 
@@ -63,9 +69,24 @@ class SluiceGateListPage(QWidget):
         delete_button = QPushButton("删除选中记录")
         delete_button.clicked.connect(self.delete_selected_record)
 
+        export_button = QPushButton("导出汇总")
+
+        export_menu = QMenu(export_button)
+
+        summary_action = export_menu.addAction("数据汇总（当前筛选结果）")
+
+        original_action = export_menu.addAction("附表2.2原表（当前选中记录）")
+
+        summary_action.triggered.connect(self.export_summary_excel)
+
+        original_action.triggered.connect(self.export_original_excel)
+
+        export_button.setMenu(export_menu)
+
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
         button_layout.addWidget(refresh_button)
+        button_layout.addWidget(export_button)
         button_layout.addWidget(delete_button)
         button_layout.addStretch()
 
@@ -531,6 +552,219 @@ class SluiceGateListPage(QWidget):
             f"  |  D {grade_counts['D']}"
             f"  |  未定 {ungraded_count}"
         )
+
+    # =========================================================
+    # Excel 导出
+    # =========================================================
+    def export_original_excel(self):
+        """
+        将当前选中的一条水闸调查记录
+        导出为附表2.2原表格式。
+        """
+
+        # =========================
+        # 1. 获取当前选中记录
+        # =========================
+
+        row = self.table.currentRow()
+
+        if row < 0:
+            QMessageBox.warning(
+                self,
+                "未选择记录",
+                ("请先在列表中选择一条" "水闸调查记录，" "再导出附表2.2原表。"),
+            )
+            return
+
+        id_item = self.table.item(
+            row,
+            0,
+        )
+
+        name_item = self.table.item(
+            row,
+            1,
+        )
+
+        if id_item is None:
+            return
+
+        survey_record_id = id_item.data(Qt.ItemDataRole.UserRole)
+
+        if survey_record_id is None:
+            return
+
+        business_code = id_item.text().strip()
+
+        asset_name = name_item.text().strip() if name_item is not None else "水闸"
+
+        # =========================
+        # 2. 默认文件名
+        # =========================
+
+        safe_asset_name = asset_name
+
+        invalid_chars = '\\/:*?"<>|'
+
+        for char in invalid_chars:
+            safe_asset_name = safe_asset_name.replace(
+                char,
+                "_",
+            )
+
+        safe_business_code = business_code
+
+        for char in invalid_chars:
+            safe_business_code = safe_business_code.replace(
+                char,
+                "_",
+            )
+
+        default_name = (
+            "附表2.2_水闸工程状况调查表_"
+            f"{safe_business_code}_"
+            f"{safe_asset_name}.xlsx"
+        )
+
+        # =========================
+        # 3. 选择保存位置
+        # =========================
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出附表2.2原表",
+            default_name,
+            "Excel 工作簿 (*.xlsx)",
+        )
+
+        if not file_path:
+            return
+
+        if not file_path.lower().endswith(".xlsx"):
+            file_path += ".xlsx"
+
+        # =========================
+        # 4. 执行导出
+        # =========================
+
+        try:
+            result = export_sluice_gate_original_form(
+                survey_record_id=int(survey_record_id),
+                file_path=file_path,
+            )
+
+            QMessageBox.information(
+                self,
+                "导出成功",
+                (
+                    "附表2.2原表已导出。\n\n"
+                    f"工程名称："
+                    f"{result['asset_name']}\n"
+                    f"业务编号："
+                    f"{result['business_code']}\n\n"
+                    f"保存位置：\n"
+                    f"{result['file_path']}"
+                ),
+            )
+
+        except PermissionError:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                (
+                    "无法写入目标 Excel 文件。\n\n"
+                    "如果该文件正在 Excel 中打开，"
+                    "请先关闭文件后重新导出。"
+                ),
+            )
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                str(error),
+            )
+
+    def export_summary_excel(self):
+        """
+        将当前筛选结果导出为数据汇总 Excel。
+        """
+
+        if not self.filtered_records:
+            QMessageBox.warning(
+                self,
+                "没有可导出数据",
+                "当前筛选结果为空，无法导出 Excel。",
+            )
+            return
+
+        batch_name = "当前批次"
+
+        if self.current_context:
+            current_batch_name = self.current_context["batch_name"]
+
+            if current_batch_name:
+                batch_name = str(current_batch_name)
+
+        # Windows 文件名不能包含这些字符
+        invalid_chars = '\\/:*?"<>|'
+
+        for char in invalid_chars:
+            batch_name = batch_name.replace(
+                char,
+                "_",
+            )
+
+        default_name = "附表2.2_水闸调查汇总_" f"{batch_name}.xlsx"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出水闸调查数据汇总",
+            default_name,
+            "Excel 工作簿 (*.xlsx)",
+        )
+
+        if not file_path:
+            return
+
+        if not file_path.lower().endswith(".xlsx"):
+            file_path += ".xlsx"
+
+        try:
+            result = export_sluice_gate_summary(
+                records=self.filtered_records,
+                file_path=file_path,
+            )
+
+            QMessageBox.information(
+                self,
+                "导出成功",
+                (
+                    "水闸调查数据汇总已导出。\n\n"
+                    f"导出记录数："
+                    f"{result['exported_count']}\n"
+                    f"保存位置：\n"
+                    f"{result['file_path']}"
+                ),
+            )
+
+        except PermissionError:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                (
+                    "无法写入目标 Excel 文件。\n\n"
+                    "如果该文件正在 Excel 中打开，"
+                    "请先关闭文件后重新导出。"
+                ),
+            )
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                str(error),
+            )
 
     # =========================================================
     # 删除
