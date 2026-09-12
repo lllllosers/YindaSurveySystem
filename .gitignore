@@ -68,3 +68,7 @@ Desktop.ini
 .mypy_cache/
 .coverage
 htmlcov/
+# =========================
+# Automated test logs
+# =========================
+test_logs/
