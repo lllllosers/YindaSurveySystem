@@ -8,7 +8,7 @@
 
 APP_NAME = "引大灌区调查数据采集系统"
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 
 APP_VERSION_LABEL = f"V{APP_VERSION}"
 

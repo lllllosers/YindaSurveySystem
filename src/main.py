@@ -1,8 +1,8 @@
 import sys
 from database import (
-    create_demo_data,
     create_initial_forms,
     get_current_context,
+    get_survey_readiness,
     init_database,
 )
 from PySide6.QtCore import Qt
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from pages.basic_data_page import BasicDataPage
 from pages.survey_page import SurveyPage
 from pages.engineering_asset_page import EngineeringAssetPage
+from pages.project_batch_page import ProjectBatchPage
 from services.database_backup import (
     create_database_backup,
 )
@@ -123,12 +124,13 @@ class MainWindow(QMainWindow):
             project_name = "未选择项目"
             batch_name = "未选择调查批次"
 
-        project_label = QLabel(f"当前项目：{project_name}")
-        batch_label = QLabel(f"当前调查批次：{batch_name}")
+        self.project_label = QLabel(f"当前项目：{project_name}")
 
-        top_layout.addWidget(project_label)
+        self.batch_label = QLabel(f"当前调查批次：{batch_name}")
+
+        top_layout.addWidget(self.project_label)
         top_layout.addStretch()
-        top_layout.addWidget(batch_label)
+        top_layout.addWidget(self.batch_label)
 
         workspace_layout.addWidget(top_bar)
 
@@ -227,11 +229,109 @@ class MainWindow(QMainWindow):
             }
             """)
 
+    def refresh_current_context(self):
+        """
+        项目或调查批次切换后，
+        重新读取当前上下文并刷新顶部显示。
+        """
+
+        self.current_context = get_current_context()
+
+        if self.current_context:
+            project_name = self.current_context["project_name"] or "未选择项目"
+
+            batch_name = self.current_context["batch_name"] or "未选择调查批次"
+
+        else:
+            project_name = "未选择项目"
+            batch_name = "未选择调查批次"
+
+        self.project_label.setText(f"当前项目：{project_name}")
+
+        self.batch_label.setText("当前调查批次：" f"{batch_name}")
+
+    def has_active_survey_context(self):
+        """
+        判断当前是否已经存在可用于调查工作的
+        启用项目和启用调查批次。
+        """
+
+        if self.current_context is None:
+            return False
+
+        return (
+            self.current_context.get("project_id") is not None
+            and self.current_context.get("batch_id") is not None
+        )
+
+    def can_start_survey(self):
+        """
+        检查当前系统是否已经具备
+        开始工程调查的基础条件。
+        """
+
+        readiness = (
+            get_survey_readiness()
+        )
+
+        if readiness["ready"]:
+            return True
+
+        missing_items = "\n".join(
+            f"• {item}"
+            for item in readiness[
+                "missing"
+            ]
+        )
+
+        QMessageBox.information(
+            self,
+            "基础资料尚未完善",
+            (
+                "开始调查前还需要完成"
+                "以下基础配置：\n\n"
+                f"{missing_items}\n\n"
+                "请进入“项目与批次”或"
+                "“基础资料”完成配置后，"
+                "再进入本次调查。"
+            ),
+        )
+
+        return False
+
     def change_page(self, page_name):
 
         # 已经在当前模块时不重复销毁和创建页面。
         if page_name == self.current_page_name:
             return
+
+        # =========================
+        # 正式运行环境完整性检查
+        # =========================
+
+        if page_name in (
+            "本次调查",
+            "工程台账",
+        ):
+            if not self.has_active_survey_context():
+                QMessageBox.information(
+                    self,
+                    "尚未配置调查项目",
+                    (
+                        "当前没有可用的项目和调查批次。\n\n"
+                        "请先完成项目与调查批次配置，"
+                        "再进入调查业务模块。"
+                    ),
+                )
+                return
+
+        # =========================
+        # 调查基础资料完整性检查
+        # =========================
+
+        if page_name == "本次调查":
+            if not self.can_start_survey():
+                return
 
         # 如果正在“本次调查”中编辑表单，
         # 离开主模块前先检查未保存修改。
@@ -264,6 +364,15 @@ class MainWindow(QMainWindow):
             self.basic_data_page = BasicDataPage()
 
             self.content_layout.addWidget(self.basic_data_page)
+
+        elif page_name == "项目与批次":
+            self.project_batch_page = ProjectBatchPage()
+
+            self.project_batch_page.context_changed.connect(
+                self.refresh_current_context
+            )
+
+            self.content_layout.addWidget(self.project_batch_page)
 
         else:
             self.content_label = QLabel(
@@ -358,9 +467,11 @@ def main():
         # 但开发阶段必须在终端明确看到。
         print("数据库启动备份失败：" f"{error}")
 
-    # 确保数据库和基础数据存在
+    # =========================
+    # 初始化正式运行所需数据库结构
+    # =========================
+
     init_database()
-    create_demo_data()
     create_initial_forms()
 
     app = QApplication(sys.argv)

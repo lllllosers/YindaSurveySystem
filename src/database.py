@@ -31,13 +31,56 @@ DATA_DIR = PROJECT_ROOT / "local_data"
 DB_PATH = DATA_DIR / "yinda_survey.db"
 
 
+class AutoCloseConnection(sqlite3.Connection):
+    """
+    SQLite 连接。
+
+    在 with 代码块结束时：
+    1. 先执行 sqlite3.Connection 原有的提交/回滚逻辑；
+    2. 再明确关闭连接。
+
+    这样可以避免 Windows 下数据库文件
+    因连接句柄未及时释放而无法删除或替换。
+    """
+
+    def __exit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ):
+        try:
+            return super().__exit__(
+                exc_type,
+                exc_value,
+                traceback,
+            )
+        finally:
+            self.close()
+
+
 def get_connection():
     """
     获取 SQLite 数据库连接。
-    """
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    connection = sqlite3.connect(DB_PATH)
+    推荐始终使用：
+
+        with get_connection() as connection:
+            ...
+
+    离开 with 后连接会自动关闭。
+    """
+
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    connection = sqlite3.connect(
+        DB_PATH,
+        factory=AutoCloseConnection,
+    )
+
     connection.row_factory = sqlite3.Row
 
     # 启用外键约束
@@ -426,10 +469,412 @@ def init_database():
             """)
 
 
+def get_projects():
+    """
+    获取全部项目。
+    """
+
+    with get_connection() as connection:
+        return connection.execute("""
+            SELECT
+                id,
+                name,
+                short_name,
+                description,
+                status,
+                created_at,
+                updated_at
+            FROM projects
+            ORDER BY id
+            """).fetchall()
+
+
+def create_project(
+    name,
+    short_name=None,
+    description=None,
+):
+    """
+    新增项目。
+
+    如果系统当前没有启用项目，
+    新建的第一个项目自动设为 active。
+
+    如果已经存在当前项目，
+    新项目先保存为 inactive，
+    由用户明确切换。
+    """
+
+    name = str(name or "").strip()
+    short_name = str(short_name or "").strip()
+    description = str(description or "").strip()
+
+    if not name:
+        raise ValueError("项目名称不能为空。")
+
+    with get_connection() as connection:
+        duplicate = connection.execute(
+            """
+            SELECT id
+            FROM projects
+            WHERE name = ?
+            LIMIT 1
+            """,
+            (name,),
+        ).fetchone()
+
+        if duplicate is not None:
+            raise ValueError("已经存在同名项目。")
+
+        active_project = connection.execute("""
+            SELECT id
+            FROM projects
+            WHERE status = 'active'
+            LIMIT 1
+            """).fetchone()
+
+        status = "active" if active_project is None else "inactive"
+
+        cursor = connection.execute(
+            """
+            INSERT INTO projects (
+                name,
+                short_name,
+                description,
+                status
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                name,
+                short_name or None,
+                description or None,
+                status,
+            ),
+        )
+
+        return {
+            "project_id": cursor.lastrowid,
+            "status": status,
+        }
+
+
+def set_active_project(
+    project_id,
+):
+    """
+    将指定项目设为当前启用项目。
+
+    当前版本只允许一个 active 项目。
+    """
+
+    with get_connection() as connection:
+        project = connection.execute(
+            """
+            SELECT id
+            FROM projects
+            WHERE id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+
+        if project is None:
+            raise ValueError("没有找到指定项目。")
+
+        connection.execute(
+            """
+            UPDATE projects
+            SET
+                status = 'inactive',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE status = 'active'
+            AND id != ?
+            """,
+            (project_id,),
+        )
+
+        connection.execute(
+            """
+            UPDATE projects
+            SET
+                status = 'active',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (project_id,),
+        )
+
+
+def get_survey_batches(
+    project_id,
+):
+    """
+    获取指定项目下的全部调查批次。
+    """
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                id,
+                project_id,
+                batch_name,
+                batch_code,
+                start_date,
+                end_date,
+                description,
+                status,
+                created_at,
+                updated_at
+            FROM survey_batches
+            WHERE project_id = ?
+            ORDER BY id DESC
+            """,
+            (project_id,),
+        ).fetchall()
+
+
+def create_survey_batch(
+    project_id,
+    batch_name,
+    batch_code,
+    start_date=None,
+    end_date=None,
+    description=None,
+):
+    """
+    新增调查批次。
+
+    当前项目如果尚无 active 调查批次，
+    新批次自动设为 active。
+
+    否则新批次先保存为 draft。
+    """
+
+    batch_name = str(batch_name or "").strip()
+
+    batch_code = str(batch_code or "").strip()
+
+    start_date = str(start_date or "").strip()
+
+    end_date = str(end_date or "").strip()
+
+    description = str(description or "").strip()
+
+    if not batch_name:
+        raise ValueError("调查批次名称不能为空。")
+
+    if not batch_code:
+        raise ValueError("调查批次代码不能为空。")
+
+    if start_date:
+        try:
+            datetime.strptime(
+                start_date,
+                "%Y-%m-%d",
+            )
+        except ValueError as error:
+            raise ValueError("开始日期必须为 YYYY-MM-DD。") from error
+
+    if end_date:
+        try:
+            datetime.strptime(
+                end_date,
+                "%Y-%m-%d",
+            )
+        except ValueError as error:
+            raise ValueError("结束日期必须为 YYYY-MM-DD。") from error
+
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("结束日期不能早于开始日期。")
+
+    with get_connection() as connection:
+        project = connection.execute(
+            """
+            SELECT
+                id,
+                status
+            FROM projects
+            WHERE id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+
+        if project is None:
+            raise ValueError("没有找到所属项目。")
+
+        duplicate = connection.execute(
+            """
+            SELECT id
+            FROM survey_batches
+            WHERE project_id = ?
+            AND batch_code = ?
+            LIMIT 1
+            """,
+            (
+                project_id,
+                batch_code,
+            ),
+        ).fetchone()
+
+        if duplicate is not None:
+            raise ValueError("当前项目下已经存在相同批次代码。")
+
+        active_batch = connection.execute(
+            """
+            SELECT id
+            FROM survey_batches
+            WHERE project_id = ?
+            AND status = 'active'
+            LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+
+        if project["status"] == "active" and active_batch is None:
+            status = "active"
+        else:
+            status = "draft"
+
+        cursor = connection.execute(
+            """
+            INSERT INTO survey_batches (
+                project_id,
+                batch_name,
+                batch_code,
+                start_date,
+                end_date,
+                description,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                batch_name,
+                batch_code,
+                start_date or None,
+                end_date or None,
+                description or None,
+                status,
+            ),
+        )
+
+        return {
+            "batch_id": cursor.lastrowid,
+            "status": status,
+        }
+
+
+def set_active_survey_batch(
+    batch_id,
+):
+    """
+    将指定调查批次设为当前调查批次。
+
+    同时：
+    1. 该批次所属项目设为当前项目；
+    2. 同项目其它 active 批次退回 draft；
+    3. 指定批次设为 active。
+    """
+
+    with get_connection() as connection:
+        batch = connection.execute(
+            """
+            SELECT
+                id,
+                project_id
+            FROM survey_batches
+            WHERE id = ?
+            """,
+            (batch_id,),
+        ).fetchone()
+
+        if batch is None:
+            raise ValueError("没有找到指定调查批次。")
+
+        project_id = batch["project_id"]
+
+        # 当前项目同步切换
+        connection.execute(
+            """
+            UPDATE projects
+            SET
+                status = 'inactive',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE status = 'active'
+            AND id != ?
+            """,
+            (project_id,),
+        )
+
+        connection.execute(
+            """
+            UPDATE projects
+            SET
+                status = 'active',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (project_id,),
+        )
+
+        # 同一项目只保留一个当前调查批次
+        connection.execute(
+            """
+            UPDATE survey_batches
+            SET
+                status = 'draft',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE project_id = ?
+            AND status = 'active'
+            AND id != ?
+            """,
+            (
+                project_id,
+                batch_id,
+            ),
+        )
+
+        connection.execute(
+            """
+            UPDATE survey_batches
+            SET
+                status = 'active',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (batch_id,),
+        )
+
+
 def create_demo_data():
     """
     创建开发测试用的示例项目和调查批次。
-    只在数据库为空时创建，不会重复添加。
+
+    注意：
+    本函数仅允许由开发辅助脚本调用，
+    正式程序 main.py 不得自动调用。
+
+    重复执行不会重复创建相同测试数据。
     """
 
     with get_connection() as connection:
@@ -507,7 +952,10 @@ def create_demo_data():
 
 def create_initial_forms():
     """
-    初始化当前 V0.1 Demo 使用的调查表定义。
+    初始化系统内置调查表定义。
+
+    调查表定义属于系统元数据，
+    正式运行环境也需要自动初始化。
 
     当前先建立：
     - 附表2.1 防渗衬砌渠道
@@ -694,6 +1142,7 @@ def create_organization_unit(
 
         return cursor.lastrowid
 
+
 def get_canal_lineage(
     canal_unit_id,
 ):
@@ -722,14 +1171,9 @@ def get_canal_lineage(
 
             # 防止基础资料异常形成循环引用
             if current_id in visited_ids:
-                raise ValueError(
-                    "渠系层级存在循环引用，"
-                    "无法确定上级渠系。"
-                )
+                raise ValueError("渠系层级存在循环引用，" "无法确定上级渠系。")
 
-            visited_ids.add(
-                current_id
-            )
+            visited_ids.add(current_id)
 
             row = connection.execute(
                 """
@@ -750,24 +1194,20 @@ def get_canal_lineage(
             lineage.append(
                 {
                     "id": row["id"],
-                    "parent_id":
-                        row["parent_id"],
-                    "name":
-                        row["name"] or "",
-                    "canal_level":
-                        row["canal_level"],
+                    "parent_id": row["parent_id"],
+                    "name": row["name"] or "",
+                    "canal_level": row["canal_level"],
                 }
             )
 
-            current_id = row[
-                "parent_id"
-            ]
+            current_id = row["parent_id"]
 
     # 查询过程是 当前 -> 上级，
     # 对外返回 上级 -> 当前。
     lineage.reverse()
 
     return lineage
+
 
 def get_canal_units():
     """
@@ -2064,6 +2504,118 @@ def get_current_context():
             "batch_name": batch["batch_name"] if batch else None,
             "batch_code": batch["batch_code"] if batch else None,
         }
+
+
+def get_survey_readiness():
+    """
+    检查当前环境是否具备开始工程调查的基本条件。
+
+    当前检查：
+    1. 当前项目
+    2. 当前调查批次
+    3. 至少一个启用的基层处
+    4. 至少一个属于启用基层处的启用水管所
+    5. 至少一条启用渠系
+
+    返回示例：
+    {
+        "ready": True,
+        "missing": [],
+        "department_count": 2,
+        "office_count": 5,
+        "canal_count": 12,
+    }
+    """
+
+    missing = []
+
+    context = get_current_context()
+
+    if context is None:
+        missing.append("当前项目和调查批次")
+
+        return {
+            "ready": False,
+            "missing": missing,
+            "department_count": 0,
+            "office_count": 0,
+            "canal_count": 0,
+        }
+
+    project_id = context.get("project_id")
+    batch_id = context.get("batch_id")
+
+    if project_id is None:
+        missing.append("当前项目")
+
+    if batch_id is None:
+        missing.append("当前调查批次")
+
+    with get_connection() as connection:
+
+        # =========================
+        # 基层处
+        # =========================
+
+        department_row = connection.execute("""
+                SELECT COUNT(*) AS count
+                FROM organization_units
+                WHERE unit_type = 'department'
+                  AND status = 'active'
+                """).fetchone()
+
+        department_count = (
+            int(department_row["count"]) if department_row is not None else 0
+        )
+
+        if department_count == 0:
+            missing.append("至少一个启用的基层处")
+
+        # =========================
+        # 水管所
+        # =========================
+        #
+        # 不只是检查 water_office 本身启用，
+        # 还要求它所属的基层处处于启用状态。
+
+        office_row = connection.execute("""
+            SELECT COUNT(*) AS count
+            FROM organization_units AS office
+            JOIN organization_units AS department
+              ON department.id = office.parent_id
+            WHERE office.unit_type = 'water_office'
+              AND office.status = 'active'
+              AND department.unit_type = 'department'
+              AND department.status = 'active'
+            """).fetchone()
+
+        office_count = int(office_row["count"]) if office_row is not None else 0
+
+        if office_count == 0:
+            missing.append("至少一个启用的水管所")
+
+        # =========================
+        # 渠系
+        # =========================
+
+        canal_row = connection.execute("""
+            SELECT COUNT(*) AS count
+            FROM canal_units
+            WHERE status = 'active'
+            """).fetchone()
+
+        canal_count = int(canal_row["count"]) if canal_row is not None else 0
+
+        if canal_count == 0:
+            missing.append("至少一条启用的渠系")
+
+    return {
+        "ready": len(missing) == 0,
+        "missing": missing,
+        "department_count": department_count,
+        "office_count": office_count,
+        "canal_count": canal_count,
+    }
 
 
 def show_database_info():
