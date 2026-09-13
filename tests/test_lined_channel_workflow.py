@@ -765,6 +765,223 @@ class LinedChannelWorkflowTestCase(unittest.TestCase):
             12,
         )
 
+    def test_duplicate_lined_channel_section_is_rejected(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试渠段A",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": "测试渠段A",
+            },
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "相同起止桩号",
+        ):
+            database.create_lined_channel_section_survey(
+                project_id=self.project_id,
+                survey_batch_id=self.batch_id,
+                form_version_id=(form_version["id"]),
+                asset_name="测试渠段B",
+                organization_unit_id=(self.office_id),
+                canal_unit_id=self.canal_id,
+                business_code=("1-01-01-01-002"),
+                record_data={
+                    "channel_name": "测试渠段B",
+                },
+                start_stake_text="K10+000",
+                start_stake_value=10000.0,
+                end_stake_text="K11+000",
+                end_stake_value=11000.0,
+            )
+
+        with database.get_connection() as connection:
+            asset_count = connection.execute("""
+                SELECT COUNT(*) AS count
+                FROM engineering_assets
+                """).fetchone()["count"]
+
+            record_count = connection.execute("""
+                SELECT COUNT(*) AS count
+                FROM survey_records
+                """).fetchone()["count"]
+
+        self.assertEqual(
+            asset_count,
+            1,
+        )
+
+        self.assertEqual(
+            record_count,
+            1,
+        )
+
+    def test_update_to_duplicate_section_is_rejected(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试渠段A",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": "测试渠段A",
+            },
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+        )
+
+        second = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试渠段B",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-002"),
+            record_data={
+                "channel_name": "测试渠段B",
+            },
+            start_stake_text="K11+000",
+            start_stake_value=11000.0,
+            end_stake_text="K12+000",
+            end_stake_value=12000.0,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "相同起止桩号",
+        ):
+            (
+                database.update_lined_channel_section_draft(
+                    survey_record_id=(second["survey_record_id"]),
+                    asset_name="测试渠段B",
+                    organization_unit_id=(self.office_id),
+                    canal_unit_id=(self.canal_id),
+                    business_code=("1-01-01-01-002"),
+                    record_data={
+                        "channel_name": ("测试渠段B"),
+                    },
+                    start_stake_text=("K10+000"),
+                    start_stake_value=(10000.0),
+                    end_stake_text=("K11+000"),
+                    end_stake_value=(11000.0),
+                )
+            )
+
+        loaded = database.get_lined_channel_section_record(second["survey_record_id"])
+
+        self.assertEqual(
+            loaded["start_stake_text"],
+            "K11+000",
+        )
+
+        self.assertEqual(
+            loaded["end_stake_text"],
+            "K12+000",
+        )
+
+    def test_delete_record_cleans_orphan_asset(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="待删除渠段",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": ("待删除渠段"),
+            },
+            start_stake_text="K20+000",
+            start_stake_value=20000.0,
+            end_stake_text="K21+000",
+            end_stake_value=21000.0,
+            inspection_results=[
+                {
+                    "item_code": "HYD_01",
+                    "category": "水力条件",
+                    "item_name": "沿程流态",
+                    "grade": "A",
+                    "description": None,
+                    "remark": None,
+                }
+            ],
+        )
+
+        delete_result = database.delete_lined_channel_section_record(
+            result["survey_record_id"]
+        )
+
+        self.assertTrue(delete_result["asset_deleted"])
+
+        with database.get_connection() as connection:
+            record_count = connection.execute(
+                """
+                    SELECT COUNT(*) AS count
+                    FROM survey_records
+                    WHERE id = ?
+                    """,
+                (result["survey_record_id"],),
+            ).fetchone()["count"]
+
+            asset_count = connection.execute(
+                """
+                    SELECT COUNT(*) AS count
+                    FROM engineering_assets
+                    WHERE id = ?
+                    """,
+                (result["engineering_asset_id"],),
+            ).fetchone()["count"]
+
+            inspection_count = connection.execute(
+                """
+                    SELECT COUNT(*) AS count
+                    FROM inspection_results
+                    WHERE survey_record_id = ?
+                    """,
+                (result["survey_record_id"],),
+            ).fetchone()["count"]
+
+        self.assertEqual(
+            record_count,
+            0,
+        )
+
+        self.assertEqual(
+            asset_count,
+            0,
+        )
+
+        self.assertEqual(
+            inspection_count,
+            0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1360,6 +1360,9 @@ class LinedChannelSectionPage(QWidget):
 
         _, end_value = parse_stake(self.end_stake_edit.text())
 
+        if start_value is None or end_value is None:
+            raise ValueError("起始桩号和终止桩号不能为空。")
+
         if end_value < start_value:
             raise ValueError("终止桩号不能小于起始桩号。")
 

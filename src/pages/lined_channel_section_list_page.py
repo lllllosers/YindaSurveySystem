@@ -1,8 +1,11 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -11,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from database import (
+    delete_lined_channel_section_record,
     get_current_context,
     get_lined_channel_section_records,
 )
@@ -25,19 +29,26 @@ class LinedChannelSectionListPage(QWidget):
         super().__init__()
 
         self.current_context = None
-        self.records = []
+
+        self.all_records = []
+        self.filtered_records = []
 
         self.init_ui()
         self.load_data()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
         layout.setSpacing(16)
 
-        # =========================
-        # 顶部按钮
-        # =========================
+        # =====================================================
+        # 顶部操作
+        # =====================================================
 
         button_layout = QHBoxLayout()
 
@@ -50,16 +61,20 @@ class LinedChannelSectionListPage(QWidget):
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
+        delete_button = QPushButton("删除选中记录")
+        delete_button.clicked.connect(self.delete_selected_record)
+
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
         button_layout.addWidget(refresh_button)
+        button_layout.addWidget(delete_button)
         button_layout.addStretch()
 
         layout.addLayout(button_layout)
 
-        # =========================
+        # =====================================================
         # 标题
-        # =========================
+        # =====================================================
 
         title = QLabel("附表2.1 防渗衬砌渠道渠段工程状况调查记录")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
@@ -67,23 +82,120 @@ class LinedChannelSectionListPage(QWidget):
         layout.addWidget(title)
 
         description = QLabel(
-            "当前阶段已接入基本信息、"
-            "草稿保存和重新打开修改。"
-            "分项评价、完成调查和导出将在后续阶段接入。"
+            "双击记录可打开调查表。"
+            "支持按关键词、管理单位、渠系、"
+            "状态和工程状况类别筛选。"
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #607080; font-size: 14px;")
+        description.setStyleSheet("color: #607080;" "font-size: 14px;")
 
         layout.addWidget(description)
 
+        # =====================================================
+        # 第一行筛选
+        # =====================================================
+
+        filter_layout_1 = QHBoxLayout()
+
+        self.keyword_edit = QLineEdit()
+        self.keyword_edit.setPlaceholderText("业务编号 / 渠道名称 / 起止桩号")
+        self.keyword_edit.setMinimumWidth(230)
+
+        self.department_filter = QComboBox()
+        self.department_filter.setMinimumWidth(130)
+
+        self.office_filter = QComboBox()
+        self.office_filter.setMinimumWidth(130)
+
+        self.canal_filter = QComboBox()
+        self.canal_filter.setMinimumWidth(150)
+
+        filter_layout_1.addWidget(QLabel("关键词："))
+        filter_layout_1.addWidget(self.keyword_edit)
+
+        filter_layout_1.addWidget(QLabel("基层处："))
+        filter_layout_1.addWidget(self.department_filter)
+
+        filter_layout_1.addWidget(QLabel("水管所："))
+        filter_layout_1.addWidget(self.office_filter)
+
+        filter_layout_1.addWidget(QLabel("渠系："))
+        filter_layout_1.addWidget(self.canal_filter)
+
+        layout.addLayout(filter_layout_1)
+
+        # =====================================================
+        # 第二行筛选
+        # =====================================================
+
+        filter_layout_2 = QHBoxLayout()
+
+        self.status_filter = QComboBox()
+
+        self.status_filter.addItem(
+            "全部状态",
+            None,
+        )
+        self.status_filter.addItem(
+            "草稿",
+            "draft",
+        )
+        self.status_filter.addItem(
+            "录入完成",
+            "completed",
+        )
+
+        self.grade_filter = QComboBox()
+
+        self.grade_filter.addItem(
+            "全部类别",
+            None,
+        )
+
+        for grade in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            self.grade_filter.addItem(
+                grade,
+                grade,
+            )
+
+        search_button = QPushButton("查询")
+        search_button.clicked.connect(self.apply_filters)
+
+        reset_button = QPushButton("重置")
+        reset_button.clicked.connect(self.reset_filters)
+
+        self.keyword_edit.returnPressed.connect(self.apply_filters)
+
+        filter_layout_2.addWidget(QLabel("状态："))
+        filter_layout_2.addWidget(self.status_filter)
+
+        filter_layout_2.addWidget(QLabel("工程状况类别："))
+        filter_layout_2.addWidget(self.grade_filter)
+
+        filter_layout_2.addWidget(search_button)
+        filter_layout_2.addWidget(reset_button)
+
+        filter_layout_2.addStretch()
+
+        layout.addLayout(filter_layout_2)
+
+        # =====================================================
+        # 统计
+        # =====================================================
+
         self.count_label = QLabel()
-        self.count_label.setStyleSheet("color: #52606d; font-size: 14px;")
+        self.count_label.setStyleSheet("color: #52606d;" "font-size: 14px;")
 
         layout.addWidget(self.count_label)
 
-        # =========================
+        # =====================================================
         # 表格
-        # =========================
+        # =====================================================
 
         self.table = QTableWidget()
 
@@ -115,50 +227,193 @@ class LinedChannelSectionListPage(QWidget):
 
         self.table.cellDoubleClicked.connect(self.open_record)
 
-        self.table.setColumnWidth(0, 150)
-        self.table.setColumnWidth(1, 180)
-        self.table.setColumnWidth(2, 130)
-        self.table.setColumnWidth(3, 130)
-        self.table.setColumnWidth(4, 160)
-        self.table.setColumnWidth(5, 110)
-        self.table.setColumnWidth(6, 110)
-        self.table.setColumnWidth(7, 110)
-        self.table.setColumnWidth(8, 90)
-        self.table.setColumnWidth(9, 160)
-        self.table.setColumnWidth(8, 110)
-        self.table.setColumnWidth(9, 90)
-        self.table.setColumnWidth(10, 160)
+        widths = [
+            150,
+            180,
+            130,
+            130,
+            160,
+            110,
+            110,
+            110,
+            110,
+            90,
+            160,
+        ]
+
+        for column, width in enumerate(widths):
+            self.table.setColumnWidth(
+                column,
+                width,
+            )
 
         layout.addWidget(
             self.table,
             1,
         )
 
-    def load_data(self):
-        """
-        加载当前项目、当前调查批次的
-        附表2.1调查记录。
-        """
+    # =========================================================
+    # 数据
+    # =========================================================
 
+    def load_data(self):
         self.current_context = get_current_context()
 
         if not self.current_context or self.current_context["batch_id"] is None:
-            self.records = []
+            self.all_records = []
+            self.filtered_records = []
+
             self.table.setRowCount(0)
+
             self.count_label.setText("当前没有可用调查批次。")
+
+            self._refresh_filter_options()
+
             return
 
-        self.records = get_lined_channel_section_records(
+        self.all_records = get_lined_channel_section_records(
             project_id=(self.current_context["project_id"]),
             survey_batch_id=(self.current_context["batch_id"]),
         )
 
-        self.render_records()
+        self._refresh_filter_options()
 
-    def render_records(self):
-        self.table.setRowCount(len(self.records))
+        self.apply_filters()
 
-        for row_index, record in enumerate(self.records):
+    # =========================================================
+    # 筛选
+    # =========================================================
+
+    def _set_filter_values(
+        self,
+        combo,
+        values,
+        all_text,
+    ):
+        current_value = combo.currentData()
+
+        combo.blockSignals(True)
+
+        combo.clear()
+
+        combo.addItem(
+            all_text,
+            None,
+        )
+
+        clean_values = sorted(
+            {str(value).strip() for value in values if value and str(value).strip()}
+        )
+
+        for value in clean_values:
+            combo.addItem(
+                value,
+                value,
+            )
+
+        if current_value is not None:
+            index = combo.findData(current_value)
+
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+        combo.blockSignals(False)
+
+    def _refresh_filter_options(self):
+        self._set_filter_values(
+            self.department_filter,
+            [record["department_name"] for record in self.all_records],
+            "全部基层处",
+        )
+
+        self._set_filter_values(
+            self.office_filter,
+            [record["office_name"] for record in self.all_records],
+            "全部水管所",
+        )
+
+        self._set_filter_values(
+            self.canal_filter,
+            [record["canal_name"] for record in self.all_records],
+            "全部渠系",
+        )
+
+    def apply_filters(self):
+        keyword = self.keyword_edit.text().strip().casefold()
+
+        department = self.department_filter.currentData()
+
+        office = self.office_filter.currentData()
+
+        canal = self.canal_filter.currentData()
+
+        status = self.status_filter.currentData()
+
+        grade = self.grade_filter.currentData()
+
+        result = []
+
+        for record in self.all_records:
+            if keyword:
+                keyword_values = [
+                    record["business_code"],
+                    record["asset_name"],
+                    record["start_stake_text"],
+                    record["end_stake_text"],
+                ]
+
+                matched = any(
+                    keyword in str(value or "").casefold() for value in keyword_values
+                )
+
+                if not matched:
+                    continue
+
+            if department is not None and record["department_name"] != department:
+                continue
+
+            if office is not None and record["office_name"] != office:
+                continue
+
+            if canal is not None and record["canal_name"] != canal:
+                continue
+
+            if status is not None and record["record_status"] != status:
+                continue
+
+            if grade is not None and record["overall_grade"] != grade:
+                continue
+
+            result.append(record)
+
+        self.filtered_records = result
+
+        self._render_records(self.filtered_records)
+
+        self._update_statistics(self.filtered_records)
+
+    def reset_filters(self):
+        self.keyword_edit.clear()
+
+        self.department_filter.setCurrentIndex(0)
+        self.office_filter.setCurrentIndex(0)
+        self.canal_filter.setCurrentIndex(0)
+        self.status_filter.setCurrentIndex(0)
+        self.grade_filter.setCurrentIndex(0)
+
+        self.apply_filters()
+
+    # =========================================================
+    # 表格
+    # =========================================================
+
+    def _render_records(
+        self,
+        records,
+    ):
+        self.table.setRowCount(len(records))
+
+        for row_index, record in enumerate(records):
             status_text = {
                 "draft": "草稿",
                 "completed": "录入完成",
@@ -202,7 +457,164 @@ class LinedChannelSectionListPage(QWidget):
                     item,
                 )
 
-        self.count_label.setText(f"当前批次共 {len(self.records)} 条渠道渠段调查记录。")
+    # =========================================================
+    # 统计
+    # =========================================================
+
+    def _update_statistics(
+        self,
+        records,
+    ):
+        draft_count = sum(1 for record in records if record["record_status"] == "draft")
+
+        completed_count = sum(
+            1 for record in records if record["record_status"] == "completed"
+        )
+
+        grade_counts = {
+            "A": 0,
+            "B": 0,
+            "C": 0,
+            "D": 0,
+        }
+
+        ungraded_count = 0
+
+        for record in records:
+            grade = record["overall_grade"]
+
+            if grade in grade_counts:
+                grade_counts[grade] += 1
+            else:
+                ungraded_count += 1
+
+        self.count_label.setText(
+            f"当前批次共 "
+            f"{len(self.all_records)} 条"
+            f"  |  当前筛选 "
+            f"{len(records)} 条"
+            f"  |  草稿 {draft_count}"
+            f"  |  已完成 "
+            f"{completed_count}"
+            f"  |  A "
+            f"{grade_counts['A']}"
+            f"  |  B "
+            f"{grade_counts['B']}"
+            f"  |  C "
+            f"{grade_counts['C']}"
+            f"  |  D "
+            f"{grade_counts['D']}"
+            f"  |  未定 "
+            f"{ungraded_count}"
+        )
+
+    # =========================================================
+    # 当前选中记录
+    # =========================================================
+
+    def _get_selected_record_id(self):
+        row = self.table.currentRow()
+
+        if row < 0:
+            return None
+
+        item = self.table.item(
+            row,
+            0,
+        )
+
+        if item is None:
+            return None
+
+        value = item.data(Qt.ItemDataRole.UserRole)
+
+        if value is None:
+            return None
+
+        return int(value)
+
+    # =========================================================
+    # 删除
+    # =========================================================
+
+    def delete_selected_record(self):
+        survey_record_id = self._get_selected_record_id()
+
+        if survey_record_id is None:
+            QMessageBox.warning(
+                self,
+                "未选择记录",
+                "请先选择需要删除的调查记录。",
+            )
+            return
+
+        selected_record = next(
+            (
+                record
+                for record in self.all_records
+                if record["survey_record_id"] == survey_record_id
+            ),
+            None,
+        )
+
+        if selected_record is None:
+            QMessageBox.warning(
+                self,
+                "删除失败",
+                "没有找到当前选中的调查记录。",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            (
+                "确定删除这条渠道渠段调查记录吗？"
+                "\n\n"
+                f"渠道名称："
+                f"{selected_record['asset_name']}\n"
+                f"业务编号："
+                f"{selected_record['business_code']}\n"
+                f"渠段："
+                f"{selected_record['start_stake_text']}"
+                " ～ "
+                f"{selected_record['end_stake_text']}\n\n"
+                "如果该工程已没有其他调查记录，"
+                "对应工程台账对象也会一并删除。"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = delete_lined_channel_section_record(survey_record_id)
+
+            if result["asset_deleted"]:
+                extra_text = "\n对应工程台账对象" "已同时删除。"
+            else:
+                extra_text = "\n工程台账对象仍有其他" "调查记录，因此予以保留。"
+
+            QMessageBox.information(
+                self,
+                "删除成功",
+                ("渠道渠段调查记录已删除。" f"{extra_text}"),
+            )
+
+            self.load_data()
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "删除失败",
+                str(error),
+            )
+
+    # =========================================================
+    # 打开
+    # =========================================================
 
     def open_record(
         self,
