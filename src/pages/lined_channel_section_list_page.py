@@ -87,7 +87,7 @@ class LinedChannelSectionListPage(QWidget):
 
         self.table = QTableWidget()
 
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(11)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -99,6 +99,7 @@ class LinedChannelSectionListPage(QWidget):
                 "起始桩号",
                 "终止桩号",
                 "渠段长度(m)",
+                "工程状况类别",
                 "状态",
                 "修改时间",
             ]
@@ -124,6 +125,9 @@ class LinedChannelSectionListPage(QWidget):
         self.table.setColumnWidth(7, 110)
         self.table.setColumnWidth(8, 90)
         self.table.setColumnWidth(9, 160)
+        self.table.setColumnWidth(8, 110)
+        self.table.setColumnWidth(9, 90)
+        self.table.setColumnWidth(10, 160)
 
         layout.addWidget(
             self.table,
@@ -178,6 +182,7 @@ class LinedChannelSectionListPage(QWidget):
                 record["start_stake_text"],
                 record["end_stake_text"],
                 section_length_text,
+                record["overall_grade"] or "",
                 status_text,
                 record["updated_at"],
             ]

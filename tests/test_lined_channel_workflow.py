@@ -23,6 +23,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.lined_channel_evaluation import (
+    LINED_CHANNEL_EVALUATION_ITEMS,
+)
+
 
 class LinedChannelWorkflowTestCase(unittest.TestCase):
     """
@@ -535,6 +539,231 @@ class LinedChannelWorkflowTestCase(unittest.TestCase):
                 expected_value,
                 msg=f"字段回填失败：{key}",
             )
+
+    def _full_record_data(self):
+        return {
+            "channel_name": "测试渠道",
+            "start_stake": "K10+000",
+            "start_stake_value": 10000.0,
+            "end_stake": "K11+000",
+            "end_stake_value": 11000.0,
+            "section_length": 1000.0,
+            "build_date": "2008-06",
+            "renovation_date": None,
+            "longitudinal_slope": "1/2000",
+            "design_flow": 12.5,
+            "channel_grade": "3级",
+            "cross_section_form": "梯形",
+            "embankment_top_width": 3.5,
+            "inner_slope": "1:1.5",
+            "outer_slope": "1:1.5",
+            "increased_flow": 15.0,
+            "bed_soil": "砂壤土",
+            "lining_structure": "现浇混凝土衬砌",
+            "freeboard": 0.6,
+            "bottom_width": 4.2,
+            "water_conveyance_loss": 0.08,
+            "lining_material": "混凝土",
+            "lining_thickness": 12.0,
+            "concrete_strength": "C25",
+            "channel_depth": 2.8,
+            "channel_bottom_elevation": 1865.35,
+        }
+
+    def _full_inspection_results(self):
+        return [
+            {
+                "item_code": item["item_code"],
+                "category": item["category"],
+                "item_name": item["item_name"],
+                "grade": "A",
+                "description": None,
+                "remark": None,
+            }
+            for item in (LINED_CHANNEL_EVALUATION_ITEMS)
+        ]
+
+    def test_evaluation_configuration_has_12_items(
+        self,
+    ):
+        self.assertEqual(
+            len(LINED_CHANNEL_EVALUATION_ITEMS),
+            12,
+        )
+
+        category_counts = {}
+
+        for item in LINED_CHANNEL_EVALUATION_ITEMS:
+            category_counts[item["category"]] = (
+                category_counts.get(
+                    item["category"],
+                    0,
+                )
+                + 1
+            )
+
+        self.assertEqual(
+            category_counts,
+            {
+                "水力条件": 5,
+                "渠道断面": 5,
+                "渠基": 2,
+            },
+        )
+
+        sec_01 = next(
+            item
+            for item in (LINED_CHANNEL_EVALUATION_ITEMS)
+            if item["item_code"] == "SEC_01"
+        )
+
+        self.assertIn(
+            "b 类工程胀沉量指标",
+            sec_01["standards"]["B"],
+        )
+
+        self.assertIn(
+            "c 类工程胀沉量指标",
+            sec_01["standards"]["C"],
+        )
+
+    def test_completion_requires_all_12_items(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        inspections = (self._full_inspection_results())[:-1]
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试渠道",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data=(self._full_record_data()),
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+            inspection_results=inspections,
+            survey_date="2026-09-13",
+            overall_grade="A",
+            survey_comment="测试意见",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "全部12项",
+        ):
+            (database.complete_lined_channel_section_record(result["survey_record_id"]))
+
+        record = database.get_lined_channel_section_record(result["survey_record_id"])
+
+        self.assertEqual(
+            record["record_status"],
+            "draft",
+        )
+
+    def test_complete_then_edit_completed_record(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试渠道",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data=(self._full_record_data()),
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+            inspection_results=(self._full_inspection_results()),
+            survey_date="2026-09-13",
+            overall_grade="B",
+            survey_comment="完成前意见",
+        )
+
+        complete_result = database.complete_lined_channel_section_record(
+            result["survey_record_id"]
+        )
+
+        self.assertEqual(
+            complete_result["inspection_count"],
+            12,
+        )
+
+        completed = database.get_lined_channel_section_record(
+            result["survey_record_id"]
+        )
+
+        self.assertEqual(
+            completed["record_status"],
+            "completed",
+        )
+
+        updated_data = self._full_record_data()
+
+        updated_data["section_length"] = 1050.0
+
+        (
+            database.update_lined_channel_section_draft(
+                survey_record_id=(result["survey_record_id"]),
+                asset_name="测试渠道修改后",
+                organization_unit_id=(self.office_id),
+                canal_unit_id=self.canal_id,
+                business_code=("1-01-01-01-001"),
+                record_data=updated_data,
+                start_stake_text="K10+000",
+                start_stake_value=10000.0,
+                end_stake_text="K11+000",
+                end_stake_value=11000.0,
+                inspection_results=(self._full_inspection_results()),
+                survey_date="2026-09-14",
+                overall_grade="C",
+                survey_comment="完成后修改意见",
+            )
+        )
+
+        loaded = database.get_lined_channel_section_record(result["survey_record_id"])
+
+        self.assertEqual(
+            loaded["record_status"],
+            "completed",
+        )
+
+        self.assertEqual(
+            loaded["asset_name"],
+            "测试渠道修改后",
+        )
+
+        self.assertEqual(
+            loaded["record_data"]["section_length"],
+            1050.0,
+        )
+
+        self.assertEqual(
+            loaded["overall_grade"],
+            "C",
+        )
+
+        self.assertEqual(
+            loaded["survey_comment"],
+            "完成后修改意见",
+        )
+
+        inspection_results = database.get_inspection_results(result["survey_record_id"])
+
+        self.assertEqual(
+            len(inspection_results),
+            12,
+        )
 
 
 if __name__ == "__main__":

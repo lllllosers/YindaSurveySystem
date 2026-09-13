@@ -1,3 +1,4 @@
+from datetime import datetime
 from PySide6.QtCore import (
     QRegularExpression,
     Qt,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QPlainTextEdit,
 )
 
 from database import (
@@ -31,6 +33,12 @@ from database import (
     get_lined_channel_section_record,
     get_water_offices,
     update_lined_channel_section_draft,
+    complete_lined_channel_section_record,
+    get_inspection_results,
+)
+
+from services.lined_channel_evaluation import (
+    LINED_CHANNEL_EVALUATION_ITEMS,
 )
 
 from services.business_code import (
@@ -56,6 +64,8 @@ class LinedChannelSectionPage(QWidget):
         self.form_version = None
 
         self.is_dirty = False
+        self.evaluation_grade_combos = {}
+        self.evaluation_standard_labels = {}
 
         self.init_ui()
         self._connect_dirty_tracking()
@@ -75,9 +85,9 @@ class LinedChannelSectionPage(QWidget):
         root_layout.addWidget(self.title_label)
 
         description = QLabel(
-            "当前阶段填写附表2.1全部基本信息。"
-            "可保存草稿并重新打开继续修改；"
-            "A/B/C/D分项评价将在下一阶段接入。"
+            "填写附表2.1基本信息、分项评价及调查结论。"
+            "草稿允许暂时不完整；"
+            "完成调查前系统将检查全部必填内容。"
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #607080; font-size: 14px;")
@@ -335,6 +345,69 @@ class LinedChannelSectionPage(QWidget):
 
         form_layout.addWidget(lining_group)
 
+        # =========================
+        # 五、分项评价
+        # =========================
+
+        evaluation_group = self._create_evaluation_group()
+
+        form_layout.addWidget(evaluation_group)
+
+        # =========================
+        # 六、调查结论
+        # =========================
+
+        conclusion_group = QGroupBox("六、调查结论")
+
+        conclusion_layout = QFormLayout(conclusion_group)
+
+        self._setup_form_layout(conclusion_layout)
+
+        self.overall_grade_combo = QComboBox()
+
+        self.overall_grade_combo.addItem(
+            "未确定",
+            None,
+        )
+
+        for grade in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            self.overall_grade_combo.addItem(
+                grade,
+                grade,
+            )
+
+        self.survey_date_edit = self._create_date_edit()
+
+        self.survey_date_edit.setPlaceholderText("例如：2026-09-13")
+
+        self.survey_comment_edit = QPlainTextEdit()
+
+        self.survey_comment_edit.setPlaceholderText("填写调查意见与建议")
+
+        self.survey_comment_edit.setMinimumHeight(100)
+
+        conclusion_layout.addRow(
+            "工程状况类别：",
+            self.overall_grade_combo,
+        )
+
+        conclusion_layout.addRow(
+            "调查时间：",
+            self.survey_date_edit,
+        )
+
+        conclusion_layout.addRow(
+            "调查意见与建议：",
+            self.survey_comment_edit,
+        )
+
+        form_layout.addWidget(conclusion_group)
+
         form_layout.addStretch()
 
         scroll_area.setWidget(form_container)
@@ -354,18 +427,183 @@ class LinedChannelSectionPage(QWidget):
         back_button.clicked.connect(self.request_back)
 
         self.save_button = QPushButton("保存草稿")
+        self.complete_button = QPushButton("完成调查")
+        self.complete_button.setMinimumWidth(120)
+        self.complete_button.clicked.connect(self.complete_survey)
         self.save_button.setMinimumWidth(120)
         self.save_button.clicked.connect(self.save_draft)
 
         button_layout.addWidget(back_button)
         button_layout.addStretch()
         button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.complete_button)
 
         root_layout.addLayout(button_layout)
 
     # =========================================================
     # UI helpers
     # =========================================================
+    def _create_evaluation_group(self):
+        evaluation_group = QGroupBox("五、分项评价")
+
+        evaluation_layout = QVBoxLayout(evaluation_group)
+        evaluation_layout.setSpacing(14)
+
+        description = QLabel(
+            "各项目选择 A、B、C、D 后，" "系统显示原调查表对应评价标准。"
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("color: #607080;")
+
+        evaluation_layout.addWidget(description)
+
+        categories = {}
+
+        for item in LINED_CHANNEL_EVALUATION_ITEMS:
+            category = item["category"]
+
+            categories.setdefault(
+                category,
+                [],
+            ).append(item)
+
+        for category, items in categories.items():
+            category_group = QGroupBox(category)
+
+            category_layout = QVBoxLayout(category_group)
+
+            for item in items:
+                item_widget = QWidget()
+
+                item_layout = QVBoxLayout(item_widget)
+
+                item_layout.setContentsMargins(
+                    8,
+                    4,
+                    8,
+                    8,
+                )
+
+                header_layout = QHBoxLayout()
+
+                item_label = QLabel(item["item_name"])
+                item_label.setMinimumWidth(180)
+
+                grade_combo = QComboBox()
+                grade_combo.setMinimumWidth(120)
+
+                grade_combo.addItem(
+                    "未评价",
+                    None,
+                )
+
+                for grade in (
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                ):
+                    grade_combo.addItem(
+                        grade,
+                        grade,
+                    )
+
+                header_layout.addWidget(item_label)
+                header_layout.addStretch()
+                header_layout.addWidget(grade_combo)
+
+                item_layout.addLayout(header_layout)
+
+                standard_label = QLabel("尚未选择评价等级。")
+
+                standard_label.setWordWrap(True)
+
+                standard_label.setStyleSheet("color: #607080;" "padding: 4px 8px;")
+
+                item_layout.addWidget(standard_label)
+
+                item_code = item["item_code"]
+
+                self.evaluation_grade_combos[item_code] = grade_combo
+
+                self.evaluation_standard_labels[item_code] = standard_label
+
+                grade_combo.currentIndexChanged.connect(
+                    lambda checked=False, current_item=item, current_combo=grade_combo, current_label=standard_label: self._update_evaluation_standard(
+                        current_item,
+                        current_combo,
+                        current_label,
+                    )
+                )
+
+                category_layout.addWidget(item_widget)
+
+            evaluation_layout.addWidget(category_group)
+
+        return evaluation_group
+
+    def _update_evaluation_standard(
+        self,
+        item,
+        combo,
+        label,
+    ):
+        grade = combo.currentData()
+
+        if grade is None:
+            label.setText("尚未选择评价等级。")
+            return
+
+        standard = item["standards"].get(grade) or ""
+
+        label.setText(f"{grade}级标准：{standard}")
+
+    def _clear_evaluation_controls(self):
+        for combo in self.evaluation_grade_combos.values():
+            combo.setCurrentIndex(0)
+
+    def _load_evaluation_results(
+        self,
+        results,
+    ):
+        self._clear_evaluation_controls()
+
+        for result in results:
+            combo = self.evaluation_grade_combos.get(result["item_code"])
+
+            if combo is None:
+                continue
+
+            grade = result["grade"]
+
+            index = combo.findData(grade)
+
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+    def _collect_evaluation_results(self):
+        results = []
+
+        for item in LINED_CHANNEL_EVALUATION_ITEMS:
+            combo = self.evaluation_grade_combos[item["item_code"]]
+
+            grade = combo.currentData()
+
+            if grade is None:
+                continue
+
+            results.append(
+                {
+                    "item_code": (item["item_code"]),
+                    "category": (item["category"]),
+                    "item_name": (item["item_name"]),
+                    "grade": grade,
+                    "description": None,
+                    "remark": None,
+                }
+            )
+
+        return results
 
     def _setup_form_layout(
         self,
@@ -416,6 +654,42 @@ class LinedChannelSectionPage(QWidget):
         edit.setValidator(validator)
 
         return edit
+
+    def _create_date_edit(self):
+        edit = QLineEdit()
+        edit.setMaxLength(10)
+
+        expression = QRegularExpression(
+            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
+        )
+
+        validator = QRegularExpressionValidator(
+            expression,
+            edit,
+        )
+
+        edit.setValidator(validator)
+
+        return edit
+
+    def _get_optional_date(
+        self,
+        edit,
+        field_name,
+    ):
+        text = edit.text().strip()
+
+        if not text:
+            return None
+
+        expression = QRegularExpression(
+            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
+        )
+
+        if not expression.match(text).hasMatch():
+            raise ValueError(f"{field_name}格式应为 " "YYYY-MM-DD。")
+
+        return text
 
     def _create_month_edit(self):
         edit = QLineEdit()
@@ -496,6 +770,7 @@ class LinedChannelSectionPage(QWidget):
             self.concrete_strength_edit,
             self.channel_depth_edit,
             self.channel_bottom_elevation_edit,
+            self.survey_date_edit,
         ]
 
         for edit in line_edits:
@@ -505,8 +780,14 @@ class LinedChannelSectionPage(QWidget):
             self.department_combo,
             self.office_combo,
             self.canal_combo,
+            self.overall_grade_combo,
         ):
             combo.activated.connect(self._mark_dirty)
+
+        for combo in self.evaluation_grade_combos.values():
+            combo.activated.connect(self._mark_dirty)
+
+        self.survey_comment_edit.textChanged.connect(self._mark_dirty)
 
     def _mark_dirty(
         self,
@@ -819,6 +1100,17 @@ class LinedChannelSectionPage(QWidget):
                 record_data,
             ) = self._collect_record_data()
 
+            inspection_results = self._collect_evaluation_results()
+
+            survey_date = self._get_optional_date(
+                self.survey_date_edit,
+                "调查时间",
+            )
+
+            overall_grade = self.overall_grade_combo.currentData()
+
+            survey_comment = self.survey_comment_edit.toPlainText().strip() or None
+
             if self.editing_record_id is None:
                 result = create_lined_channel_section_survey(
                     project_id=(self.current_context["project_id"]),
@@ -833,6 +1125,10 @@ class LinedChannelSectionPage(QWidget):
                     start_stake_value=(start_stake_value),
                     end_stake_text=(end_stake_text),
                     end_stake_value=(end_stake_value),
+                    inspection_results=(inspection_results),
+                    survey_date=survey_date,
+                    overall_grade=overall_grade,
+                    survey_comment=survey_comment,
                 )
 
                 self.editing_record_id = result["survey_record_id"]
@@ -859,6 +1155,10 @@ class LinedChannelSectionPage(QWidget):
                         start_stake_value=(start_stake_value),
                         end_stake_text=(end_stake_text),
                         end_stake_value=(end_stake_value),
+                        inspection_results=(inspection_results),
+                        survey_date=survey_date,
+                        overall_grade=overall_grade,
+                        survey_comment=survey_comment,
                     )
                 )
 
@@ -870,7 +1170,23 @@ class LinedChannelSectionPage(QWidget):
             self.office_combo.setEnabled(False)
             self.canal_combo.setEnabled(False)
 
-            self.title_label.setText("附表2.1 防渗衬砌渠道渠段工程状况调查 - 编辑草稿")
+            if self.editing_record_status == "completed":
+                self.title_label.setText(
+                    "附表2.1 防渗衬砌渠道渠段" "工程状况调查 - 编辑已完成记录"
+                )
+
+                self.save_button.setText("保存修改")
+
+                self.complete_button.setEnabled(False)
+
+            else:
+                self.title_label.setText(
+                    "附表2.1 防渗衬砌渠道渠段" "工程状况调查 - 编辑草稿"
+                )
+
+                self.save_button.setText("保存草稿")
+
+                self.complete_button.setEnabled(True)
 
             self.is_dirty = False
 
@@ -898,6 +1214,243 @@ class LinedChannelSectionPage(QWidget):
 
     def save_draft(self):
         self._save_current_draft(show_message=True)
+
+    def _validate_completion_fields(self):
+        missing_fields = []
+
+        # 归属
+        if not self.department_combo.currentData():
+            missing_fields.append("所属基层处")
+
+        if not self.office_combo.currentData():
+            missing_fields.append("所属水管所")
+
+        if not self.canal_combo.currentData():
+            missing_fields.append("所属渠系")
+
+        if not (self.business_code_edit.text().strip()):
+            missing_fields.append("业务编号")
+
+        # 基本信息
+        required_edits = [
+            (
+                self.channel_name_edit,
+                "渠道名称",
+            ),
+            (
+                self.start_stake_edit,
+                "起始桩号",
+            ),
+            (
+                self.end_stake_edit,
+                "终止桩号",
+            ),
+            (
+                self.section_length_edit,
+                "渠段长度",
+            ),
+            (
+                self.build_date_edit,
+                "建成年月",
+            ),
+            (
+                self.longitudinal_slope_edit,
+                "纵比降",
+            ),
+            (
+                self.design_flow_edit,
+                "设计流量",
+            ),
+            (
+                self.channel_grade_edit,
+                "渠道等级",
+            ),
+            (
+                self.cross_section_form_edit,
+                "渠道断面形式",
+            ),
+            (
+                self.embankment_top_width_edit,
+                "堤顶宽度",
+            ),
+            (
+                self.inner_slope_edit,
+                "渠道边坡（内）",
+            ),
+            (
+                self.outer_slope_edit,
+                "渠道边坡（外）",
+            ),
+            (
+                self.increased_flow_edit,
+                "加大流量",
+            ),
+            (
+                self.bed_soil_edit,
+                "渠床土质",
+            ),
+            (
+                self.lining_structure_edit,
+                "防渗衬砌结构",
+            ),
+            (
+                self.freeboard_edit,
+                "安全超高",
+            ),
+            (
+                self.bottom_width_edit,
+                "渠底宽度",
+            ),
+            (
+                self.water_conveyance_loss_edit,
+                "输水损失",
+            ),
+            (
+                self.lining_material_edit,
+                "衬砌材料",
+            ),
+            (
+                self.lining_thickness_edit,
+                "衬砌厚度",
+            ),
+            (
+                self.concrete_strength_edit,
+                "混凝土强度",
+            ),
+            (
+                self.channel_depth_edit,
+                "渠深",
+            ),
+            (
+                self.channel_bottom_elevation_edit,
+                "渠底高程",
+            ),
+            (
+                self.survey_date_edit,
+                "调查时间",
+            ),
+        ]
+
+        for edit, field_name in required_edits:
+            if not edit.text().strip():
+                missing_fields.append(field_name)
+
+        if self.overall_grade_combo.currentData() not in ("A", "B", "C", "D"):
+            missing_fields.append("工程状况类别")
+
+        if not (self.survey_comment_edit.toPlainText().strip()):
+            missing_fields.append("调查意见与建议")
+
+        evaluation_results = self._collect_evaluation_results()
+
+        if len(evaluation_results) != len(LINED_CHANNEL_EVALUATION_ITEMS):
+            missing_count = len(LINED_CHANNEL_EVALUATION_ITEMS) - len(
+                evaluation_results
+            )
+
+            missing_fields.append("分项评价" f"（还缺 {missing_count} 项）")
+
+        if missing_fields:
+            field_text = "\n".join(f"• {field_name}" for field_name in missing_fields)
+
+            raise ValueError("完成调查前请补充以下必填内容：" f"\n\n{field_text}")
+
+        # 桩号及顺序
+        _, start_value = parse_stake(self.start_stake_edit.text())
+
+        _, end_value = parse_stake(self.end_stake_edit.text())
+
+        if end_value < start_value:
+            raise ValueError("终止桩号不能小于起始桩号。")
+
+        # 年月
+        try:
+            datetime.strptime(
+                self.build_date_edit.text().strip(),
+                "%Y-%m",
+            )
+        except ValueError:
+            raise ValueError("建成年月不是有效年月，" "应填写为 YYYY-MM。")
+
+        renovation_date = self.renovation_date_edit.text().strip()
+
+        if renovation_date:
+            try:
+                datetime.strptime(
+                    renovation_date,
+                    "%Y-%m",
+                )
+            except ValueError:
+                raise ValueError("加固改造年月不是有效年月，" "应填写为 YYYY-MM。")
+
+        try:
+            datetime.strptime(
+                self.survey_date_edit.text().strip(),
+                "%Y-%m-%d",
+            )
+        except ValueError:
+            raise ValueError("调查时间不是有效日期，" "应填写为 YYYY-MM-DD。")
+
+    def complete_survey(self):
+        try:
+            self._validate_completion_fields()
+
+            reply = QMessageBox.question(
+                self,
+                "确认完成调查",
+                (
+                    "系统将先保存当前页面全部内容，"
+                    "然后把本次调查标记为“已完成”。\n\n"
+                    "完成后仍可从列表打开并修改。\n\n"
+                    "是否确认？"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            saved = self._save_current_draft(show_message=False)
+
+            if not saved:
+                raise ValueError("当前页面保存失败，" "没有执行完成调查。")
+
+            result = complete_lined_channel_section_record(self.editing_record_id)
+
+            self.editing_record_status = "completed"
+
+            self.title_label.setText(
+                "附表2.1 防渗衬砌渠道渠段" "工程状况调查 - 编辑已完成记录"
+            )
+
+            self.save_button.setText("保存修改")
+
+            self.complete_button.setEnabled(False)
+
+            self.is_dirty = False
+
+            QMessageBox.information(
+                self,
+                "完成成功",
+                (
+                    "本次渠道渠段调查已完成。\n\n"
+                    f"调查记录ID："
+                    f"{result['survey_record_id']}\n"
+                    f"分项评价："
+                    f"{result['inspection_count']} 项"
+                ),
+            )
+
+            self.survey_saved.emit()
+            self.back_requested.emit()
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "完成失败",
+                str(error),
+            )
 
     # =========================================================
     # 新增 / 加载
@@ -955,6 +1508,16 @@ class LinedChannelSectionPage(QWidget):
 
         self.is_dirty = False
 
+        self._clear_evaluation_controls()
+
+        self.overall_grade_combo.setCurrentIndex(0)
+
+        self.survey_date_edit.clear()
+
+        self.survey_comment_edit.clear()
+
+        self.complete_button.setEnabled(True)
+
     def _set_combo_by_id(
         self,
         combo,
@@ -982,8 +1545,11 @@ class LinedChannelSectionPage(QWidget):
     ):
         record = get_lined_channel_section_record(survey_record_id)
 
-        if record["record_status"] != "draft":
-            raise ValueError("当前阶段仅支持打开草稿记录。")
+        if record["record_status"] not in (
+            "draft",
+            "completed",
+        ):
+            raise ValueError("当前记录状态暂不支持打开。")
 
         self.current_context = get_current_context()
 
@@ -1109,5 +1675,52 @@ class LinedChannelSectionPage(QWidget):
             self.channel_bottom_elevation_edit,
             data.get("channel_bottom_elevation"),
         )
+
+        # =========================
+        # 分项评价
+        # =========================
+
+        inspection_results = get_inspection_results(survey_record_id)
+
+        self._load_evaluation_results(inspection_results)
+
+        # =========================
+        # 调查结论
+        # =========================
+
+        grade = record["overall_grade"]
+
+        grade_index = self.overall_grade_combo.findData(grade)
+
+        if grade_index >= 0:
+            self.overall_grade_combo.setCurrentIndex(grade_index)
+        else:
+            self.overall_grade_combo.setCurrentIndex(0)
+
+        self.survey_date_edit.setText(record["survey_date"] or "")
+
+        self.survey_comment_edit.setPlainText(record["survey_comment"] or "")
+
+        # =========================
+        # 状态
+        # =========================
+
+        if record["record_status"] == "completed":
+            self.title_label.setText(
+                "附表2.1 防渗衬砌渠道渠段" "工程状况调查 - 编辑已完成记录"
+            )
+
+            self.save_button.setText("保存修改")
+
+            self.complete_button.setEnabled(False)
+
+        else:
+            self.title_label.setText(
+                "附表2.1 防渗衬砌渠道渠段" "工程状况调查 - 编辑草稿"
+            )
+
+            self.save_button.setText("保存草稿")
+
+            self.complete_button.setEnabled(True)
 
         self.is_dirty = False
