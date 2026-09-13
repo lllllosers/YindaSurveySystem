@@ -12,7 +12,7 @@ APP_VERSION = "0.3.1"
 
 APP_VERSION_LABEL = f"V{APP_VERSION}"
 
-APP_STAGE = "开发版"
+APP_STAGE = "测试版"
 
 APP_AUTHOR = "Steven_Chen"
 
