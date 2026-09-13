@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from pages.basic_data_page import BasicDataPage
+from pages.data_query_page import DataQueryPage
 from pages.survey_page import SurveyPage
 from pages.engineering_asset_page import EngineeringAssetPage
 from pages.project_batch_page import ProjectBatchPage
@@ -270,19 +271,12 @@ class MainWindow(QMainWindow):
         开始工程调查的基础条件。
         """
 
-        readiness = (
-            get_survey_readiness()
-        )
+        readiness = get_survey_readiness()
 
         if readiness["ready"]:
             return True
 
-        missing_items = "\n".join(
-            f"• {item}"
-            for item in readiness[
-                "missing"
-            ]
-        )
+        missing_items = "\n".join(f"• {item}" for item in readiness["missing"])
 
         QMessageBox.information(
             self,
@@ -359,6 +353,11 @@ class MainWindow(QMainWindow):
             self.engineering_asset_page = EngineeringAssetPage()
 
             self.content_layout.addWidget(self.engineering_asset_page)
+
+        elif page_name == "数据查询":
+            self.data_query_page = DataQueryPage()
+
+            self.content_layout.addWidget(self.data_query_page)
 
         elif page_name == "基础资料":
             self.basic_data_page = BasicDataPage()

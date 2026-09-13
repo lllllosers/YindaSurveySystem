@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFileDialog,
-    QMenu,
 )
 
 from database import (
@@ -22,7 +21,6 @@ from database import (
 )
 from services.lined_channel_export import (
     export_lined_channel_original_form,
-    export_lined_channel_summary,
 )
 
 
@@ -70,19 +68,9 @@ class LinedChannelSectionListPage(QWidget):
         delete_button = QPushButton("删除选中记录")
         delete_button.clicked.connect(self.delete_selected_record)
 
-        export_button = QPushButton("导出Excel")
+        export_button = QPushButton("导出结果")
 
-        export_menu = QMenu(export_button)
-
-        summary_action = export_menu.addAction("数据汇总（当前筛选结果）")
-
-        original_action = export_menu.addAction("附表2.1原表（当前选中记录）")
-
-        summary_action.triggered.connect(self.export_summary_excel)
-
-        original_action.triggered.connect(self.export_original_excel)
-
-        export_button.setMenu(export_menu)
+        export_button.clicked.connect(self.export_original_excel)
 
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
@@ -104,8 +92,9 @@ class LinedChannelSectionListPage(QWidget):
 
         description = QLabel(
             "双击记录可打开调查表。"
-            "支持按关键词、管理单位、渠系、"
-            "状态和工程状况类别筛选。"
+            "本页用于当前批次录入管理和快速筛选；"
+            "跨批次查询、分类统计和汇总导出"
+            "请使用“数据查询”模块。"
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #607080;" "font-size: 14px;")
@@ -486,47 +475,28 @@ class LinedChannelSectionListPage(QWidget):
         self,
         records,
     ):
+        """
+        当前调查列表只显示录入进度。
+
+        A/B/C/D等成果统计统一由
+        “数据查询”模块负责。
+        """
+
         draft_count = sum(1 for record in records if record["record_status"] == "draft")
 
         completed_count = sum(
             1 for record in records if record["record_status"] == "completed"
         )
 
-        grade_counts = {
-            "A": 0,
-            "B": 0,
-            "C": 0,
-            "D": 0,
-        }
-
-        ungraded_count = 0
-
-        for record in records:
-            grade = record["overall_grade"]
-
-            if grade in grade_counts:
-                grade_counts[grade] += 1
-            else:
-                ungraded_count += 1
-
         self.count_label.setText(
             f"当前批次共 "
             f"{len(self.all_records)} 条"
             f"  |  当前筛选 "
             f"{len(records)} 条"
-            f"  |  草稿 {draft_count}"
+            f"  |  草稿 "
+            f"{draft_count}"
             f"  |  已完成 "
             f"{completed_count}"
-            f"  |  A "
-            f"{grade_counts['A']}"
-            f"  |  B "
-            f"{grade_counts['B']}"
-            f"  |  C "
-            f"{grade_counts['C']}"
-            f"  |  D "
-            f"{grade_counts['D']}"
-            f"  |  未定 "
-            f"{ungraded_count}"
         )
 
     # =========================================================
@@ -646,87 +616,6 @@ class LinedChannelSectionListPage(QWidget):
                     f"{result['asset_name']}\n"
                     f"业务编号："
                     f"{result['business_code']}\n\n"
-                    f"保存位置：\n"
-                    f"{result['file_path']}"
-                ),
-            )
-
-        except PermissionError:
-            QMessageBox.warning(
-                self,
-                "导出失败",
-                (
-                    "无法写入目标 Excel 文件。\n\n"
-                    "如果该文件正在 Excel 中打开，"
-                    "请先关闭文件后重新导出。"
-                ),
-            )
-
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "导出失败",
-                str(error),
-            )
-
-    def export_summary_excel(self):
-        """
-        将当前筛选结果导出为汇总 Excel。
-        """
-
-        if not self.filtered_records:
-            QMessageBox.warning(
-                self,
-                "没有可导出数据",
-                ("当前筛选结果为空，" "无法导出 Excel。"),
-            )
-            return
-
-        batch_name = "当前批次"
-
-        if self.current_context:
-            current_batch_name = self.current_context["batch_name"]
-
-            if current_batch_name:
-                batch_name = str(current_batch_name)
-
-        invalid_chars = '\\/:*?"<>|'
-
-        for char in invalid_chars:
-            batch_name = batch_name.replace(
-                char,
-                "_",
-            )
-
-        default_name = "附表2.1_渠道渠段调查汇总_" f"{batch_name}.xlsx"
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "导出渠道渠段调查数据汇总",
-            default_name,
-            "Excel 工作簿 (*.xlsx)",
-        )
-
-        if not file_path:
-            return
-
-        if not (file_path.lower().endswith(".xlsx")):
-            file_path += ".xlsx"
-
-        try:
-            result = export_lined_channel_summary(
-                records=(self.filtered_records),
-                file_path=file_path,
-            )
-
-            QMessageBox.information(
-                self,
-                "导出成功",
-                (
-                    "渠道渠段调查数据汇总已导出。"
-                    "\n\n"
-                    f"导出记录数："
-                    f"{result['exported_count']}\n"
                     f"保存位置：\n"
                     f"{result['file_path']}"
                 ),

@@ -1332,6 +1332,208 @@ def get_current_form_version(
         ).fetchone()
 
 
+def get_engineering_form_definitions():
+    """
+    获取当前系统已经定义的全部工程调查表。
+
+    数据查询模块使用该函数生成
+    “调查表”筛选条件。
+
+    即使未来某个表单被停用，
+    历史调查记录仍然应该允许查询，
+    因此这里不只返回 is_enabled = 1。
+    """
+
+    with get_connection() as connection:
+        return connection.execute("""
+            SELECT
+                id,
+                form_code,
+                form_number,
+                form_name,
+                asset_type,
+                is_enabled,
+                sort_order
+            FROM form_definitions
+            WHERE series = 'series_2'
+              AND record_type = 'engineering'
+            ORDER BY
+                sort_order,
+                id
+            """).fetchall()
+
+
+def get_engineering_survey_query_records(
+    project_id,
+    survey_batch_id=None,
+    form_code=None,
+):
+    """
+    获取统一工程调查查询结果。
+
+    当前用于“数据查询”模块。
+
+    查询范围：
+    - 当前项目；
+    - 可选指定调查批次；
+    - 可选指定调查表；
+    - 排除 void 记录。
+
+    本函数只返回所有工程调查表都具有的公共字段，
+    不返回附表2.1、2.2各自的业务专用字段。
+    """
+
+    if project_id is None:
+        return []
+
+    sql = """
+        SELECT
+            sr.id AS survey_record_id,
+            sr.project_id,
+            sr.survey_batch_id,
+
+            sb.batch_name,
+            sb.batch_code,
+
+            fd.form_code,
+            fd.form_number,
+            fd.form_name,
+            fd.asset_type,
+            fd.sort_order,
+
+            ea.id AS engineering_asset_id,
+            ea.asset_name,
+
+            ea.single_stake_text,
+            ea.start_stake_text,
+            ea.end_stake_text,
+
+            sr.business_code,
+            sr.overall_grade,
+            sr.survey_date,
+            sr.record_status,
+            sr.updated_at,
+
+            office.name AS office_name,
+            department.name AS department_name,
+
+            canal.name AS canal_name
+
+        FROM survey_records AS sr
+
+        JOIN survey_batches AS sb
+            ON sr.survey_batch_id = sb.id
+
+        JOIN form_versions AS fv
+            ON sr.form_version_id = fv.id
+
+        JOIN form_definitions AS fd
+            ON fv.form_definition_id = fd.id
+
+        LEFT JOIN engineering_assets AS ea
+            ON sr.engineering_asset_id = ea.id
+
+        LEFT JOIN organization_units AS office
+            ON sr.organization_unit_id = office.id
+
+        LEFT JOIN organization_units AS department
+            ON office.parent_id = department.id
+
+        LEFT JOIN canal_units AS canal
+            ON sr.canal_unit_id = canal.id
+
+        WHERE sr.project_id = ?
+          AND sr.record_type = 'engineering'
+          AND sr.record_status != 'void'
+    """
+
+    parameters = [
+        project_id,
+    ]
+
+    if survey_batch_id is not None:
+        sql += """
+          AND sr.survey_batch_id = ?
+        """
+
+        parameters.append(survey_batch_id)
+
+    if form_code:
+        sql += """
+          AND fd.form_code = ?
+        """
+
+        parameters.append(form_code)
+
+    sql += """
+        ORDER BY
+            sb.id DESC,
+            fd.sort_order,
+            sr.id DESC
+    """
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            sql,
+            parameters,
+        ).fetchall()
+
+    result = []
+
+    for row in rows:
+        single_stake = row["single_stake_text"] or ""
+
+        start_stake = row["start_stake_text"] or ""
+
+        end_stake = row["end_stake_text"] or ""
+
+        # =========================
+        # 统一工程位置
+        # =========================
+
+        if start_stake and end_stake:
+            engineering_position = f"{start_stake} ～ " f"{end_stake}"
+
+        elif start_stake:
+            engineering_position = start_stake
+
+        elif end_stake:
+            engineering_position = end_stake
+
+        else:
+            engineering_position = single_stake
+
+        form_display_name = f"附表{row['form_number']} " f"{row['form_name']}"
+
+        result.append(
+            {
+                "survey_record_id": (row["survey_record_id"]),
+                "engineering_asset_id": (row["engineering_asset_id"]),
+                "project_id": (row["project_id"]),
+                "survey_batch_id": (row["survey_batch_id"]),
+                "batch_name": (row["batch_name"] or ""),
+                "batch_code": (row["batch_code"] or ""),
+                "form_code": (row["form_code"]),
+                "form_number": (row["form_number"]),
+                "form_name": (row["form_name"]),
+                "form_display_name": (form_display_name),
+                "asset_type": (row["asset_type"]),
+                "business_code": (row["business_code"] or ""),
+                "asset_name": (row["asset_name"] or ""),
+                "department_name": (row["department_name"] or ""),
+                "office_name": (row["office_name"] or ""),
+                "canal_name": (row["canal_name"] or ""),
+                "engineering_position": (engineering_position),
+                "overall_grade": (row["overall_grade"]),
+                "survey_date": (row["survey_date"] or ""),
+                "record_status": (row["record_status"]),
+                "updated_at": (row["updated_at"] or ""),
+            }
+        )
+
+    return result
+
+
 def _replace_inspection_results(
     connection,
     survey_record_id,
