@@ -1749,6 +1749,321 @@ def create_lined_channel_section_survey(
         }
 
 
+def get_lined_channel_section_records(
+    project_id,
+    survey_batch_id,
+):
+    """
+    获取当前项目、当前调查批次下的
+    附表2.1防渗衬砌渠道渠段调查记录。
+
+    当前供后续2.1调查列表页面使用。
+    """
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.business_code,
+                sr.record_status,
+                sr.record_data_json,
+                sr.updated_at,
+
+                ea.id AS engineering_asset_id,
+                ea.asset_name,
+                ea.start_stake_text,
+                ea.start_stake_value,
+                ea.end_stake_text,
+                ea.end_stake_value,
+
+                office.name AS office_name,
+                department.name AS department_name,
+
+                canal.name AS canal_name
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            LEFT JOIN organization_units AS office
+                ON sr.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            LEFT JOIN canal_units AS canal
+                ON sr.canal_unit_id = canal.id
+
+            WHERE sr.project_id = ?
+              AND sr.survey_batch_id = ?
+              AND fd.form_code = 'form_2_1'
+              AND sr.record_status != 'void'
+
+            ORDER BY sr.id DESC
+            """,
+            (
+                project_id,
+                survey_batch_id,
+            ),
+        ).fetchall()
+
+        result = []
+
+        for row in rows:
+            try:
+                record_data = json.loads(row["record_data_json"] or "{}")
+            except json.JSONDecodeError:
+                record_data = {}
+
+            result.append(
+                {
+                    "survey_record_id": (row["survey_record_id"]),
+                    "engineering_asset_id": (row["engineering_asset_id"]),
+                    "business_code": (row["business_code"] or ""),
+                    "asset_name": (row["asset_name"] or ""),
+                    "department_name": (row["department_name"] or ""),
+                    "office_name": (row["office_name"] or ""),
+                    "canal_name": (row["canal_name"] or ""),
+                    "start_stake_text": (row["start_stake_text"] or ""),
+                    "end_stake_text": (row["end_stake_text"] or ""),
+                    "record_status": (row["record_status"]),
+                    "updated_at": (row["updated_at"]),
+                    "record_data": record_data,
+                }
+            )
+
+        return result
+
+
+def get_lined_channel_section_record(
+    survey_record_id,
+):
+    """
+    获取一条附表2.1渠段调查记录，
+    用于草稿重新打开和页面回填。
+    """
+
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.project_id,
+                sr.survey_batch_id,
+                sr.form_version_id,
+                sr.organization_unit_id,
+                sr.canal_unit_id,
+                sr.business_code,
+                sr.record_status,
+                sr.record_data_json,
+
+                ea.id AS engineering_asset_id,
+                ea.asset_name,
+                ea.asset_type,
+                department.id AS department_id,
+                ea.single_stake_text,
+                ea.single_stake_value,
+                ea.start_stake_text,
+                ea.start_stake_value,
+                ea.end_stake_text,
+                ea.end_stake_value,
+
+                fd.form_code
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            LEFT JOIN organization_units AS office
+                ON sr.organization_unit_id = office.id
+
+            LEFT JOIN organization_units AS department
+                ON office.parent_id = department.id
+
+            WHERE sr.id = ?
+            LIMIT 1
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError("没有找到指定的渠道渠段调查记录。")
+
+        if row["form_code"] != "form_2_1":
+            raise ValueError("指定记录不是附表2.1调查记录。")
+
+        try:
+            record_data = json.loads(row["record_data_json"] or "{}")
+        except json.JSONDecodeError:
+            record_data = {}
+
+        return {
+            "survey_record_id": (row["survey_record_id"]),
+            "engineering_asset_id": (row["engineering_asset_id"]),
+            "project_id": (row["project_id"]),
+            "survey_batch_id": (row["survey_batch_id"]),
+            "form_version_id": (row["form_version_id"]),
+            "organization_unit_id": (row["organization_unit_id"]),
+            "canal_unit_id": (row["canal_unit_id"]),
+            "business_code": (row["business_code"] or ""),
+            "record_status": (row["record_status"]),
+            "asset_name": (row["asset_name"] or ""),
+            "asset_type": (row["asset_type"]),
+            "start_stake_text": (row["start_stake_text"] or ""),
+            "start_stake_value": (row["start_stake_value"]),
+            "end_stake_text": (row["end_stake_text"] or ""),
+            "end_stake_value": (row["end_stake_value"]),
+            "record_data": record_data,
+            "single_stake_text": (row["single_stake_text"]),
+            "single_stake_value": (row["single_stake_value"]),
+            "department_id": (row["department_id"]),
+        }
+
+
+def update_lined_channel_section_draft(
+    survey_record_id,
+    asset_name,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+):
+    """
+    修改附表2.1渠段调查草稿。
+
+    当前阶段只允许修改 draft 记录。
+    EngineeringAsset 与 SurveyRecord
+    在同一个事务中同步更新。
+    """
+
+    if not asset_name or not asset_name.strip():
+        raise ValueError("渠道名称不能为空。")
+
+    if not business_code:
+        raise ValueError("业务编号不能为空。")
+
+    record_json = json.dumps(
+        record_data,
+        ensure_ascii=False,
+    )
+
+    with get_connection() as connection:
+        existing = connection.execute(
+            """
+            SELECT
+                sr.id AS survey_record_id,
+                sr.engineering_asset_id,
+                sr.record_status,
+
+                fd.form_code
+
+            FROM survey_records AS sr
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            WHERE sr.id = ?
+            LIMIT 1
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if existing is None:
+            raise ValueError("没有找到指定的渠道渠段调查记录。")
+
+        if existing["form_code"] != "form_2_1":
+            raise ValueError("指定记录不是附表2.1调查记录。")
+
+        if existing["record_status"] != "draft":
+            raise ValueError("当前调查记录不是草稿状态，" "不能按草稿方式修改。")
+
+        engineering_asset_id = existing["engineering_asset_id"]
+
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET
+                asset_name = ?,
+                organization_unit_id = ?,
+                canal_unit_id = ?,
+                business_code = ?,
+                single_stake_text = NULL,
+                single_stake_value = NULL,
+                start_stake_text = ?,
+                start_stake_value = ?,
+                end_stake_text = ?,
+                end_stake_value = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                asset_name.strip(),
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                start_stake_text,
+                start_stake_value,
+                end_stake_text,
+                end_stake_value,
+                engineering_asset_id,
+            ),
+        )
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                organization_unit_id = ?,
+                canal_unit_id = ?,
+                business_code = ?,
+                record_data_json = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                record_json,
+                survey_record_id,
+            ),
+        )
+
+        return {
+            "engineering_asset_id": (engineering_asset_id),
+            "survey_record_id": (survey_record_id),
+            "business_code": business_code,
+        }
+
+
 def get_sluice_gate_records(
     project_id,
     survey_batch_id,

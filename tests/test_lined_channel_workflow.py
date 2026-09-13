@@ -300,6 +300,242 @@ class LinedChannelWorkflowTestCase(unittest.TestCase):
 
         self.assertIsNone(ledger_asset["single_stake_text"])
 
+    def test_lined_channel_record_can_be_loaded(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=form_version["id"],
+            asset_name="测试总干渠",
+            organization_unit_id=self.office_id,
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": "测试总干渠",
+                "section_length": 1250.0,
+                "build_date": "2008-06",
+            },
+            start_stake_text="K12+000",
+            start_stake_value=12000.0,
+            end_stake_text="K13+250",
+            end_stake_value=13250.0,
+        )
+
+        record = database.get_lined_channel_section_record(result["survey_record_id"])
+
+        self.assertEqual(
+            record["asset_name"],
+            "测试总干渠",
+        )
+
+        self.assertEqual(
+            record["asset_type"],
+            "lined_channel_section",
+        )
+
+        self.assertEqual(
+            record["start_stake_text"],
+            "K12+000",
+        )
+
+        self.assertEqual(
+            record["end_stake_text"],
+            "K13+250",
+        )
+
+        self.assertEqual(
+            record["record_status"],
+            "draft",
+        )
+
+        self.assertEqual(
+            record["record_data"]["build_date"],
+            "2008-06",
+        )
+
+    def test_lined_channel_draft_can_be_updated(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=form_version["id"],
+            asset_name="测试总干渠",
+            organization_unit_id=self.office_id,
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": "测试总干渠",
+                "section_length": 1250.0,
+            },
+            start_stake_text="K12+000",
+            start_stake_value=12000.0,
+            end_stake_text="K13+250",
+            end_stake_value=13250.0,
+        )
+
+        survey_record_id = result["survey_record_id"]
+
+        engineering_asset_id = result["engineering_asset_id"]
+
+        database.update_lined_channel_section_draft(
+            survey_record_id=survey_record_id,
+            asset_name="测试总干渠修改后",
+            organization_unit_id=self.office_id,
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data={
+                "channel_name": ("测试总干渠修改后"),
+                "section_length": 1500.0,
+                "build_date": "2010-08",
+            },
+            start_stake_text="K12+100",
+            start_stake_value=12100.0,
+            end_stake_text="K13+600",
+            end_stake_value=13600.0,
+        )
+
+        record = database.get_lined_channel_section_record(survey_record_id)
+
+        # 仍然是原来的 EngineeringAsset
+        self.assertEqual(
+            record["engineering_asset_id"],
+            engineering_asset_id,
+        )
+
+        # 仍然是原来的 SurveyRecord
+        self.assertEqual(
+            record["survey_record_id"],
+            survey_record_id,
+        )
+
+        self.assertEqual(
+            record["asset_name"],
+            "测试总干渠修改后",
+        )
+
+        self.assertEqual(
+            record["start_stake_text"],
+            "K12+100",
+        )
+
+        self.assertEqual(
+            record["end_stake_text"],
+            "K13+600",
+        )
+
+        self.assertIsNone(record["single_stake_text"])
+
+        self.assertEqual(
+            record["record_data"]["section_length"],
+            1500.0,
+        )
+
+        self.assertEqual(
+            record["record_data"]["build_date"],
+            "2010-08",
+        )
+
+        records = database.get_lined_channel_section_records(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+        )
+
+        self.assertEqual(
+            len(records),
+            1,
+        )
+
+        self.assertEqual(
+            records[0]["survey_record_id"],
+            survey_record_id,
+        )
+
+        self.assertEqual(
+            records[0]["start_stake_text"],
+            "K12+100",
+        )
+
+        self.assertEqual(
+            records[0]["end_stake_text"],
+            "K13+600",
+        )
+
+    def test_all_basic_fields_round_trip(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        record_data = {
+            "channel_name": "测试一干渠",
+            "start_stake": "K10+000",
+            "start_stake_value": 10000.0,
+            "end_stake": "K11+500",
+            "end_stake_value": 11500.0,
+            "section_length": 1500.0,
+            "build_date": "2008-06",
+            "renovation_date": "2021-09",
+            "longitudinal_slope": "1/2000",
+            "design_flow": 12.5,
+            "channel_grade": "3级",
+            "cross_section_form": "梯形",
+            "embankment_top_width": 3.5,
+            "inner_slope": "1:1.5",
+            "outer_slope": "1:1.5",
+            "increased_flow": 15.0,
+            "bed_soil": "砂壤土",
+            "lining_structure": ("现浇混凝土衬砌"),
+            "freeboard": 0.6,
+            "bottom_width": 4.2,
+            "water_conveyance_loss": 0.08,
+            "lining_material": "混凝土",
+            "lining_thickness": 12.0,
+            "concrete_strength": "C25",
+            "channel_depth": 2.8,
+            "channel_bottom_elevation": (1865.35),
+        }
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="测试一干渠",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data=record_data,
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+500",
+            end_stake_value=11500.0,
+        )
+
+        loaded = database.get_lined_channel_section_record(result["survey_record_id"])
+
+        loaded_data = loaded["record_data"]
+
+        self.assertEqual(
+            loaded["start_stake_text"],
+            "K10+000",
+        )
+
+        self.assertEqual(
+            loaded["end_stake_text"],
+            "K11+500",
+        )
+
+        for key, expected_value in record_data.items():
+            self.assertEqual(
+                loaded_data[key],
+                expected_value,
+                msg=f"字段回填失败：{key}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
