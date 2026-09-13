@@ -1,5 +1,10 @@
 from datetime import datetime
-from PySide6.QtCore import QRegularExpression, Qt, Signal
+from PySide6.QtCore import (
+    QRegularExpression,
+    QTimer,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import (
     QDoubleValidator,
     QIntValidator,
@@ -162,6 +167,18 @@ class SluiceGatePage(QWidget):
 
         self.complete_survey()
 
+    def _focus_new_entry_start(self):
+        """
+        连续录入下一条时回到表单顶部，
+        并将焦点放到第一个工程录入字段。
+        """
+
+        self.scroll_area.verticalScrollBar().setValue(
+            self.scroll_area.verticalScrollBar().minimum()
+        )
+
+        self.name_edit.setFocus()
+
     def init_ui(self):
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -186,8 +203,8 @@ class SluiceGatePage(QWidget):
         # 可滚动表单区域
         # =========================
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
 
         form_container = QWidget()
         form_container_layout = QVBoxLayout(form_container)
@@ -475,10 +492,10 @@ class SluiceGatePage(QWidget):
 
         form_container_layout.addStretch()
 
-        scroll_area.setWidget(form_container)
+        self.scroll_area.setWidget(form_container)
 
         root_layout.addWidget(
-            scroll_area,
+            self.scroll_area,
             1,
         )
 
@@ -1501,20 +1518,73 @@ class SluiceGatePage(QWidget):
             result = complete_sluice_gate_record(self.editing_record_id)
             self.editing_record_status = "completed"
 
-            QMessageBox.information(
-                self,
-                "完成成功",
+            # 保存当前调查日期。
+            # 如果用户选择“继续录入下一条”，
+            # 下一条默认继续使用本次调查日期。
+            previous_survey_date = self.survey_date_edit.text().strip()
+
+            # 当前记录已经成功完成，
+            # 先通知列表刷新数据。
+            self.survey_saved.emit()
+
+            success_box = QMessageBox(self)
+
+            success_box.setIcon(QMessageBox.Icon.Information)
+
+            success_box.setWindowTitle("完成成功")
+
+            success_box.setText(
                 (
                     "当前修改已保存，"
                     "本次水闸调查已标记为已完成。\n\n"
                     f"调查记录ID："
                     f"{result['survey_record_id']}\n"
                     f"已填写分项评价："
-                    f"{result['inspection_count']} 项"
-                ),
+                    f"{result['inspection_count']} 项\n\n"
+                    "是否继续录入下一条水闸调查？"
+                )
             )
 
-            self.survey_saved.emit()
+            continue_button = success_box.addButton(
+                "继续录入下一条",
+                QMessageBox.ButtonRole.AcceptRole,
+            )
+
+            return_button = success_box.addButton(
+                "返回列表",
+                QMessageBox.ButtonRole.RejectRole,
+            )
+
+            success_box.setDefaultButton(continue_button)
+
+            success_box.setEscapeButton(return_button)
+
+            success_box.exec()
+
+            if success_box.clickedButton() is continue_button:
+                # prepare_new() 已负责：
+                # 1. 保留上一条处 / 所 / 渠系；
+                # 2. 重新生成业务编号；
+                # 3. 清空工程信息；
+                # 4. 清空评价和调查结论。
+                self.prepare_new()
+
+                # 连续录入时保留上一条调查日期。
+                if previous_survey_date:
+                    self.survey_date_edit.setText(previous_survey_date)
+
+                # 程序自动初始化不属于用户修改。
+                self.is_dirty = False
+
+                # 归属已保留，
+                # 下一步最常录入的是工程名称。
+                QTimer.singleShot(
+                    0,
+                    self._focus_new_entry_start,
+                )
+
+                return
+
             self.back_requested.emit()
 
         except Exception as error:

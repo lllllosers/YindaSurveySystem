@@ -172,6 +172,44 @@ class MainWindow(QMainWindow):
         # 简单样式
         # =========================
         self.setStyleSheet("""
+            QWidget {
+                font-size: 15px;
+            }
+
+            QLineEdit,
+            QComboBox {
+                min-height: 30px;
+                padding: 3px 6px;
+            }
+
+            QPlainTextEdit {
+                padding: 6px;
+            }
+
+            QPushButton {
+                min-height: 32px;
+                padding: 5px 12px;
+            }
+
+            QGroupBox {
+                font-size: 15px;
+                font-weight: 600;
+            }
+
+            QRadioButton {
+                spacing: 8px;
+            }
+
+            QTableView,
+            QTableWidget {
+                font-size: 15px;
+            }
+
+            QHeaderView::section {
+                font-size: 14px;
+                padding: 6px 8px;
+            }
+
             QMainWindow {
                 background: #f5f6f8;
             }
@@ -188,7 +226,7 @@ class MainWindow(QMainWindow):
 
             #appSubtitle {
                 color: #c7d0da;
-                font-size: 13px;
+                font-size: 14px;
             }
 
             #navButton {
@@ -198,7 +236,7 @@ class MainWindow(QMainWindow):
                 text-align: left;
                 padding: 11px 12px;
                 border-radius: 6px;
-                font-size: 14px;
+                font-size: 15px;
             }
 
             #navButton:hover {
@@ -207,7 +245,7 @@ class MainWindow(QMainWindow):
 
             #versionLabel {
                 color: #9caaba;
-                font-size: 12px;
+                font-size: 13px;
             }
 
             #topBar {
