@@ -1629,6 +1629,126 @@ def create_engineering_survey(
         }
 
 
+def create_lined_channel_section_survey(
+    project_id,
+    survey_batch_id,
+    form_version_id,
+    asset_name,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+):
+    """
+    第一次创建附表2.1防渗衬砌渠道渠段调查时，
+    同时创建：
+
+    1. EngineeringAsset 渠段工程对象
+    2. SurveyRecord 本批次调查记录
+
+    当前 V0.3.0-A1 仅验证渠段型工程的数据模型，
+    暂不处理：
+    - 重复渠段检查
+    - 分项评价
+    - 完成调查
+    - 2.1完整字段校验
+
+    与附表2.2不同：
+    - single_stake_* 保持为空；
+    - 使用 start_stake_* 和 end_stake_*。
+    """
+
+    if not asset_name or not asset_name.strip():
+        raise ValueError("渠道名称不能为空。")
+
+    if not business_code:
+        raise ValueError("业务编号不能为空。")
+
+    record_json = json.dumps(
+        record_data,
+        ensure_ascii=False,
+    )
+
+    with get_connection() as connection:
+        asset_cursor = connection.execute(
+            """
+            INSERT INTO engineering_assets (
+                project_id,
+                asset_name,
+                asset_type,
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                code_scheme_version,
+                start_stake_text,
+                start_stake_value,
+                end_stake_text,
+                end_stake_value,
+                first_survey_batch_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                asset_name.strip(),
+                "lined_channel_section",
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                "V1",
+                start_stake_text,
+                start_stake_value,
+                end_stake_text,
+                end_stake_value,
+                survey_batch_id,
+            ),
+        )
+
+        engineering_asset_id = asset_cursor.lastrowid
+
+        record_cursor = connection.execute(
+            """
+            INSERT INTO survey_records (
+                project_id,
+                survey_batch_id,
+                form_version_id,
+                record_type,
+                organization_unit_id,
+                canal_unit_id,
+                engineering_asset_id,
+                business_code,
+                record_status,
+                record_data_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                survey_batch_id,
+                form_version_id,
+                "engineering",
+                organization_unit_id,
+                canal_unit_id,
+                engineering_asset_id,
+                business_code,
+                "draft",
+                record_json,
+            ),
+        )
+
+        survey_record_id = record_cursor.lastrowid
+
+        return {
+            "engineering_asset_id": engineering_asset_id,
+            "survey_record_id": survey_record_id,
+            "business_code": business_code,
+        }
+
+
 def get_sluice_gate_records(
     project_id,
     survey_batch_id,
@@ -2376,8 +2496,13 @@ def get_engineering_asset_detail(
                 ea.asset_type,
 
                 ea.single_stake_text,
+                ea.single_stake_value,
+
                 ea.start_stake_text,
+                ea.start_stake_value,
+
                 ea.end_stake_text,
+                ea.end_stake_value,
 
                 ea.status AS asset_status,
                 ea.code_scheme_version,
