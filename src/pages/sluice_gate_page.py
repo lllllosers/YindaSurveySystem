@@ -3,7 +3,8 @@ from PySide6.QtCore import QRegularExpression, Qt, Signal
 from PySide6.QtGui import (
     QDoubleValidator,
     QIntValidator,
-    QRegularExpressionValidator,
+    QKeySequence,
+    QShortcut,
 )
 from PySide6.QtWidgets import (
     QComboBox,
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QPlainTextEdit,
+    QButtonGroup,
+    QRadioButton,
 )
 
 from database import (
@@ -68,7 +71,96 @@ class SluiceGatePage(QWidget):
 
         self.init_ui()
 
+        self._setup_tab_order()
+        self._setup_keyboard_shortcuts()
+
         self._connect_dirty_tracking()
+
+    def _setup_tab_order(self):
+        """
+        设置附表2.2主要录入字段的键盘 Tab 顺序。
+        """
+
+        self.survey_comment_edit.setTabChangesFocus(True)
+
+        tab_widgets = [
+            # 一、归属与编号
+            self.department_combo,
+            self.office_combo,
+            self.canal_combo,
+            # 二、工程基本信息
+            self.name_edit,
+            self.stake_edit,
+            self.design_flow_edit,
+            self.structure_grade_edit,
+            self.build_date_edit,
+            self.renovation_date_edit,
+            self.increased_flow_edit,
+            # 三、结构与材料参数
+            self.opening_count_edit,
+            self.opening_width_edit,
+            self.opening_height_edit,
+            self.main_component_material_edit,
+            self.concrete_strength_edit,
+            self.reinforced_concrete_strength_edit,
+            self.cover_thickness_edit,
+            self.crack_width_limit_edit,
+            # 五、调查结论
+            self.overall_grade_buttons["A"],
+            self.overall_grade_buttons["B"],
+            self.overall_grade_buttons["C"],
+            self.overall_grade_buttons["D"],
+            self.survey_date_edit,
+            self.survey_comment_edit,
+            # 操作按钮
+            self.save_button,
+            self.complete_button,
+        ]
+
+        for current_widget, next_widget in zip(
+            tab_widgets,
+            tab_widgets[1:],
+        ):
+            QWidget.setTabOrder(
+                current_widget,
+                next_widget,
+            )
+
+    def _setup_keyboard_shortcuts(self):
+        self.save_shortcut = QShortcut(
+            QKeySequence("Ctrl+S"),
+            self,
+        )
+
+        self.save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+
+        self.save_shortcut.activated.connect(self.save_draft)
+
+        self.complete_shortcut = QShortcut(
+            QKeySequence("Ctrl+Return"),
+            self,
+        )
+
+        self.complete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+
+        self.complete_shortcut.activated.connect(self._complete_from_shortcut)
+
+        self.complete_enter_shortcut = QShortcut(
+            QKeySequence("Ctrl+Enter"),
+            self,
+        )
+
+        self.complete_enter_shortcut.setContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut
+        )
+
+        self.complete_enter_shortcut.activated.connect(self._complete_from_shortcut)
+
+    def _complete_from_shortcut(self):
+        if not self.complete_button.isEnabled():
+            return
+
+        self.complete_survey()
 
     def init_ui(self):
         root_layout = QVBoxLayout(self)
@@ -81,9 +173,9 @@ class SluiceGatePage(QWidget):
         root_layout.addWidget(self.title_label)
 
         description = QLabel(
-            "当前正在补全附表2.2基本信息。"
-            "新增字段本阶段仅完成界面，"
-            "下一阶段再接入保存和草稿回填。"
+            "填写附表2.2基本信息、分项评价及调查结论。"
+            "草稿允许暂时不完整；"
+            "完成调查前系统将检查全部必填内容。"
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #607080; font-size: 14px;")
@@ -171,7 +263,7 @@ class SluiceGatePage(QWidget):
 
         # 桩号
         self.stake_edit = QLineEdit()
-        self.stake_edit.setPlaceholderText("例如：K12+350")
+        self.stake_edit.setPlaceholderText("例如：CH12+350")
 
         # 设计流量
         self.design_flow_edit = self._create_decimal_edit("例如：4.5，可留空")
@@ -182,11 +274,13 @@ class SluiceGatePage(QWidget):
 
         # 建成年月
         self.build_date_edit = self._create_month_edit()
-        self.build_date_edit.setPlaceholderText("例如：2008-06，可留空")
+        self.build_date_edit.setPlaceholderText("直接输入6位数字，例如：200806")
 
         # 加固改造年月
         self.renovation_date_edit = self._create_month_edit()
-        self.renovation_date_edit.setPlaceholderText("例如：2021-09，可留空")
+        self.renovation_date_edit.setPlaceholderText(
+            "直接输入6位数字，例如：202109，可留空"
+        )
 
         # 加大流量
         self.increased_flow_edit = self._create_decimal_edit("可留空")
@@ -318,32 +412,44 @@ class SluiceGatePage(QWidget):
         conclusion_layout.setVerticalSpacing(12)
 
         # 工程状况类别
-        self.overall_grade_combo = QComboBox()
+        self.overall_grade_widget = QWidget()
 
-        self.overall_grade_combo.addItem(
-            "未确定",
-            None,
+        overall_grade_layout = QHBoxLayout(self.overall_grade_widget)
+
+        overall_grade_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
         )
-        self.overall_grade_combo.addItem(
+
+        overall_grade_layout.setSpacing(20)
+
+        self.overall_grade_group = QButtonGroup(self)
+
+        self.overall_grade_group.setExclusive(True)
+
+        self.overall_grade_buttons = {}
+
+        for grade in (
             "A",
-            "A",
-        )
-        self.overall_grade_combo.addItem(
             "B",
-            "B",
-        )
-        self.overall_grade_combo.addItem(
             "C",
-            "C",
-        )
-        self.overall_grade_combo.addItem(
             "D",
-            "D",
-        )
+        ):
+            button = QRadioButton(grade)
+
+            self.overall_grade_group.addButton(button)
+
+            self.overall_grade_buttons[grade] = button
+
+            overall_grade_layout.addWidget(button)
+
+        overall_grade_layout.addStretch()
 
         # 调查时间
         self.survey_date_edit = self._create_date_edit()
-        self.survey_date_edit.setPlaceholderText("例如：2026-09-12，可留空")
+        self.survey_date_edit.setPlaceholderText("直接输入8位数字，例如：20260913")
 
         # 调查意见与建议
         self.survey_comment_edit = QPlainTextEdit()
@@ -352,7 +458,7 @@ class SluiceGatePage(QWidget):
 
         conclusion_layout.addRow(
             "工程状况类别：",
-            self.overall_grade_combo,
+            self.overall_grade_widget,
         )
 
         conclusion_layout.addRow(
@@ -382,31 +488,86 @@ class SluiceGatePage(QWidget):
 
         button_layout = QHBoxLayout()
 
+        # 返回
         back_button = QPushButton("返回列表")
         back_button.clicked.connect(self.request_back)
+
+        # 快捷键提示
+        shortcut_hint = QLabel("快捷键：Ctrl+S 保存　|　Ctrl+Enter 完成调查")
+        shortcut_hint.setStyleSheet("color: #607080;")
+
+        # 保存
+        self.save_button = QPushButton("保存草稿")
+        self.save_button.setMinimumWidth(120)
+        self.save_button.setToolTip("保存当前内容（Ctrl+S）")
+        self.save_button.clicked.connect(self.save_draft)
+
+        # 完成
+        self.complete_button = QPushButton("完成调查")
+        self.complete_button.setMinimumWidth(120)
+        self.complete_button.setToolTip("完成调查（Ctrl+Enter）")
+
+        # 新增记录允许直接完成。
+        # 完成时仍会先执行完整校验和保存逻辑。
+        self.complete_button.setEnabled(True)
+
+        self.complete_button.clicked.connect(self.complete_survey)
+
+        # =========================
+        # 布局
+        # =========================
 
         button_layout.addWidget(back_button)
 
         button_layout.addStretch()
 
-        self.save_button = QPushButton("保存草稿")
-        self.save_button.setMinimumWidth(120)
-        self.save_button.clicked.connect(self.save_draft)
+        button_layout.addWidget(shortcut_hint)
 
-        self.complete_button = QPushButton("完成调查")
-        self.complete_button.setMinimumWidth(120)
-
-        # 新增记录也允许直接完成。
-        # 点击完成时会先自动创建并保存草稿。
-        self.complete_button.setEnabled(True)
-
-        self.complete_button.clicked.connect(self.complete_survey)
+        button_layout.addSpacing(12)
 
         button_layout.addWidget(self.save_button)
 
         button_layout.addWidget(self.complete_button)
 
         root_layout.addLayout(button_layout)
+
+    def _get_overall_grade(self):
+        """
+        获取当前选择的工程状况类别。
+        """
+
+        for grade, button in self.overall_grade_buttons.items():
+            if button.isChecked():
+                return grade
+
+        return None
+
+    def _set_overall_grade(
+        self,
+        grade,
+    ):
+        """
+        回填工程状况类别。
+        """
+
+        self._clear_overall_grade()
+
+        button = self.overall_grade_buttons.get(grade)
+
+        if button is not None:
+            button.setChecked(True)
+
+    def _clear_overall_grade(self):
+        """
+        清空工程状况类别。
+        """
+
+        self.overall_grade_group.setExclusive(False)
+
+        for button in self.overall_grade_buttons.values():
+            button.setChecked(False)
+
+        self.overall_grade_group.setExclusive(True)
 
     def _connect_dirty_tracking(self):
         """
@@ -441,15 +602,16 @@ class SluiceGatePage(QWidget):
             self.department_combo,
             self.office_combo,
             self.canal_combo,
-            self.overall_grade_combo,
         ]
 
         for combo in user_combos:
             # activated 只在用户操作下拉框时触发。
             combo.activated.connect(self._mark_dirty)
 
-        for combo in self.evaluation_section.get_grade_combos().values():
-            combo.activated.connect(self._mark_dirty)
+        for button in self.overall_grade_buttons.values():
+            button.clicked.connect(self._mark_dirty)
+
+        self.evaluation_section.grade_changed.connect(self._mark_dirty)
 
         # QPlainTextEdit 没有 textEdited，
         # 因此使用 textChanged。
@@ -521,7 +683,8 @@ class SluiceGatePage(QWidget):
             title="四、分项评价",
             evaluation_items=(SLUICE_GATE_EVALUATION_ITEMS),
             description=(
-                "各分项可选择 A、B、C、D。" "选择等级后，下方显示" "对应评价标准。"
+                "各项目始终显示 A、B、C、D 四级评价标准，"
+                "请根据现场情况直接选择对应等级。"
             ),
         )
 
@@ -561,11 +724,10 @@ class SluiceGatePage(QWidget):
         self.crack_width_limit_edit.setEnabled(enabled)
 
         # 分项评价
-        for combo in self.evaluation_section.get_grade_combos().values():
-            combo.setEnabled(enabled)
+        self.evaluation_section.set_editable(enabled)
 
         # 调查结论
-        self.overall_grade_combo.setEnabled(enabled)
+        self.overall_grade_widget.setEnabled(enabled)
         self.survey_date_edit.setEnabled(enabled)
         self.survey_comment_edit.setEnabled(enabled)
 
@@ -637,23 +799,74 @@ class SluiceGatePage(QWidget):
 
         return edit
 
+    def _format_month_input(
+        self,
+        edit,
+        text,
+    ):
+        """
+        年月高速录入。
+
+        例如：
+        200806 -> 2008-06
+        """
+
+        digits = "".join(char for char in text if char.isdigit())[:6]
+
+        if len(digits) <= 4:
+            formatted = digits
+        else:
+            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
+
+        if formatted != text:
+            edit.setText(formatted)
+            edit.setCursorPosition(len(formatted))
+
+    def _format_date_input(
+        self,
+        edit,
+        text,
+    ):
+        """
+        完整日期高速录入。
+
+        例如：
+        20260913 -> 2026-09-13
+        """
+
+        digits = "".join(char for char in text if char.isdigit())[:8]
+
+        if len(digits) <= 4:
+            formatted = digits
+
+        elif len(digits) <= 6:
+            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
+
+        else:
+            formatted = f"{digits[:4]}-" f"{digits[4:6]}-" f"{digits[6:8]}"
+
+        if formatted != text:
+            edit.setText(formatted)
+            edit.setCursorPosition(len(formatted))
+
     def _create_date_edit(self):
         """
-        创建 YYYY-MM-DD 格式日期输入框。
+        创建日期输入框。
+
+        用户可直接连续输入8位数字，
+        系统自动格式化为 YYYY-MM-DD。
         """
+
         edit = QLineEdit()
+
         edit.setMaxLength(10)
 
-        expression = QRegularExpression(
-            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
+        edit.textEdited.connect(
+            lambda text, target=edit: self._format_date_input(
+                target,
+                text,
+            )
         )
-
-        validator = QRegularExpressionValidator(
-            expression,
-            edit,
-        )
-
-        edit.setValidator(validator)
 
         return edit
 
@@ -682,22 +895,22 @@ class SluiceGatePage(QWidget):
 
     def _create_month_edit(self):
         """
-        创建 YYYY-MM 格式的年月输入框。
+        创建年月输入框。
 
-        当前只负责输入格式控制，
-        下一阶段保存时再做最终业务校验。
+        用户可直接连续输入6位数字，
+        系统自动格式化为 YYYY-MM。
         """
+
         edit = QLineEdit()
+
         edit.setMaxLength(7)
 
-        expression = QRegularExpression(r"^\d{4}-(0[1-9]|1[0-2])$")
-
-        validator = QRegularExpressionValidator(
-            expression,
-            edit,
+        edit.textEdited.connect(
+            lambda text, target=edit: self._format_month_input(
+                target,
+                text,
+            )
         )
-
-        edit.setValidator(validator)
 
         return edit
 
@@ -1003,7 +1216,7 @@ class SluiceGatePage(QWidget):
                 "调查时间",
             )
 
-            overall_grade = self.overall_grade_combo.currentData()
+            overall_grade = self._get_overall_grade()
 
             survey_comment = self.survey_comment_edit.toPlainText().strip() or None
 
@@ -1029,16 +1242,6 @@ class SluiceGatePage(QWidget):
                 self.editing_record_id = result["survey_record_id"]
                 self.editing_record_status = "draft"
 
-                message = (
-                    "水闸调查草稿已保存。\n\n"
-                    f"业务编号："
-                    f"{result['business_code']}\n"
-                    f"工程对象ID："
-                    f"{result['engineering_asset_id']}\n"
-                    f"调查记录ID："
-                    f"{result['survey_record_id']}"
-                )
-
             else:
                 update_sluice_gate_draft(
                     survey_record_id=self.editing_record_id,
@@ -1051,11 +1254,6 @@ class SluiceGatePage(QWidget):
                     overall_grade=overall_grade,
                     survey_comment=survey_comment,
                 )
-
-                if self.editing_record_status == "completed":
-                    message = "已完成调查记录已更新。\n\n" f"业务编号：{business_code}"
-                else:
-                    message = "水闸调查草稿已更新。\n\n" f"业务编号：{business_code}"
 
             # 工程归属一旦建立，不允许直接修改。
             self.department_combo.setEnabled(False)
@@ -1077,6 +1275,11 @@ class SluiceGatePage(QWidget):
             self.is_dirty = False
 
             self.survey_saved.emit()
+
+            if self.editing_record_status == "completed":
+                message = "当前修改已保存。\n\n" f"业务编号：{business_code}"
+            else:
+                message = "当前调查内容已保存。\n\n" f"业务编号：{business_code}"
 
             if show_message:
                 QMessageBox.information(
@@ -1177,7 +1380,7 @@ class SluiceGatePage(QWidget):
             missing_fields.append("调查意见与建议")
 
         # 工程状况类别
-        if self.overall_grade_combo.currentData() not in (
+        if self._get_overall_grade() not in (
             "A",
             "B",
             "C",
@@ -1324,7 +1527,51 @@ class SluiceGatePage(QWidget):
     def prepare_new(self):
         """
         切换到新增模式。
+
+        连续录入时优先沿用上一条记录的
+        基层处、水管所和渠系，
+        调查日期默认当天。
         """
+
+        # =========================================================
+        # 记录上一条调查的归属
+        # =========================================================
+
+        previous_department_data = self.department_combo.currentData()
+        previous_office_data = self.office_combo.currentData()
+        previous_canal_data = self.canal_combo.currentData()
+
+        previous_department_id = (
+            previous_department_data.get("id")
+            if isinstance(
+                previous_department_data,
+                dict,
+            )
+            else None
+        )
+
+        previous_office_id = (
+            previous_office_data.get("id")
+            if isinstance(
+                previous_office_data,
+                dict,
+            )
+            else None
+        )
+
+        previous_canal_id = (
+            previous_canal_data.get("id")
+            if isinstance(
+                previous_canal_data,
+                dict,
+            )
+            else None
+        )
+
+        # =========================================================
+        # 新增状态
+        # =========================================================
+
         self.editing_record_id = None
         self.editing_record_status = None
 
@@ -1338,6 +1585,10 @@ class SluiceGatePage(QWidget):
         self.department_combo.setEnabled(True)
         self.office_combo.setEnabled(True)
         self.canal_combo.setEnabled(True)
+
+        # =========================================================
+        # 清空上一条工程数据
+        # =========================================================
 
         self.name_edit.clear()
         self.stake_edit.clear()
@@ -1359,14 +1610,53 @@ class SluiceGatePage(QWidget):
 
         self.cover_thickness_edit.clear()
         self.crack_width_limit_edit.clear()
+
         self._clear_evaluation_controls()
 
-        self.overall_grade_combo.setCurrentIndex(0)
-        self.survey_date_edit.clear()
+        self._clear_overall_grade()
+
         self.survey_comment_edit.clear()
 
+        # =========================================================
+        # 加载当前有效组织机构，并恢复上一条归属
+        # =========================================================
+
         self.load_departments()
+
+        department_restored = False
+        office_restored = False
+
+        if previous_department_id is not None:
+            department_restored = self._set_combo_by_id(
+                self.department_combo,
+                previous_department_id,
+            )
+
+        if department_restored:
+            self.department_changed()
+
+            if previous_office_id is not None:
+                office_restored = self._set_combo_by_id(
+                    self.office_combo,
+                    previous_office_id,
+                )
+
+            if office_restored:
+                self.office_changed()
+
+                if previous_canal_id is not None:
+                    self._set_combo_by_id(
+                        self.canal_combo,
+                        previous_canal_id,
+                    )
+
         self.update_business_code()
+
+        # =========================================================
+        # 调查日期默认当天
+        # =========================================================
+
+        self.survey_date_edit.setText(datetime.now().strftime("%Y-%m-%d"))
 
         # 页面初始化产生的程序性变化
         # 不属于用户未保存修改。
@@ -1533,20 +1823,7 @@ class SluiceGatePage(QWidget):
 
         self.survey_comment_edit.setPlainText(survey_comment or "")
 
-        overall_grade = record.get("overall_grade")
-
-        if overall_grade in (
-            "A",
-            "B",
-            "C",
-            "D",
-        ):
-            index = self.overall_grade_combo.findData(overall_grade)
-
-            if index >= 0:
-                self.overall_grade_combo.setCurrentIndex(index)
-        else:
-            self.overall_grade_combo.setCurrentIndex(0)
+        self._set_overall_grade(record.get("overall_grade"))
 
         # 编辑模式暂时禁止修改工程归属
         self.department_combo.setEnabled(False)

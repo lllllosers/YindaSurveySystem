@@ -3,11 +3,11 @@ import re
 
 def _format_stake(total_meters: float) -> str:
     """
-    将米数转换成标准桩号显示形式。
+    将米数转换成引大入秦工程标准桩号显示形式。
 
     例如：
-    12350 -> K12+350
-    12005.5 -> K12+005.5
+    12350 -> CH12+350
+    12005.5 -> CH12+005.5
     """
     km = int(total_meters // 1000)
     meters = total_meters - km * 1000
@@ -18,25 +18,31 @@ def _format_stake(total_meters: float) -> str:
         meter_text = f"{meters:.3f}".rstrip("0").rstrip(".")
 
         integer_part, decimal_part = meter_text.split(".")
-        meter_text = f"{int(integer_part):03d}." f"{decimal_part}"
+        meter_text = f"{int(integer_part):03d}.{decimal_part}"
 
-    return f"K{km}+{meter_text}"
+    return f"CH{km}+{meter_text}"
 
 
 def parse_stake(value: str) -> tuple[str | None, float | None]:
     """
     解析常见桩号输入。
 
-    支持：
+    正式标准格式：
+    CH12+350
+
+    为提高录入效率并兼容开发阶段旧数据，同时支持：
+    CH12+350
     K12+350
     12+350
     12350
+
+    无论采用哪种有效输入形式，均统一返回 CH 格式。
 
     返回：
     (标准显示值, 米数)
 
     例如：
-    ("K12+350", 12350.0)
+    ("CH12+350", 12350.0)
     """
 
     text = value.strip().upper().replace(" ", "")
@@ -44,9 +50,12 @@ def parse_stake(value: str) -> tuple[str | None, float | None]:
     if not text:
         return None, None
 
-    # K12+350 或 12+350
+    # CH12+350、K12+350 或 12+350
+    #
+    # K 前缀仅用于兼容开发阶段已经存在的旧格式，
+    # 新数据统一标准化为 CH。
     match = re.fullmatch(
-        r"K?(\d+)\+(\d+(?:\.\d+)?)",
+        r"(?:(?:CH|K))?(\d+)\+(\d+(?:\.\d+)?)",
         text,
     )
 
@@ -67,15 +76,17 @@ def parse_stake(value: str) -> tuple[str | None, float | None]:
 
         return _format_stake(total), total
 
-    raise ValueError("桩号格式不正确，请输入例如 K12+350。")
+    raise ValueError("桩号格式不正确，请输入例如 CH12+350。")
 
 
 if __name__ == "__main__":
     examples = [
+        "CH12+350",
+        "ch12+350",
         "K12+350",
         "12+350",
         "12350",
-        "K1+005.5",
+        "CH1+005.5",
     ]
 
     for example in examples:

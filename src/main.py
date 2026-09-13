@@ -5,7 +5,11 @@ from database import (
     get_survey_readiness,
     init_database,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import (
+    QLibraryInfo,
+    QTranslator,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -64,11 +68,11 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(16, 20, 16, 20)
         sidebar_layout.setSpacing(10)
 
-        app_title = QLabel("引大调查")
+        app_title = QLabel("引大入秦工程")
         app_title.setObjectName("appTitle")
         sidebar_layout.addWidget(app_title)
 
-        subtitle = QLabel("数据采集系统")
+        subtitle = QLabel("现状调查采集系统")
         subtitle.setObjectName("appSubtitle")
         sidebar_layout.addWidget(subtitle)
 
@@ -76,7 +80,7 @@ class MainWindow(QMainWindow):
 
         nav_items = [
             "首页",
-            "本次调查",
+            "调查录入",
             "工程台账",
             "数据查询",
             "成果导出",
@@ -287,7 +291,7 @@ class MainWindow(QMainWindow):
                 f"{missing_items}\n\n"
                 "请进入“项目与批次”或"
                 "“基础资料”完成配置后，"
-                "再进入本次调查。"
+                "再进入调查录入。"
             ),
         )
 
@@ -304,7 +308,7 @@ class MainWindow(QMainWindow):
         # =========================
 
         if page_name in (
-            "本次调查",
+            "调查录入",
             "工程台账",
         ):
             if not self.has_active_survey_context():
@@ -323,13 +327,13 @@ class MainWindow(QMainWindow):
         # 调查基础资料完整性检查
         # =========================
 
-        if page_name == "本次调查":
+        if page_name == "调查录入":
             if not self.can_start_survey():
                 return
 
-        # 如果正在“本次调查”中编辑表单，
+        # 如果正在“调查录入”中编辑表单，
         # 离开主模块前先检查未保存修改。
-        if self.current_page_name == "本次调查":
+        if self.current_page_name == "调查录入":
             survey_page = getattr(
                 self,
                 "survey_page",
@@ -344,7 +348,7 @@ class MainWindow(QMainWindow):
 
         self.clear_content()
 
-        if page_name == "本次调查":
+        if page_name == "调查录入":
             self.survey_page = SurveyPage()
 
             self.content_layout.addWidget(self.survey_page)
@@ -392,7 +396,7 @@ class MainWindow(QMainWindow):
         # 1. 未保存修改保护
         # =========================
 
-        if self.current_page_name == "本次调查":
+        if self.current_page_name == "调查录入":
             survey_page = getattr(
                 self,
                 "survey_page",
@@ -474,6 +478,27 @@ def main():
     create_initial_forms()
 
     app = QApplication(sys.argv)
+
+    # =========================
+    # Qt 标准界面中文化
+    # =========================
+    #
+    # QMessageBox、QDialogButtonBox 等 Qt 标准控件
+    # 默认按钮文字可能受操作系统语言影响，
+    # 例如 Save / Discard / Cancel / Yes / No。
+    #
+    # 本系统界面统一使用简体中文，
+    # 因此主动加载 Qt 官方简体中文翻译。
+    #
+    qt_translator = QTranslator(app)
+
+    translations_path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+
+    if qt_translator.load(
+        "qtbase_zh_CN",
+        translations_path,
+    ):
+        app.installTranslator(qt_translator)
 
     window = MainWindow()
     window.show()

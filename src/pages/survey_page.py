@@ -115,12 +115,12 @@ class SurveyPage(QWidget):
         layout = QVBoxLayout(page)
         layout.setSpacing(16)
 
-        title = QLabel("本次调查")
+        title = QLabel("调查录入")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
 
         layout.addWidget(title)
 
-        description = QLabel("附表2工程调查")
+        description = QLabel("工程设施现状调查与评价")
 
         layout.addWidget(description)
 
