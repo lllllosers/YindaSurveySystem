@@ -11,12 +11,18 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
+    QMenu,
 )
 
 from database import (
     delete_lined_channel_section_record,
     get_current_context,
     get_lined_channel_section_records,
+)
+from services.lined_channel_export import (
+    export_lined_channel_original_form,
+    export_lined_channel_summary,
 )
 
 
@@ -64,9 +70,24 @@ class LinedChannelSectionListPage(QWidget):
         delete_button = QPushButton("删除选中记录")
         delete_button.clicked.connect(self.delete_selected_record)
 
+        export_button = QPushButton("导出Excel")
+
+        export_menu = QMenu(export_button)
+
+        summary_action = export_menu.addAction("数据汇总（当前筛选结果）")
+
+        original_action = export_menu.addAction("附表2.1原表（当前选中记录）")
+
+        summary_action.triggered.connect(self.export_summary_excel)
+
+        original_action.triggered.connect(self.export_original_excel)
+
+        export_button.setMenu(export_menu)
+
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
         button_layout.addWidget(refresh_button)
+        button_layout.addWidget(export_button)
         button_layout.addWidget(delete_button)
         button_layout.addStretch()
 
@@ -532,6 +553,202 @@ class LinedChannelSectionListPage(QWidget):
             return None
 
         return int(value)
+
+    # =========================================================
+    # Excel 导出
+    # =========================================================
+
+    def export_original_excel(self):
+        """
+        导出当前选中记录为附表2.1原表。
+        """
+
+        survey_record_id = self._get_selected_record_id()
+
+        if survey_record_id is None:
+            QMessageBox.warning(
+                self,
+                "未选择记录",
+                ("请先选择一条渠道渠段" "调查记录，再导出附表2.1原表。"),
+            )
+            return
+
+        selected_record = next(
+            (
+                record
+                for record in self.all_records
+                if record["survey_record_id"] == survey_record_id
+            ),
+            None,
+        )
+
+        if selected_record is None:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                "没有找到当前选中的调查记录。",
+            )
+            return
+
+        business_code = selected_record["business_code"] or ""
+
+        asset_name = selected_record["asset_name"] or "渠道渠段"
+
+        invalid_chars = '\\/:*?"<>|'
+
+        safe_business_code = business_code
+
+        safe_asset_name = asset_name
+
+        for char in invalid_chars:
+            safe_business_code = safe_business_code.replace(
+                char,
+                "_",
+            )
+
+            safe_asset_name = safe_asset_name.replace(
+                char,
+                "_",
+            )
+
+        default_name = (
+            "附表2.1_防渗衬砌渠道渠段"
+            "工程状况调查表_"
+            f"{safe_business_code}_"
+            f"{safe_asset_name}.xlsx"
+        )
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出附表2.1原表",
+            default_name,
+            "Excel 工作簿 (*.xlsx)",
+        )
+
+        if not file_path:
+            return
+
+        if not (file_path.lower().endswith(".xlsx")):
+            file_path += ".xlsx"
+
+        try:
+            result = export_lined_channel_original_form(
+                survey_record_id=(survey_record_id),
+                file_path=file_path,
+            )
+
+            QMessageBox.information(
+                self,
+                "导出成功",
+                (
+                    "附表2.1原表已导出。\n\n"
+                    f"渠道名称："
+                    f"{result['asset_name']}\n"
+                    f"业务编号："
+                    f"{result['business_code']}\n\n"
+                    f"保存位置：\n"
+                    f"{result['file_path']}"
+                ),
+            )
+
+        except PermissionError:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                (
+                    "无法写入目标 Excel 文件。\n\n"
+                    "如果该文件正在 Excel 中打开，"
+                    "请先关闭文件后重新导出。"
+                ),
+            )
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                str(error),
+            )
+
+    def export_summary_excel(self):
+        """
+        将当前筛选结果导出为汇总 Excel。
+        """
+
+        if not self.filtered_records:
+            QMessageBox.warning(
+                self,
+                "没有可导出数据",
+                ("当前筛选结果为空，" "无法导出 Excel。"),
+            )
+            return
+
+        batch_name = "当前批次"
+
+        if self.current_context:
+            current_batch_name = self.current_context["batch_name"]
+
+            if current_batch_name:
+                batch_name = str(current_batch_name)
+
+        invalid_chars = '\\/:*?"<>|'
+
+        for char in invalid_chars:
+            batch_name = batch_name.replace(
+                char,
+                "_",
+            )
+
+        default_name = "附表2.1_渠道渠段调查汇总_" f"{batch_name}.xlsx"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出渠道渠段调查数据汇总",
+            default_name,
+            "Excel 工作簿 (*.xlsx)",
+        )
+
+        if not file_path:
+            return
+
+        if not (file_path.lower().endswith(".xlsx")):
+            file_path += ".xlsx"
+
+        try:
+            result = export_lined_channel_summary(
+                records=(self.filtered_records),
+                file_path=file_path,
+            )
+
+            QMessageBox.information(
+                self,
+                "导出成功",
+                (
+                    "渠道渠段调查数据汇总已导出。"
+                    "\n\n"
+                    f"导出记录数："
+                    f"{result['exported_count']}\n"
+                    f"保存位置：\n"
+                    f"{result['file_path']}"
+                ),
+            )
+
+        except PermissionError:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                (
+                    "无法写入目标 Excel 文件。\n\n"
+                    "如果该文件正在 Excel 中打开，"
+                    "请先关闭文件后重新导出。"
+                ),
+            )
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "导出失败",
+                str(error),
+            )
 
     # =========================================================
     # 删除

@@ -69,7 +69,7 @@ class SluiceGateListPage(QWidget):
         delete_button = QPushButton("删除选中记录")
         delete_button.clicked.connect(self.delete_selected_record)
 
-        export_button = QPushButton("导出汇总")
+        export_button = QPushButton("导出Excel")
 
         export_menu = QMenu(export_button)
 

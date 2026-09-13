@@ -6,6 +6,8 @@ import time
 import unittest
 from pathlib import Path
 
+from openpyxl import load_workbook
+
 # =========================
 # 让测试可以导入 src
 # =========================
@@ -25,6 +27,10 @@ import database
 
 from services.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
+)
+from services.lined_channel_export import (
+    export_lined_channel_original_form,
+    export_lined_channel_summary,
 )
 
 
@@ -981,6 +987,199 @@ class LinedChannelWorkflowTestCase(unittest.TestCase):
             inspection_count,
             0,
         )
+
+    def test_export_lined_channel_summary(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="汇总导出测试渠段",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data=(self._full_record_data()),
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+            inspection_results=(self._full_inspection_results()),
+            survey_date="2026-09-13",
+            overall_grade="B",
+            survey_comment="汇总导出测试意见",
+        )
+
+        self.assertIsNotNone(result["survey_record_id"])
+
+        records = database.get_lined_channel_section_records(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+        )
+
+        file_path = Path(self.temp_directory.name) / "lined_channel_summary.xlsx"
+
+        export_result = export_lined_channel_summary(
+            records=records,
+            file_path=file_path,
+        )
+
+        self.assertEqual(
+            export_result["exported_count"],
+            1,
+        )
+
+        self.assertTrue(file_path.exists())
+
+        workbook = load_workbook(file_path)
+
+        worksheet = workbook["渠道渠段调查汇总"]
+
+        self.assertEqual(
+            worksheet["A1"].value,
+            "序号",
+        )
+
+        self.assertEqual(
+            worksheet["C2"].value,
+            "汇总导出测试渠段",
+        )
+
+        self.assertEqual(
+            worksheet["G2"].value,
+            "K10+000",
+        )
+
+        self.assertEqual(
+            worksheet["H2"].value,
+            "K11+000",
+        )
+
+        self.assertEqual(
+            worksheet["I2"].value,
+            1000.0,
+        )
+
+        # 第30列开始为12项评价
+        self.assertEqual(
+            worksheet.cell(
+                row=2,
+                column=30,
+            ).value,
+            "A",
+        )
+
+        # 第42列为工程状况类别
+        self.assertEqual(
+            worksheet.cell(
+                row=2,
+                column=42,
+            ).value,
+            "B",
+        )
+
+        workbook.close()
+
+    def test_export_lined_channel_original_form(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_1")
+
+        result = database.create_lined_channel_section_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(form_version["id"]),
+            asset_name="原表导出测试渠段",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=self.canal_id,
+            business_code=("1-01-01-01-001"),
+            record_data=(self._full_record_data()),
+            start_stake_text="K10+000",
+            start_stake_value=10000.0,
+            end_stake_text="K11+000",
+            end_stake_value=11000.0,
+            inspection_results=(self._full_inspection_results()),
+            survey_date="2026-09-13",
+            overall_grade="C",
+            survey_comment="原表导出测试意见",
+        )
+
+        file_path = Path(self.temp_directory.name) / "lined_channel_original.xlsx"
+
+        export_result = export_lined_channel_original_form(
+            survey_record_id=(result["survey_record_id"]),
+            file_path=file_path,
+        )
+
+        self.assertTrue(file_path.exists())
+
+        self.assertEqual(
+            export_result["business_code"],
+            "1-01-01-01-001",
+        )
+
+        workbook = load_workbook(file_path)
+
+        worksheet = workbook["附表2.1"]
+
+        self.assertEqual(
+            worksheet["B5"].value,
+            "原表导出测试渠段",
+        )
+
+        self.assertEqual(
+            worksheet["H5"].value,
+            "K10+000 ～ K11+000",
+        )
+
+        self.assertEqual(
+            worksheet["B6"].value,
+            1000.0,
+        )
+
+        self.assertEqual(
+            worksheet["D6"].value,
+            "2008-06",
+        )
+
+        self.assertEqual(
+            worksheet["H6"].value,
+            "1/2000",
+        )
+
+        self.assertEqual(
+            worksheet["E11"].value,
+            "A",
+        )
+
+        self.assertEqual(
+            worksheet["E22"].value,
+            "A",
+        )
+
+        self.assertEqual(
+            worksheet["C23"].value,
+            "原表导出测试意见",
+        )
+
+        self.assertEqual(
+            worksheet["J23"].value,
+            "C",
+        )
+
+        self.assertEqual(
+            worksheet["J24"].value,
+            "2026-09-13",
+        )
+
+        self.assertEqual(
+            worksheet["H7"].value,
+            "1:1.5/1:1.5",
+        )
+
+        workbook.close()
 
 
 if __name__ == "__main__":
