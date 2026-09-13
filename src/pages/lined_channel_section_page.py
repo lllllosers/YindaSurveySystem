@@ -48,6 +48,9 @@ from services.business_code import (
 )
 
 from services.stake import parse_stake
+from pages.components.evaluation_section import (
+    EvaluationSection,
+)
 
 
 class LinedChannelSectionPage(QWidget):
@@ -64,8 +67,8 @@ class LinedChannelSectionPage(QWidget):
         self.form_version = None
 
         self.is_dirty = False
-        self.evaluation_grade_combos = {}
-        self.evaluation_standard_labels = {}
+
+        self.evaluation_section: EvaluationSection
 
         self.init_ui()
         self._connect_dirty_tracking()
@@ -444,166 +447,36 @@ class LinedChannelSectionPage(QWidget):
     # UI helpers
     # =========================================================
     def _create_evaluation_group(self):
-        evaluation_group = QGroupBox("五、分项评价")
+        """
+        创建附表2.1分项评价区域。
 
-        evaluation_layout = QVBoxLayout(evaluation_group)
-        evaluation_layout.setSpacing(14)
+        实际控件生成、标准显示、
+        回填和结果收集由公共组件负责。
+        """
 
-        description = QLabel(
-            "各项目选择 A、B、C、D 后，" "系统显示原调查表对应评价标准。"
+        self.evaluation_section = EvaluationSection(
+            title="五、分项评价",
+            evaluation_items=(LINED_CHANNEL_EVALUATION_ITEMS),
+            description=("各项目选择 A、B、C、D 后，" "系统显示原调查表对应评价标准。"),
         )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #607080;")
 
-        evaluation_layout.addWidget(description)
+        return self.evaluation_section
 
-        categories = {}
-
-        for item in LINED_CHANNEL_EVALUATION_ITEMS:
-            category = item["category"]
-
-            categories.setdefault(
-                category,
-                [],
-            ).append(item)
-
-        for category, items in categories.items():
-            category_group = QGroupBox(category)
-
-            category_layout = QVBoxLayout(category_group)
-
-            for item in items:
-                item_widget = QWidget()
-
-                item_layout = QVBoxLayout(item_widget)
-
-                item_layout.setContentsMargins(
-                    8,
-                    4,
-                    8,
-                    8,
-                )
-
-                header_layout = QHBoxLayout()
-
-                item_label = QLabel(item["item_name"])
-                item_label.setMinimumWidth(180)
-
-                grade_combo = QComboBox()
-                grade_combo.setMinimumWidth(120)
-
-                grade_combo.addItem(
-                    "未评价",
-                    None,
-                )
-
-                for grade in (
-                    "A",
-                    "B",
-                    "C",
-                    "D",
-                ):
-                    grade_combo.addItem(
-                        grade,
-                        grade,
-                    )
-
-                header_layout.addWidget(item_label)
-                header_layout.addStretch()
-                header_layout.addWidget(grade_combo)
-
-                item_layout.addLayout(header_layout)
-
-                standard_label = QLabel("尚未选择评价等级。")
-
-                standard_label.setWordWrap(True)
-
-                standard_label.setStyleSheet("color: #607080;" "padding: 4px 8px;")
-
-                item_layout.addWidget(standard_label)
-
-                item_code = item["item_code"]
-
-                self.evaluation_grade_combos[item_code] = grade_combo
-
-                self.evaluation_standard_labels[item_code] = standard_label
-
-                grade_combo.currentIndexChanged.connect(
-                    lambda checked=False, current_item=item, current_combo=grade_combo, current_label=standard_label: self._update_evaluation_standard(
-                        current_item,
-                        current_combo,
-                        current_label,
-                    )
-                )
-
-                category_layout.addWidget(item_widget)
-
-            evaluation_layout.addWidget(category_group)
-
-        return evaluation_group
-
-    def _update_evaluation_standard(
+    def _clear_evaluation_controls(
         self,
-        item,
-        combo,
-        label,
     ):
-        grade = combo.currentData()
-
-        if grade is None:
-            label.setText("尚未选择评价等级。")
-            return
-
-        standard = item["standards"].get(grade) or ""
-
-        label.setText(f"{grade}级标准：{standard}")
-
-    def _clear_evaluation_controls(self):
-        for combo in self.evaluation_grade_combos.values():
-            combo.setCurrentIndex(0)
+        self.evaluation_section.clear()
 
     def _load_evaluation_results(
         self,
         results,
     ):
-        self._clear_evaluation_controls()
+        self.evaluation_section.load_results(results)
 
-        for result in results:
-            combo = self.evaluation_grade_combos.get(result["item_code"])
-
-            if combo is None:
-                continue
-
-            grade = result["grade"]
-
-            index = combo.findData(grade)
-
-            if index >= 0:
-                combo.setCurrentIndex(index)
-
-    def _collect_evaluation_results(self):
-        results = []
-
-        for item in LINED_CHANNEL_EVALUATION_ITEMS:
-            combo = self.evaluation_grade_combos[item["item_code"]]
-
-            grade = combo.currentData()
-
-            if grade is None:
-                continue
-
-            results.append(
-                {
-                    "item_code": (item["item_code"]),
-                    "category": (item["category"]),
-                    "item_name": (item["item_name"]),
-                    "grade": grade,
-                    "description": None,
-                    "remark": None,
-                }
-            )
-
-        return results
+    def _collect_evaluation_results(
+        self,
+    ):
+        return self.evaluation_section.collect_results()
 
     def _setup_form_layout(
         self,
@@ -776,15 +649,7 @@ class LinedChannelSectionPage(QWidget):
         for edit in line_edits:
             edit.textEdited.connect(self._mark_dirty)
 
-        for combo in (
-            self.department_combo,
-            self.office_combo,
-            self.canal_combo,
-            self.overall_grade_combo,
-        ):
-            combo.activated.connect(self._mark_dirty)
-
-        for combo in self.evaluation_grade_combos.values():
+        for combo in self.evaluation_section.get_grade_combos().values():
             combo.activated.connect(self._mark_dirty)
 
         self.survey_comment_edit.textChanged.connect(self._mark_dirty)

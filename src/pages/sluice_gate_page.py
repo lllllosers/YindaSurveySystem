@@ -44,6 +44,10 @@ from services.sluice_gate_evaluation import (
 )
 from services.stake import parse_stake
 
+from pages.components.evaluation_section import (
+    EvaluationSection,
+)
+
 
 class SluiceGatePage(QWidget):
     survey_saved = Signal()
@@ -60,8 +64,7 @@ class SluiceGatePage(QWidget):
 
         # 动态评价控件
         # key = item_code
-        self.evaluation_grade_combos = {}
-        self.evaluation_standard_labels = {}
+        self.evaluation_section: EvaluationSection
 
         self.init_ui()
 
@@ -445,7 +448,7 @@ class SluiceGatePage(QWidget):
             # activated 只在用户操作下拉框时触发。
             combo.activated.connect(self._mark_dirty)
 
-        for combo in self.evaluation_grade_combos.values():
+        for combo in self.evaluation_section.get_grade_combos().values():
             combo.activated.connect(self._mark_dirty)
 
         # QPlainTextEdit 没有 textEdited，
@@ -508,141 +511,21 @@ class SluiceGatePage(QWidget):
 
     def _create_evaluation_group(self):
         """
-        根据附表2.2评价配置，
-        动态生成全部分项评价控件。
+        创建附表2.2分项评价区域。
+
+        实际控件生成、标准显示、
+        回填和结果收集由公共组件负责。
         """
-        evaluation_group = QGroupBox("四、分项评价")
 
-        evaluation_layout = QVBoxLayout(evaluation_group)
-        evaluation_layout.setSpacing(14)
-
-        description = QLabel(
-            "各分项可选择 A、B、C、D。"
-            "选择等级后，下方显示对应评价标准。"
-            "当前阶段评价结果暂不保存。"
+        self.evaluation_section = EvaluationSection(
+            title="四、分项评价",
+            evaluation_items=(SLUICE_GATE_EVALUATION_ITEMS),
+            description=(
+                "各分项可选择 A、B、C、D。" "选择等级后，下方显示" "对应评价标准。"
+            ),
         )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #607080;")
 
-        evaluation_layout.addWidget(description)
-
-        # 按 category 分组
-        categories = {}
-
-        for item in SLUICE_GATE_EVALUATION_ITEMS:
-            category = item["category"]
-
-            if category not in categories:
-                categories[category] = []
-
-            categories[category].append(item)
-
-        for category, items in categories.items():
-            category_group = QGroupBox(category)
-
-            category_layout = QVBoxLayout(category_group)
-            category_layout.setSpacing(12)
-
-            for item in items:
-                item_widget = QWidget()
-
-                item_layout = QVBoxLayout(item_widget)
-                item_layout.setContentsMargins(
-                    8,
-                    4,
-                    8,
-                    8,
-                )
-                item_layout.setSpacing(6)
-
-                # -------------------------
-                # 第一行：项目名称 + 等级选择
-                # -------------------------
-
-                header_layout = QHBoxLayout()
-
-                item_label = QLabel(item["item_name"])
-                item_label.setMinimumWidth(180)
-
-                grade_combo = QComboBox()
-                grade_combo.setMinimumWidth(120)
-
-                grade_combo.addItem(
-                    "未评价",
-                    None,
-                )
-                grade_combo.addItem(
-                    "A",
-                    "A",
-                )
-                grade_combo.addItem(
-                    "B",
-                    "B",
-                )
-                grade_combo.addItem(
-                    "C",
-                    "C",
-                )
-                grade_combo.addItem(
-                    "D",
-                    "D",
-                )
-
-                header_layout.addWidget(item_label)
-                header_layout.addStretch()
-                header_layout.addWidget(grade_combo)
-
-                item_layout.addLayout(header_layout)
-
-                # -------------------------
-                # 第二行：对应等级标准
-                # -------------------------
-
-                standard_label = QLabel("尚未选择评价等级。")
-                standard_label.setWordWrap(True)
-                standard_label.setStyleSheet("color: #607080;" "padding: 4px 8px;")
-
-                item_layout.addWidget(standard_label)
-
-                item_code = item["item_code"]
-
-                self.evaluation_grade_combos[item_code] = grade_combo
-
-                self.evaluation_standard_labels[item_code] = standard_label
-
-                grade_combo.currentIndexChanged.connect(
-                    lambda checked=False, current_item=item, current_combo=grade_combo, current_label=standard_label: self._update_evaluation_standard(
-                        current_item,
-                        current_combo,
-                        current_label,
-                    )
-                )
-
-                category_layout.addWidget(item_widget)
-
-            evaluation_layout.addWidget(category_group)
-
-        return evaluation_group
-
-    def _update_evaluation_standard(
-        self,
-        item,
-        combo,
-        label,
-    ):
-        """
-        根据当前选择的 A/B/C/D，
-        显示对应评价标准。
-        """
-        grade = combo.currentData()
-
-        if grade is None:
-            label.setText("尚未选择评价等级。")
-            return
-
-        standard = item["standards"].get(grade) or ""
-
-        label.setText(f"{grade}级标准：{standard}")
+        return self.evaluation_section
 
     def _set_record_read_only(
         self,
@@ -678,7 +561,7 @@ class SluiceGatePage(QWidget):
         self.crack_width_limit_edit.setEnabled(enabled)
 
         # 分项评价
-        for combo in self.evaluation_grade_combos.values():
+        for combo in self.evaluation_section.get_grade_combos().values():
             combo.setEnabled(enabled)
 
         # 调查结论
@@ -692,79 +575,21 @@ class SluiceGatePage(QWidget):
         if read_only:
             self.complete_button.setEnabled(False)
 
-    def _clear_evaluation_controls(self):
-        """
-        将全部分项评价恢复为未评价。
-        """
-        for combo in self.evaluation_grade_combos.values():
-            combo.setCurrentIndex(0)
+    def _clear_evaluation_controls(
+        self,
+    ):
+        self.evaluation_section.clear()
 
     def _load_evaluation_results(
         self,
         results,
     ):
-        """
-        将数据库中已有的分项评价结果
-        回填到动态生成的评价控件。
-        """
+        self.evaluation_section.load_results(results)
 
-        # 先全部恢复为“未评价”
-        self._clear_evaluation_controls()
-
-        for result in results:
-            item_code = result["item_code"]
-            grade = result["grade"]
-
-            combo = self.evaluation_grade_combos.get(item_code)
-
-            # 数据库里如果存在旧版本/未知项目，
-            # 当前页面直接忽略，避免报错。
-            if combo is None:
-                continue
-
-            if grade not in (
-                "A",
-                "B",
-                "C",
-                "D",
-            ):
-                continue
-
-            index = combo.findData(grade)
-
-            if index >= 0:
-                combo.setCurrentIndex(index)
-
-    def _collect_evaluation_results(self):
-        """
-        收集当前页面已经选择等级的分项评价。
-
-        未评价项目不提交数据库。
-        """
-        results = []
-
-        for item in SLUICE_GATE_EVALUATION_ITEMS:
-            item_code = item["item_code"]
-
-            combo = self.evaluation_grade_combos[item_code]
-
-            grade = combo.currentData()
-
-            if grade is None:
-                continue
-
-            results.append(
-                {
-                    "item_code": item_code,
-                    "category": item["category"],
-                    "item_name": item["item_name"],
-                    "grade": grade,
-                    "description": None,
-                    "remark": None,
-                }
-            )
-
-        return results
+    def _collect_evaluation_results(
+        self,
+    ):
+        return self.evaluation_section.collect_results()
 
     def _create_decimal_edit(
         self,
