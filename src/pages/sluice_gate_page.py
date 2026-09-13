@@ -195,7 +195,7 @@ class SluiceGatePage(QWidget):
             "完成调查前系统将检查全部必填内容。"
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #607080; font-size: 14px;")
+        description.setStyleSheet("color: #607080; font-size: 15px;")
 
         root_layout.addWidget(description)
 

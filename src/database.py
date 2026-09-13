@@ -1143,6 +1143,360 @@ def create_organization_unit(
         return cursor.lastrowid
 
 
+def get_organization_unit(
+    unit_id,
+):
+    """
+    获取单个组织机构。
+    """
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM organization_units
+            WHERE id = ?
+            """,
+            (unit_id,),
+        ).fetchone()
+
+
+def get_organization_unit_usage(
+    unit_id,
+):
+    """
+    获取组织机构引用情况。
+
+    基层处的业务引用同时包括
+    其直属水管所产生的工程和调查记录。
+    """
+
+    with get_connection() as connection:
+        unit = connection.execute(
+            """
+            SELECT
+                id,
+                unit_type
+            FROM organization_units
+            WHERE id = ?
+            """,
+            (unit_id,),
+        ).fetchone()
+
+        if unit is None:
+            raise ValueError("没有找到指定组织机构。")
+
+        child_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM organization_units
+            WHERE parent_id = ?
+            """,
+            (unit_id,),
+        ).fetchone()[0]
+
+        canal_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM canal_units
+            WHERE organization_unit_id = ?
+            """,
+            (unit_id,),
+        ).fetchone()[0]
+
+        asset_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM engineering_assets
+            WHERE organization_unit_id = ?
+            """,
+            (unit_id,),
+        ).fetchone()[0]
+
+        survey_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM survey_records
+            WHERE organization_unit_id = ?
+            """,
+            (unit_id,),
+        ).fetchone()[0]
+
+        descendant_asset_count = 0
+        descendant_survey_count = 0
+
+        if unit["unit_type"] == "department":
+            descendant_asset_count = connection.execute(
+                """
+                    SELECT COUNT(*)
+                    FROM engineering_assets AS ea
+                    JOIN organization_units AS ou
+                        ON ea.organization_unit_id = ou.id
+                    WHERE ou.parent_id = ?
+                    """,
+                (unit_id,),
+            ).fetchone()[0]
+
+            descendant_survey_count = connection.execute(
+                """
+                    SELECT COUNT(*)
+                    FROM survey_records AS sr
+                    JOIN organization_units AS ou
+                        ON sr.organization_unit_id = ou.id
+                    WHERE ou.parent_id = ?
+                    """,
+                (unit_id,),
+            ).fetchone()[0]
+
+        business_reference_count = (
+            asset_count
+            + survey_count
+            + descendant_asset_count
+            + descendant_survey_count
+        )
+
+        return {
+            "child_count": int(child_count),
+            "canal_count": int(canal_count),
+            "asset_count": int(asset_count),
+            "survey_count": int(survey_count),
+            "descendant_asset_count": int(descendant_asset_count),
+            "descendant_survey_count": int(descendant_survey_count),
+            "business_reference_count": int(business_reference_count),
+            "business_code_locked": (business_reference_count > 0),
+            "can_delete": (
+                child_count == 0
+                and canal_count == 0
+                and asset_count == 0
+                and survey_count == 0
+            ),
+        }
+
+
+def update_organization_unit(
+    unit_id,
+    name,
+    business_code=None,
+    parent_id=None,
+    description=None,
+):
+    """
+    修改组织机构。
+
+    已产生工程/调查业务数据时：
+    - 名称、备注仍允许修改；
+    - 业务代码禁止修改；
+    - 水管所所属基层处禁止修改。
+    """
+
+    name = str(name or "").strip()
+
+    business_code = str(business_code).strip() if business_code is not None else ""
+
+    description = str(description).strip() if description is not None else ""
+
+    if not name:
+        raise ValueError("组织机构名称不能为空。")
+
+    current = get_organization_unit(unit_id)
+
+    if current is None:
+        raise ValueError("没有找到指定组织机构。")
+
+    unit_type = current["unit_type"]
+
+    if unit_type == "department":
+        parent_id = None
+
+    elif unit_type == "water_office":
+        if parent_id is None:
+            raise ValueError("水管所必须选择所属基层处。")
+
+    else:
+        raise ValueError("无效的组织机构类型。")
+
+    usage = get_organization_unit_usage(unit_id)
+
+    old_business_code = current["business_code"] or ""
+
+    old_parent_id = current["parent_id"]
+
+    if business_code != old_business_code and usage["business_code_locked"]:
+        raise ValueError("该组织机构已经产生工程或调查数据，" "业务代码不能再修改。")
+
+    if (
+        unit_type == "water_office"
+        and parent_id != old_parent_id
+        and usage["business_reference_count"] > 0
+    ):
+        raise ValueError("该水管所已经产生工程或调查数据，" "所属基层处不能再修改。")
+
+    with get_connection() as connection:
+        if unit_type == "water_office":
+            parent = connection.execute(
+                """
+                SELECT
+                    id,
+                    unit_type
+                FROM organization_units
+                WHERE id = ?
+                """,
+                (parent_id,),
+            ).fetchone()
+
+            if parent is None or parent["unit_type"] != "department":
+                raise ValueError("所属基层处无效。")
+
+        if business_code:
+            if unit_type == "department":
+                duplicate = connection.execute(
+                    """
+                    SELECT id
+                    FROM organization_units
+                    WHERE unit_type = 'department'
+                      AND business_code = ?
+                      AND id != ?
+                    LIMIT 1
+                    """,
+                    (
+                        business_code,
+                        unit_id,
+                    ),
+                ).fetchone()
+
+            else:
+                duplicate = connection.execute(
+                    """
+                    SELECT id
+                    FROM organization_units
+                    WHERE unit_type = 'water_office'
+                      AND parent_id = ?
+                      AND business_code = ?
+                      AND id != ?
+                    LIMIT 1
+                    """,
+                    (
+                        parent_id,
+                        business_code,
+                        unit_id,
+                    ),
+                ).fetchone()
+
+            if duplicate is not None:
+                raise ValueError("业务代码已经被其他同级机构使用。")
+
+        connection.execute(
+            """
+            UPDATE organization_units
+            SET
+                parent_id = ?,
+                name = ?,
+                business_code = ?,
+                description = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                parent_id,
+                name,
+                business_code or None,
+                description or None,
+                unit_id,
+            ),
+        )
+
+
+def set_organization_unit_status(
+    unit_id,
+    status,
+):
+    """
+    启用或停用组织机构。
+    """
+
+    if status not in (
+        "active",
+        "inactive",
+    ):
+        raise ValueError("无效的组织机构状态。")
+
+    with get_connection() as connection:
+        current = connection.execute(
+            """
+            SELECT id
+            FROM organization_units
+            WHERE id = ?
+            """,
+            (unit_id,),
+        ).fetchone()
+
+        if current is None:
+            raise ValueError("没有找到指定组织机构。")
+
+        connection.execute(
+            """
+            UPDATE organization_units
+            SET
+                status = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                status,
+                unit_id,
+            ),
+        )
+
+
+def delete_organization_unit(
+    unit_id,
+):
+    """
+    物理删除未被使用的组织机构。
+
+    已存在下属机构、管理渠系、
+    工程台账或调查记录时禁止删除。
+    """
+
+    usage = get_organization_unit_usage(unit_id)
+
+    if not usage["can_delete"]:
+        reasons = []
+
+        if usage["child_count"]:
+            reasons.append(f"下属机构 {usage['child_count']} 个")
+
+        if usage["canal_count"]:
+            reasons.append(f"管理渠系 {usage['canal_count']} 个")
+
+        if usage["asset_count"]:
+            reasons.append(f"工程对象 {usage['asset_count']} 个")
+
+        if usage["survey_count"]:
+            reasons.append(f"调查记录 {usage['survey_count']} 条")
+
+        reason_text = "、".join(reasons)
+
+        raise ValueError(
+            "该组织机构不能物理删除，" f"当前存在：{reason_text}。" "请改为停用。"
+        )
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            DELETE FROM organization_units
+            WHERE id = ?
+            """,
+            (unit_id,),
+        )
+
+
 def get_canal_lineage(
     canal_unit_id,
 ):
@@ -1264,6 +1618,292 @@ def create_canal_unit(
         )
 
         return cursor.lastrowid
+
+
+def get_canal_unit(
+    canal_unit_id,
+):
+    """
+    获取单个渠系节点。
+    """
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM canal_units
+            WHERE id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()
+
+
+def get_canal_unit_usage(
+    canal_unit_id,
+):
+    """
+    获取渠系节点引用情况。
+    """
+
+    with get_connection() as connection:
+        current = connection.execute(
+            """
+            SELECT id
+            FROM canal_units
+            WHERE id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()
+
+        if current is None:
+            raise ValueError("没有找到指定渠系。")
+
+        child_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM canal_units
+            WHERE parent_id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()[0]
+
+        asset_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM engineering_assets
+            WHERE canal_unit_id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()[0]
+
+        survey_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM survey_records
+            WHERE canal_unit_id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()[0]
+
+        business_reference_count = asset_count + survey_count
+
+        return {
+            "child_count": int(child_count),
+            "asset_count": int(asset_count),
+            "survey_count": int(survey_count),
+            "business_reference_count": int(business_reference_count),
+            "structure_locked": (business_reference_count > 0),
+            "can_delete": (child_count == 0 and asset_count == 0 and survey_count == 0),
+        }
+
+
+def update_canal_unit(
+    canal_unit_id,
+    name,
+    canal_level,
+    parent_id=None,
+    organization_unit_id=None,
+    description=None,
+):
+    """
+    修改渠系。
+
+    已产生工程/调查数据后：
+    - 名称、备注允许修改；
+    - 渠道层级、上级渠道、管理单位锁定。
+    """
+
+    name = str(name or "").strip()
+
+    description = str(description).strip() if description is not None else ""
+
+    if not name:
+        raise ValueError("渠道名称不能为空。")
+
+    if canal_level not in (
+        "01",
+        "02",
+        "03",
+        "04",
+    ):
+        raise ValueError("无效的渠道层级。")
+
+    current = get_canal_unit(canal_unit_id)
+
+    if current is None:
+        raise ValueError("没有找到指定渠系。")
+
+    if parent_id == canal_unit_id:
+        raise ValueError("渠道不能把自己设为上级渠道。")
+
+    usage = get_canal_unit_usage(canal_unit_id)
+
+    structure_changed = (
+        canal_level != current["canal_level"]
+        or parent_id != current["parent_id"]
+        or organization_unit_id != current["organization_unit_id"]
+    )
+
+    if structure_changed and usage["structure_locked"]:
+        raise ValueError(
+            "该渠系已经产生工程或调查数据，"
+            "渠道层级、上级渠道和管理单位"
+            "不能再修改。"
+        )
+
+    with get_connection() as connection:
+        # 上级渠道必须存在，
+        # 同时防止形成循环引用。
+        current_parent_id = parent_id
+        visited_ids = set()
+
+        while current_parent_id is not None:
+            if current_parent_id == canal_unit_id:
+                raise ValueError("渠系层级不能形成循环引用。")
+
+            if current_parent_id in visited_ids:
+                raise ValueError("渠系层级存在循环引用。")
+
+            visited_ids.add(current_parent_id)
+
+            parent = connection.execute(
+                """
+                SELECT
+                    id,
+                    parent_id
+                FROM canal_units
+                WHERE id = ?
+                """,
+                (current_parent_id,),
+            ).fetchone()
+
+            if parent is None:
+                raise ValueError("上级渠道不存在。")
+
+            current_parent_id = parent["parent_id"]
+
+        if organization_unit_id is not None:
+            organization = connection.execute(
+                """
+                SELECT id
+                FROM organization_units
+                WHERE id = ?
+                """,
+                (organization_unit_id,),
+            ).fetchone()
+
+            if organization is None:
+                raise ValueError("管理单位不存在。")
+
+        connection.execute(
+            """
+            UPDATE canal_units
+            SET
+                parent_id = ?,
+                name = ?,
+                canal_level = ?,
+                organization_unit_id = ?,
+                description = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                parent_id,
+                name,
+                canal_level,
+                organization_unit_id,
+                description or None,
+                canal_unit_id,
+            ),
+        )
+
+
+def set_canal_unit_status(
+    canal_unit_id,
+    status,
+):
+    """
+    启用或停用渠系。
+    """
+
+    if status not in (
+        "active",
+        "inactive",
+    ):
+        raise ValueError("无效的渠系状态。")
+
+    with get_connection() as connection:
+        current = connection.execute(
+            """
+            SELECT id
+            FROM canal_units
+            WHERE id = ?
+            """,
+            (canal_unit_id,),
+        ).fetchone()
+
+        if current is None:
+            raise ValueError("没有找到指定渠系。")
+
+        connection.execute(
+            """
+            UPDATE canal_units
+            SET
+                status = ?,
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                status,
+                canal_unit_id,
+            ),
+        )
+
+
+def delete_canal_unit(
+    canal_unit_id,
+):
+    """
+    物理删除未被使用的渠系节点。
+
+    存在下级渠道、工程对象或调查记录时
+    禁止删除。
+    """
+
+    usage = get_canal_unit_usage(canal_unit_id)
+
+    if not usage["can_delete"]:
+        reasons = []
+
+        if usage["child_count"]:
+            reasons.append(f"下级渠道 {usage['child_count']} 个")
+
+        if usage["asset_count"]:
+            reasons.append(f"工程对象 {usage['asset_count']} 个")
+
+        if usage["survey_count"]:
+            reasons.append(f"调查记录 {usage['survey_count']} 条")
+
+        reason_text = "、".join(reasons)
+
+        raise ValueError(
+            "该渠系不能物理删除，" f"当前存在：{reason_text}。" "请改为停用。"
+        )
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            DELETE FROM canal_units
+            WHERE id = ?
+            """,
+            (canal_unit_id,),
+        )
 
 
 def get_canal_units_for_organization(
