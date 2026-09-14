@@ -1,10 +1,10 @@
 import re
 
-
 # 当前附表2工程类型代码
 ENGINEERING_TYPE_CODES = {
     "form_2_1": "01",  # 防渗衬砌渠道
     "form_2_2": "02",  # 水闸
+    "form_2_3": "03",  # 渡槽
 }
 
 
@@ -24,9 +24,7 @@ def get_engineering_type_code(form_code: str) -> str:
     try:
         return ENGINEERING_TYPE_CODES[form_code]
     except KeyError as error:
-        raise ValueError(
-            f"暂不支持调查表：{form_code}"
-        ) from error
+        raise ValueError(f"暂不支持调查表：{form_code}") from error
 
 
 def build_business_code(
@@ -46,55 +44,37 @@ def build_business_code(
     1-01-03-02-001
     """
 
-    department_code = str(
-        department_code
-    ).strip()
+    department_code = str(department_code).strip()
 
-    water_office_code = str(
-        water_office_code
-    ).strip()
+    water_office_code = str(water_office_code).strip()
 
-    canal_level_code = str(
-        canal_level_code
-    ).strip()
+    canal_level_code = str(canal_level_code).strip()
 
-    engineering_type_code = str(
-        engineering_type_code
-    ).strip()
+    engineering_type_code = str(engineering_type_code).strip()
 
     if not re.fullmatch(
         r"\d+",
         department_code,
     ):
-        raise ValueError(
-            "基层处业务代码必须为数字。"
-        )
+        raise ValueError("基层处业务代码必须为数字。")
 
     if not re.fullmatch(
         r"\d{2}",
         water_office_code,
     ):
-        raise ValueError(
-            "水管所业务代码必须为2位数字，例如01。"
-        )
+        raise ValueError("水管所业务代码必须为2位数字，例如01。")
 
     if canal_level_code not in CANAL_LEVEL_CODES:
-        raise ValueError(
-            "无效的渠道层级代码。"
-        )
+        raise ValueError("无效的渠道层级代码。")
 
     if not re.fullmatch(
         r"\d{2}",
         engineering_type_code,
     ):
-        raise ValueError(
-            "工程类型代码必须为2位数字。"
-        )
+        raise ValueError("工程类型代码必须为2位数字。")
 
     if sequence < 1 or sequence > 999:
-        raise ValueError(
-            "顺序号必须在1～999之间。"
-        )
+        raise ValueError("顺序号必须在1～999之间。")
 
     sequence_code = f"{sequence:03d}"
 
@@ -125,9 +105,7 @@ def parse_business_code(
     )
 
     if match is None:
-        raise ValueError(
-            "业务编号格式不正确。"
-        )
+        raise ValueError("业务编号格式不正确。")
 
     (
         department_code,
@@ -138,17 +116,13 @@ def parse_business_code(
     ) = match.groups()
 
     if canal_level_code not in CANAL_LEVEL_CODES:
-        raise ValueError(
-            "业务编号中的渠道层级代码无效。"
-        )
+        raise ValueError("业务编号中的渠道层级代码无效。")
 
     return {
         "department_code": department_code,
         "water_office_code": water_office_code,
         "canal_level_code": canal_level_code,
-        "engineering_type_code": (
-            engineering_type_code
-        ),
+        "engineering_type_code": (engineering_type_code),
         "sequence": int(sequence_code),
     }
 
@@ -177,18 +151,12 @@ def suggest_next_sequence(
             continue
 
         if (
-            parsed["department_code"]
-            == department_code
-            and parsed["water_office_code"]
-            == water_office_code
-            and parsed["canal_level_code"]
-            == canal_level_code
-            and parsed["engineering_type_code"]
-            == engineering_type_code
+            parsed["department_code"] == department_code
+            and parsed["water_office_code"] == water_office_code
+            and parsed["canal_level_code"] == canal_level_code
+            and parsed["engineering_type_code"] == engineering_type_code
         ):
-            sequences.append(
-                int(parsed["sequence"])
-            )
+            sequences.append(int(parsed["sequence"]))
 
     if not sequences:
         return 1
@@ -196,9 +164,7 @@ def suggest_next_sequence(
     next_sequence = max(sequences) + 1
 
     if next_sequence > 999:
-        raise ValueError(
-            "当前编号前缀下的顺序号已超过999。"
-        )
+        raise ValueError("当前编号前缀下的顺序号已超过999。")
 
     return next_sequence
 
@@ -206,9 +172,7 @@ def suggest_next_sequence(
 if __name__ == "__main__":
     form_code = "form_2_2"
 
-    engineering_type_code = (
-        get_engineering_type_code(form_code)
-    )
+    engineering_type_code = get_engineering_type_code(form_code)
 
     code = build_business_code(
         department_code="1",

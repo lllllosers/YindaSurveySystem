@@ -957,9 +957,10 @@ def create_initial_forms():
     调查表定义属于系统元数据，
     正式运行环境也需要自动初始化。
 
-    当前先建立：
+    当前已经建立：
     - 附表2.1 防渗衬砌渠道
     - 附表2.2 水闸
+    - 附表2.3 渡槽（座槽）
     """
 
     forms = [
@@ -980,6 +981,15 @@ def create_initial_forms():
             "record_type": "engineering",
             "asset_type": "sluice_gate",
             "sort_order": 202,
+        },
+        {
+            "form_code": "form_2_3",
+            "form_number": "2.3",
+            "form_name": "渡槽（座槽）工程状况调查表",
+            "series": "series_2",
+            "record_type": "engineering",
+            "asset_type": "aqueduct",
+            "sort_order": 203,
         },
     ]
 
@@ -2378,7 +2388,7 @@ def create_engineering_survey(
 
             raise ValueError(
                 "当前调查批次中已存在同一位置的"
-                "水闸调查记录。\n\n"
+                "工程调查记录。\n\n"
                 f"工程名称：{duplicate['asset_name']}\n"
                 f"业务编号：{duplicate['business_code']}\n"
                 f"桩号：{duplicate['single_stake_text']}\n"
@@ -3450,19 +3460,23 @@ def get_sluice_gate_records(
         return result
 
 
-def delete_lined_channel_section_record(
+def delete_engineering_survey_record(
     survey_record_id,
+    form_code,
 ):
     """
-    删除一条附表2.1渠道渠段调查记录。
+    删除一条工程调查记录。
+
+    当前供附表2系列工程调查表共同使用。
 
     删除规则：
-    1. 删除 SurveyRecord；
-    2. InspectionResult 由外键级联删除；
-    3. 如果对应 EngineeringAsset
+    1. survey_record_id 必须属于指定 form_code；
+    2. 删除 SurveyRecord；
+    3. InspectionResult 由外键级联删除；
+    4. 如果对应 EngineeringAsset
        已经没有其他调查记录，
        同时删除该工程对象；
-    4. 全部处于同一事务。
+    5. 全部操作处于同一个 SQLite 事务中。
     """
 
     with get_connection() as connection:
@@ -3475,6 +3489,7 @@ def delete_lined_channel_section_record(
                 sr.record_status,
 
                 ea.asset_name,
+                ea.single_stake_text,
                 ea.start_stake_text,
                 ea.end_stake_text,
 
@@ -3492,17 +3507,27 @@ def delete_lined_channel_section_record(
                 ON fv.form_definition_id = fd.id
 
             WHERE sr.id = ?
+              AND fd.form_code = ?
             """,
-            (survey_record_id,),
+            (
+                survey_record_id,
+                form_code,
+            ),
         ).fetchone()
 
         if record is None:
-            raise ValueError("没有找到需要删除的渠道渠段调查记录。")
-
-        if record["form_code"] != "form_2_1":
-            raise ValueError("指定记录不是附表2.1调查记录。")
+            raise ValueError("没有找到指定调查记录，" "或该记录不属于当前调查表。")
 
         engineering_asset_id = record["engineering_asset_id"]
+
+        # =========================
+        # 1. 删除调查记录
+        # =========================
+        #
+        # inspection_results 已配置：
+        # ON DELETE CASCADE
+        # 因此相关评价结果自动一起删除。
+        # =========================
 
         connection.execute(
             """
@@ -3511,6 +3536,10 @@ def delete_lined_channel_section_record(
             """,
             (survey_record_id,),
         )
+
+        # =========================
+        # 2. 检查工程对象是否仍被引用
+        # =========================
 
         remaining_count = connection.execute(
             """
@@ -3522,6 +3551,10 @@ def delete_lined_channel_section_record(
         ).fetchone()["count"]
 
         asset_deleted = False
+
+        # =========================
+        # 3. 清理孤立 EngineeringAsset
+        # =========================
 
         if remaining_count == 0:
             connection.execute(
@@ -3539,12 +3572,30 @@ def delete_lined_channel_section_record(
             "engineering_asset_id": (engineering_asset_id),
             "business_code": (record["business_code"]),
             "asset_name": (record["asset_name"]),
+            "record_status": (record["record_status"]),
+            "form_code": (record["form_code"]),
+            "single_stake_text": (record["single_stake_text"]),
             "start_stake_text": (record["start_stake_text"]),
             "end_stake_text": (record["end_stake_text"]),
-            "record_status": (record["record_status"]),
             "asset_deleted": (asset_deleted),
             "remaining_survey_count": (remaining_count),
         }
+
+
+def delete_lined_channel_section_record(
+    survey_record_id,
+):
+    """
+    删除一条附表2.1渠道渠段调查记录。
+
+    保留原函数作为兼容入口，
+    实际删除逻辑统一走工程调查公共函数。
+    """
+
+    return delete_engineering_survey_record(
+        survey_record_id=(survey_record_id),
+        form_code="form_2_1",
+    )
 
 
 def delete_sluice_gate_record(
@@ -3553,111 +3604,28 @@ def delete_sluice_gate_record(
     """
     删除一条附表2.2水闸调查记录。
 
-    删除规则：
-    1. 删除 SurveyRecord；
-    2. InspectionResult 通过外键级联自动删除；
-    3. 如果对应 EngineeringAsset 已经没有任何调查记录，
-       同时删除该工程对象；
-    4. 全部操作在同一个 SQLite 事务中完成。
+    保留原函数作为兼容入口，
+    实际删除逻辑统一走工程调查公共函数。
     """
 
-    with get_connection() as connection:
-
-        record = connection.execute(
-            """
-            SELECT
-                sr.id AS survey_record_id,
-                sr.engineering_asset_id,
-                sr.business_code,
-                sr.record_status,
-
-                ea.asset_name
-
-            FROM survey_records AS sr
-
-            JOIN engineering_assets AS ea
-                ON sr.engineering_asset_id = ea.id
-
-            JOIN form_versions AS fv
-                ON sr.form_version_id = fv.id
-
-            JOIN form_definitions AS fd
-                ON fv.form_definition_id = fd.id
-
-            WHERE sr.id = ?
-              AND fd.form_code = 'form_2_2'
-            """,
-            (survey_record_id,),
-        ).fetchone()
-
-        if record is None:
-            raise ValueError("没有找到需要删除的水闸调查记录。")
-
-        engineering_asset_id = record["engineering_asset_id"]
-
-        # =========================
-        # 1. 删除调查记录
-        # =========================
-        #
-        # inspection_results 已配置：
-        # ON DELETE CASCADE
-        # 因此会自动一起删除。
-
-        connection.execute(
-            """
-            DELETE FROM survey_records
-            WHERE id = ?
-            """,
-            (survey_record_id,),
-        )
-
-        # =========================
-        # 2. 检查工程是否仍有其他调查记录
-        # =========================
-
-        remaining_count = connection.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM survey_records
-            WHERE engineering_asset_id = ?
-            """,
-            (engineering_asset_id,),
-        ).fetchone()["count"]
-
-        asset_deleted = False
-
-        # =========================
-        # 3. 删除孤立 EngineeringAsset
-        # =========================
-
-        if remaining_count == 0:
-            connection.execute(
-                """
-                DELETE FROM engineering_assets
-                WHERE id = ?
-                """,
-                (engineering_asset_id,),
-            )
-
-            asset_deleted = True
-
-        return {
-            "survey_record_id": survey_record_id,
-            "engineering_asset_id": engineering_asset_id,
-            "business_code": record["business_code"],
-            "asset_name": record["asset_name"],
-            "record_status": record["record_status"],
-            "asset_deleted": asset_deleted,
-            "remaining_survey_count": remaining_count,
-        }
+    return delete_engineering_survey_record(
+        survey_record_id=(survey_record_id),
+        form_code="form_2_2",
+    )
 
 
-def get_sluice_gate_record(
+def get_point_engineering_record(
     survey_record_id,
+    form_code,
 ):
     """
-    获取一条附表2.2水闸调查记录，
-    用于重新打开和编辑。
+    获取一条点状工程调查记录。
+
+    当前供附表2.2、2.3等使用单桩号的
+    工程调查表共同使用。
+
+    form_code 用于保证：
+    调查页面只能打开属于自己的调查记录。
     """
 
     with get_connection() as connection:
@@ -3674,16 +3642,27 @@ def get_sluice_gate_record(
 
                 ea.id AS engineering_asset_id,
                 ea.asset_name,
+                ea.asset_type,
+                ea.single_stake_text,
+                ea.single_stake_value,
 
                 office.id AS office_id,
                 department.id AS department_id,
 
-                canal.id AS canal_id
+                canal.id AS canal_id,
+
+                fd.form_code
 
             FROM survey_records AS sr
 
             JOIN engineering_assets AS ea
                 ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
 
             LEFT JOIN organization_units AS office
                 ON sr.organization_unit_id = office.id
@@ -3695,8 +3674,12 @@ def get_sluice_gate_record(
                 ON sr.canal_unit_id = canal.id
 
             WHERE sr.id = ?
+              AND fd.form_code = ?
             """,
-            (survey_record_id,),
+            (
+                survey_record_id,
+                form_code,
+            ),
         ).fetchone()
 
         if row is None:
@@ -3708,19 +3691,39 @@ def get_sluice_gate_record(
             record_data = {}
 
         return {
-            "survey_record_id": row["survey_record_id"],
+            "survey_record_id": (row["survey_record_id"]),
             "engineering_asset_id": (row["engineering_asset_id"]),
-            "record_status": row["record_status"],
+            "record_status": (row["record_status"]),
             "business_code": (row["business_code"] or ""),
-            "asset_name": row["asset_name"] or "",
-            "department_id": row["department_id"],
-            "office_id": row["office_id"],
-            "canal_id": row["canal_id"],
+            "asset_name": (row["asset_name"] or ""),
+            "asset_type": (row["asset_type"]),
+            "form_code": (row["form_code"]),
+            "single_stake_text": (row["single_stake_text"]),
+            "single_stake_value": (row["single_stake_value"]),
+            "department_id": (row["department_id"]),
+            "office_id": (row["office_id"]),
+            "canal_id": (row["canal_id"]),
             "record_data": record_data,
-            "survey_date": row["survey_date"],
-            "overall_grade": row["overall_grade"],
+            "survey_date": (row["survey_date"]),
+            "overall_grade": (row["overall_grade"]),
             "survey_comment": (row["survey_comment"] or ""),
         }
+
+
+def get_sluice_gate_record(
+    survey_record_id,
+):
+    """
+    获取一条附表2.2水闸调查记录。
+
+    保留原函数作为兼容入口，
+    实际读取逻辑统一走点状工程公共函数。
+    """
+
+    return get_point_engineering_record(
+        survey_record_id=survey_record_id,
+        form_code="form_2_2",
+    )
 
 
 def get_inspection_results(
@@ -3747,8 +3750,9 @@ def get_inspection_results(
         ).fetchall()
 
 
-def update_sluice_gate_draft(
+def update_point_engineering_survey(
     survey_record_id,
+    form_code,
     asset_name,
     record_data,
     single_stake_text=None,
@@ -3759,17 +3763,19 @@ def update_sluice_gate_draft(
     survey_comment=None,
 ):
     """
-    修改已有水闸草稿。
+    修改已有点状工程调查记录。
 
-    当前V0.1只修改：
-    - 工程名称
-    - 桩号
-    - 普通调查字段
+    当前供附表2.2、2.3等单桩号工程共同使用。
 
-    不修改：
-    - 所属机构
-    - 渠系
-    - 业务编号
+    允许修改：
+    - draft 草稿；
+    - completed 已完成记录。
+
+    不允许通过此函数修改：
+    - 所属机构；
+    - 所属渠系；
+    - 业务编号；
+    - 调查表类型。
     """
 
     if not asset_name or not asset_name.strip():
@@ -3784,30 +3790,53 @@ def update_sluice_gate_draft(
         record = connection.execute(
             """
             SELECT
-                engineering_asset_id,
-                record_status,
-                project_id,
-                survey_batch_id,
-                form_version_id,
-                organization_unit_id,
-                canal_unit_id
+                sr.engineering_asset_id,
+                sr.record_status,
+                sr.project_id,
+                sr.survey_batch_id,
+                sr.form_version_id,
+                sr.organization_unit_id,
+                sr.canal_unit_id,
 
-            FROM survey_records
+                fd.form_code
 
-            WHERE id = ?
+            FROM survey_records AS sr
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            WHERE sr.id = ?
+              AND fd.form_code = ?
             """,
-            (survey_record_id,),
+            (
+                survey_record_id,
+                form_code,
+            ),
         ).fetchone()
+
+        # 必须先判断记录是否存在，
+        # 再访问 record 中的字段。
+        if record is None:
+            raise ValueError("没有找到该调查记录。")
+
+        if record["record_status"] not in (
+            "draft",
+            "completed",
+        ):
+            raise ValueError("当前记录状态不允许直接修改。")
 
         duplicate = _find_duplicate_engineering_survey(
             connection=connection,
-            project_id=record["project_id"],
-            survey_batch_id=record["survey_batch_id"],
-            form_version_id=record["form_version_id"],
-            organization_unit_id=record["organization_unit_id"],
-            canal_unit_id=record["canal_unit_id"],
-            single_stake_value=single_stake_value,
-            exclude_survey_record_id=survey_record_id,
+            project_id=(record["project_id"]),
+            survey_batch_id=(record["survey_batch_id"]),
+            form_version_id=(record["form_version_id"]),
+            organization_unit_id=(record["organization_unit_id"]),
+            canal_unit_id=(record["canal_unit_id"]),
+            single_stake_value=(single_stake_value),
+            exclude_survey_record_id=(survey_record_id),
         )
 
         if duplicate is not None:
@@ -3821,22 +3850,16 @@ def update_sluice_gate_draft(
 
             raise ValueError(
                 "当前调查批次中已存在同一位置的"
-                "水闸调查记录。\n\n"
-                f"工程名称：{duplicate['asset_name']}\n"
-                f"业务编号：{duplicate['business_code']}\n"
-                f"桩号：{duplicate['single_stake_text']}\n"
+                "工程调查记录。\n\n"
+                f"工程名称："
+                f"{duplicate['asset_name']}\n"
+                f"业务编号："
+                f"{duplicate['business_code']}\n"
+                f"桩号："
+                f"{duplicate['single_stake_text']}\n"
                 f"状态：{status_text}\n\n"
-                "当前草稿不能修改为该桩号。"
+                "当前记录不能修改为该桩号。"
             )
-
-        if record is None:
-            raise ValueError("没有找到该调查记录。")
-
-        if record["record_status"] not in (
-            "draft",
-            "completed",
-        ):
-            raise ValueError("当前记录状态不允许直接修改。")
 
         engineering_asset_id = record["engineering_asset_id"]
 
@@ -3890,6 +3913,38 @@ def update_sluice_gate_draft(
                 survey_record_id,
                 inspection_results,
             )
+
+
+def update_sluice_gate_draft(
+    survey_record_id,
+    asset_name,
+    record_data,
+    single_stake_text=None,
+    single_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    """
+    修改附表2.2水闸调查记录。
+
+    保留原函数作为兼容入口，
+    实际修改逻辑统一走点状工程公共函数。
+    """
+
+    return update_point_engineering_survey(
+        survey_record_id=(survey_record_id),
+        form_code="form_2_2",
+        asset_name=asset_name,
+        record_data=record_data,
+        single_stake_text=(single_stake_text),
+        single_stake_value=(single_stake_value),
+        inspection_results=(inspection_results),
+        survey_date=survey_date,
+        overall_grade=overall_grade,
+        survey_comment=survey_comment,
+    )
 
 
 def complete_sluice_gate_record(

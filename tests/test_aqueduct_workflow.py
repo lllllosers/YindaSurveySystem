@@ -1,0 +1,702 @@
+import gc
+import json
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+# =========================
+# 让测试可以导入 src
+# =========================
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+SRC_DIR = PROJECT_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(
+        0,
+        str(SRC_DIR),
+    )
+
+
+import database
+
+from services.business_code import (
+    build_business_code,
+    get_engineering_type_code,
+)
+
+
+class AqueductWorkflowTestCase(unittest.TestCase):
+    """
+    附表2.3渡槽（座槽）核心业务回归测试。
+
+    当前第一阶段先验证：
+    1. 表单元数据；
+    2. 工程类型码和业务编号。
+
+    每个测试使用独立临时 SQLite 数据库，
+    不接触正式 local_data/yinda_survey.db。
+    """
+
+    def setUp(self):
+        self.temp_directory = tempfile.TemporaryDirectory()
+
+        self.temp_data_dir = Path(self.temp_directory.name) / "local_data"
+
+        self.temp_db_path = self.temp_data_dir / "test_aqueduct.db"
+
+        self.original_data_dir = database.DATA_DIR
+        self.original_db_path = database.DB_PATH
+
+        database.DATA_DIR = self.temp_data_dir
+        database.DB_PATH = self.temp_db_path
+
+        database.init_database()
+        database.create_initial_forms()
+
+        # =========================
+        # 建立完整工程调查上下文
+        # =========================
+
+        project_result = database.create_project(
+            name="渡槽自动测试项目",
+            short_name="渡槽测试",
+        )
+
+        self.project_id = int(project_result["project_id"])
+
+        batch_result = database.create_survey_batch(
+            project_id=self.project_id,
+            batch_name="渡槽自动测试批次",
+            batch_code="AQ_TEST_2026",
+        )
+
+        self.batch_id = int(batch_result["batch_id"])
+
+        # -------------------------
+        # 基层处
+        # -------------------------
+
+        department_id = database.create_organization_unit(
+            name="测试基层处",
+            unit_type="department",
+            business_code="01",
+        )
+
+        self.assertIsNotNone(department_id)
+
+        assert department_id is not None
+
+        self.department_id = int(department_id)
+
+        # -------------------------
+        # 水管所
+        # -------------------------
+
+        office_id = database.create_organization_unit(
+            name="测试水管所",
+            unit_type="water_office",
+            business_code="01",
+            parent_id=self.department_id,
+        )
+
+        self.assertIsNotNone(office_id)
+
+        assert office_id is not None
+
+        self.office_id = int(office_id)
+
+        # -------------------------
+        # 渠系
+        # -------------------------
+
+        canal_id = database.create_canal_unit(
+            name="测试干渠",
+            canal_level="01",
+            parent_id=None,
+            organization_unit_id=(self.office_id),
+            description="自动测试",
+        )
+
+        self.assertIsNotNone(canal_id)
+
+        assert canal_id is not None
+
+        self.canal_id = int(canal_id)
+
+        # -------------------------
+        # 附表2.3当前版本
+        # -------------------------
+
+        self.form_version = database.get_current_form_version("form_2_3")
+
+        self.assertIsNotNone(self.form_version)
+
+        assert self.form_version is not None
+
+    def tearDown(self):
+        database.DATA_DIR = self.original_data_dir
+        database.DB_PATH = self.original_db_path
+
+        gc.collect()
+        time.sleep(0.05)
+
+        self.temp_directory.cleanup()
+
+    # =========================
+    # 测试数据辅助
+    # =========================
+
+    def create_aqueduct_draft(
+        self,
+        *,
+        business_code="TEST-AQ-001",
+        asset_name="测试渡槽",
+        stake="K1+250",
+        stake_value=1250.0,
+    ):
+        """
+        使用公共点状工程创建能力，
+        创建一条附表2.3渡槽草稿。
+        """
+
+        record_data = {
+            "asset_name": asset_name,
+            "stake": stake,
+            "stake_value": stake_value,
+            "design_flow": 4.5,
+            "length": 120.0,
+        }
+
+        return database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_version_id=(self.form_version["id"]),
+            asset_name=asset_name,
+            asset_type=(self.form_version["asset_type"]),
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=business_code,
+            record_data=record_data,
+            single_stake_text=stake,
+            single_stake_value=(stake_value),
+        )
+
+    # =========================
+    # 测试1：
+    # 附表2.3元数据正确存在
+    # =========================
+
+    def test_form_2_3_definition_exists(self):
+        form_version = database.get_current_form_version("form_2_3")
+
+        self.assertIsNotNone(form_version)
+
+        assert form_version is not None
+
+        self.assertEqual(
+            form_version["form_number"],
+            "2.3",
+        )
+
+        self.assertEqual(
+            form_version["form_name"],
+            "渡槽（座槽）工程状况调查表",
+        )
+
+        self.assertEqual(
+            form_version["asset_type"],
+            "aqueduct",
+        )
+
+    # =========================
+    # 测试2：
+    # 附表2.3工程类型码为03
+    # =========================
+
+    def test_aqueduct_business_code_uses_type_03(self):
+        engineering_type_code = get_engineering_type_code("form_2_3")
+
+        self.assertEqual(
+            engineering_type_code,
+            "03",
+        )
+
+        business_code = build_business_code(
+            department_code="1",
+            water_office_code="01",
+            canal_level_code="03",
+            engineering_type_code=(engineering_type_code),
+            sequence=1,
+        )
+
+        self.assertEqual(
+            business_code,
+            "1-01-03-03-001",
+        )
+
+    # =========================
+    # 测试3：
+    # 渡槽复用公共点状工程创建能力
+    # =========================
+
+    def test_create_aqueduct_point_draft(
+        self,
+    ):
+        result = self.create_aqueduct_draft()
+
+        survey_record_id = int(result["survey_record_id"])
+
+        engineering_asset_id = int(result["engineering_asset_id"])
+
+        # -------------------------
+        # 通用工程调查查询
+        # 应能够直接查询到附表2.3
+        # -------------------------
+
+        records = database.get_engineering_survey_query_records(
+            project_id=self.project_id,
+            survey_batch_id=self.batch_id,
+            form_code="form_2_3",
+        )
+
+        self.assertEqual(
+            len(records),
+            1,
+        )
+
+        record = records[0]
+
+        self.assertEqual(
+            int(record["survey_record_id"]),
+            survey_record_id,
+        )
+
+        self.assertEqual(
+            int(record["engineering_asset_id"]),
+            engineering_asset_id,
+        )
+
+        self.assertEqual(
+            record["form_code"],
+            "form_2_3",
+        )
+
+        self.assertEqual(
+            record["asset_type"],
+            "aqueduct",
+        )
+
+        self.assertEqual(
+            record["asset_name"],
+            "测试渡槽",
+        )
+
+        self.assertEqual(
+            record["engineering_position"],
+            "K1+250",
+        )
+
+        self.assertEqual(
+            record["record_status"],
+            "draft",
+        )
+
+        # -------------------------
+        # 底层工程对象必须是单桩号工程
+        # 起止桩号必须保持为空
+        # -------------------------
+
+        with database.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    ea.asset_type,
+                    ea.single_stake_text,
+                    ea.single_stake_value,
+                    ea.start_stake_text,
+                    ea.start_stake_value,
+                    ea.end_stake_text,
+                    ea.end_stake_value,
+                    sr.record_data_json
+                FROM survey_records AS sr
+                JOIN engineering_assets AS ea
+                    ON sr.engineering_asset_id = ea.id
+                WHERE sr.id = ?
+                """,
+                (survey_record_id,),
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+
+        assert row is not None
+
+        self.assertEqual(
+            row["asset_type"],
+            "aqueduct",
+        )
+
+        self.assertEqual(
+            row["single_stake_text"],
+            "K1+250",
+        )
+
+        self.assertAlmostEqual(
+            float(row["single_stake_value"]),
+            1250.0,
+        )
+
+        self.assertIsNone(row["start_stake_text"])
+
+        self.assertIsNone(row["start_stake_value"])
+
+        self.assertIsNone(row["end_stake_text"])
+
+        self.assertIsNone(row["end_stake_value"])
+
+        record_data = json.loads(row["record_data_json"])
+
+        self.assertEqual(
+            record_data["asset_name"],
+            "测试渡槽",
+        )
+
+        self.assertEqual(
+            record_data["design_flow"],
+            4.5,
+        )
+
+        self.assertEqual(
+            record_data["length"],
+            120.0,
+        )
+
+    # =========================
+    # 测试4：
+    # 渡槽复用公共点状工程重复保护
+    # =========================
+
+    def test_duplicate_aqueduct_is_rejected(
+        self,
+    ):
+        self.create_aqueduct_draft(
+            business_code="TEST-AQ-001",
+            asset_name="测试渡槽一",
+            stake="K3+500",
+            stake_value=3500.0,
+        )
+
+        # 同一：
+        # 项目
+        # 批次
+        # 表单
+        # 水管所
+        # 渠系
+        # 标准化桩号
+        #
+        # 即使名称和业务编号不同，
+        # 仍属于重复调查。
+
+        with self.assertRaises(ValueError) as context:
+            self.create_aqueduct_draft(
+                business_code=("TEST-AQ-002"),
+                asset_name=("另一个渡槽名称"),
+                stake="K3+500",
+                stake_value=3500.0,
+            )
+
+        message = str(context.exception)
+
+        self.assertIn(
+            "工程调查记录",
+            message,
+        )
+
+        # 公共函数不能再泄漏
+        # 附表2.2专属“水闸”文案。
+        self.assertNotIn(
+            "水闸调查记录",
+            message,
+        )
+
+    # =========================
+    # 测试5：
+    # 渡槽复用公共点状工程读取和修改
+    # =========================
+
+    def test_get_and_update_aqueduct_record(
+        self,
+    ):
+        result = self.create_aqueduct_draft()
+
+        survey_record_id = int(result["survey_record_id"])
+
+        # -------------------------
+        # 公共读取
+        # -------------------------
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+        assert record is not None
+
+        self.assertEqual(
+            record["form_code"],
+            "form_2_3",
+        )
+
+        self.assertEqual(
+            record["asset_type"],
+            "aqueduct",
+        )
+
+        self.assertEqual(
+            record["asset_name"],
+            "测试渡槽",
+        )
+
+        self.assertEqual(
+            record["single_stake_text"],
+            "K1+250",
+        )
+
+        # -------------------------
+        # 公共修改
+        # -------------------------
+
+        updated_data = dict(record["record_data"])
+
+        updated_data.update(
+            {
+                "asset_name": ("修改后的测试渡槽"),
+                "stake": "K1+500",
+                "stake_value": 1500.0,
+                "design_flow": 8.8,
+                "length": 180.0,
+            }
+        )
+
+        database.update_point_engineering_survey(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+            asset_name=("修改后的测试渡槽"),
+            record_data=updated_data,
+            single_stake_text="K1+500",
+            single_stake_value=1500.0,
+        )
+
+        updated_record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(updated_record)
+
+        assert updated_record is not None
+
+        self.assertEqual(
+            updated_record["asset_name"],
+            "修改后的测试渡槽",
+        )
+
+        self.assertEqual(
+            updated_record["single_stake_text"],
+            "K1+500",
+        )
+
+        self.assertAlmostEqual(
+            float(updated_record["single_stake_value"]),
+            1500.0,
+        )
+
+        self.assertEqual(
+            updated_record["record_data"]["design_flow"],
+            8.8,
+        )
+
+        self.assertEqual(
+            updated_record["record_data"]["length"],
+            180.0,
+        )
+
+        # 修改调查记录不能重新创建工程对象。
+        self.assertEqual(
+            int(updated_record["engineering_asset_id"]),
+            int(result["engineering_asset_id"]),
+        )
+
+    # =========================
+    # 测试6：
+    # 不存在的记录应返回明确业务错误
+    # =========================
+
+    def test_update_missing_point_record_is_rejected(
+        self,
+    ):
+        with self.assertRaisesRegex(
+            ValueError,
+            "没有找到该调查记录",
+        ):
+            database.update_point_engineering_survey(
+                survey_record_id=999999,
+                form_code="form_2_3",
+                asset_name="不存在的渡槽",
+                record_data={
+                    "asset_name": ("不存在的渡槽"),
+                },
+                single_stake_text="K9+999",
+                single_stake_value=9999.0,
+            )
+
+    # =========================
+    # 测试7：
+    # 渡槽复用公共工程调查删除逻辑
+    # =========================
+
+    def test_delete_aqueduct_record_cleans_orphan_asset(
+        self,
+    ):
+        result = self.create_aqueduct_draft()
+
+        survey_record_id = int(result["survey_record_id"])
+
+        engineering_asset_id = int(result["engineering_asset_id"])
+
+        # 先保存一项临时评价，
+        # 用于验证删除 SurveyRecord 后
+        # inspection_results 外键级联正常。
+        database.update_point_engineering_survey(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+            asset_name="测试渡槽",
+            record_data={
+                "asset_name": "测试渡槽",
+                "stake": "K1+250",
+                "stake_value": 1250.0,
+                "design_flow": 4.5,
+                "length": 120.0,
+            },
+            single_stake_text="K1+250",
+            single_stake_value=1250.0,
+            inspection_results=[
+                {
+                    "item_code": "TEST_01",
+                    "category": "自动测试",
+                    "item_name": "自动测试项目",
+                    "grade": "A",
+                    "description": None,
+                    "remark": None,
+                }
+            ],
+        )
+
+        delete_result = database.delete_engineering_survey_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertEqual(
+            delete_result["form_code"],
+            "form_2_3",
+        )
+
+        self.assertEqual(
+            delete_result["engineering_asset_id"],
+            engineering_asset_id,
+        )
+
+        self.assertTrue(delete_result["asset_deleted"])
+
+        self.assertEqual(
+            delete_result["remaining_survey_count"],
+            0,
+        )
+
+        # -------------------------
+        # SurveyRecord 已删除
+        # EngineeringAsset 已清理
+        # InspectionResult 已级联删除
+        # -------------------------
+
+        with database.get_connection() as connection:
+            record_count = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM survey_records
+                WHERE id = ?
+                """,
+                (survey_record_id,),
+            ).fetchone()["count"]
+
+            asset_count = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM engineering_assets
+                WHERE id = ?
+                """,
+                (engineering_asset_id,),
+            ).fetchone()["count"]
+
+            inspection_count = connection.execute(
+                """
+                    SELECT COUNT(*) AS count
+                    FROM inspection_results
+                    WHERE survey_record_id = ?
+                    """,
+                (survey_record_id,),
+            ).fetchone()["count"]
+
+        self.assertEqual(
+            record_count,
+            0,
+        )
+
+        self.assertEqual(
+            asset_count,
+            0,
+        )
+
+        self.assertEqual(
+            inspection_count,
+            0,
+        )
+
+    # =========================
+    # 测试8：
+    # 公共删除函数必须校验调查表归属
+    # =========================
+
+    def test_delete_point_record_rejects_wrong_form(
+        self,
+    ):
+        result = self.create_aqueduct_draft()
+
+        survey_record_id = int(result["survey_record_id"])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "不属于当前调查表",
+        ):
+            database.delete_engineering_survey_record(
+                survey_record_id=(survey_record_id),
+                form_code="form_2_2",
+            )
+
+        # 删除失败后原记录必须仍存在。
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+
+if __name__ == "__main__":
+    unittest.main()
