@@ -23,6 +23,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.aqueduct_evaluation import (
+    AQUEDUCT_EVALUATION_ITEMS,
+)
+
 from services.business_code import (
     build_business_code,
     get_engineering_type_code,
@@ -184,6 +188,69 @@ class AqueductWorkflowTestCase(unittest.TestCase):
             single_stake_text=stake,
             single_stake_value=(stake_value),
         )
+
+    def make_complete_record_data(
+        self,
+        *,
+        asset_name="测试渡槽",
+        stake="K1+250",
+        stake_value=1250.0,
+    ):
+        """
+        构造满足附表2.3完成条件的
+        全部正式基本信息。
+        """
+
+        return {
+            "asset_name": asset_name,
+            "stake": stake,
+            "stake_value": stake_value,
+            "design_flow": 4.5,
+            "structure_grade": "3级",
+            "build_date": "2010-06",
+            "renovation_date": None,
+            "length": 120.0,
+            "increased_flow": 5.5,
+            "structure_form": "梁式渡槽",
+            "section_width": 3.2,
+            "section_height": 2.4,
+            "trough_body_structure": ("钢筋混凝土"),
+            "trough_wall_thickness": 0.25,
+            "waterstop_form": "橡胶止水",
+            "trough_bottom_elevation": (1685.35),
+            "span_count": 6,
+            "lower_support_structure_form": ("排架式"),
+        }
+
+    def make_complete_inspection_results(
+        self,
+        grade="B",
+    ):
+        """
+        根据正式附表2.3评价配置
+        自动生成完整12项评价。
+        """
+
+        results = []
+
+        for item in AQUEDUCT_EVALUATION_ITEMS:
+            results.append(
+                {
+                    "item_code": (item["item_code"]),
+                    "category": (item["category"]),
+                    "item_name": (item["item_name"]),
+                    "grade": grade,
+                    "description": None,
+                    "remark": None,
+                }
+            )
+
+        self.assertEqual(
+            len(results),
+            12,
+        )
+
+        return results
 
     # =========================
     # 测试1：
@@ -696,6 +763,294 @@ class AqueductWorkflowTestCase(unittest.TestCase):
         )
 
         self.assertIsNotNone(record)
+
+    # =========================
+    # 测试9：
+    # 附表2.3正式评价配置
+    # =========================
+
+    def test_aqueduct_evaluation_configuration(
+        self,
+    ):
+        self.assertEqual(
+            len(AQUEDUCT_EVALUATION_ITEMS),
+            12,
+        )
+
+        # -------------------------
+        # 四类项目数量
+        # -------------------------
+
+        category_counts = {}
+
+        for item in AQUEDUCT_EVALUATION_ITEMS:
+            category = item["category"]
+
+            category_counts[category] = (
+                category_counts.get(
+                    category,
+                    0,
+                )
+                + 1
+            )
+
+        self.assertEqual(
+            category_counts,
+            {
+                "水力条件": 3,
+                "结构变形": 3,
+                "结构破损": 4,
+                "地基基础": 2,
+            },
+        )
+
+        # -------------------------
+        # item_code 在本表内必须唯一
+        # -------------------------
+
+        item_codes = [item["item_code"] for item in AQUEDUCT_EVALUATION_ITEMS]
+
+        self.assertEqual(
+            len(item_codes),
+            len(set(item_codes)),
+        )
+
+        # -------------------------
+        # 每一项必须完整配置 A/B/C/D
+        # -------------------------
+
+        for item in AQUEDUCT_EVALUATION_ITEMS:
+            self.assertEqual(
+                set(item["standards"].keys()),
+                {
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                },
+            )
+
+    # =========================
+    # 测试10：
+    # 锁定原表关键评价文字
+    # =========================
+
+    def test_aqueduct_evaluation_source_text(
+        self,
+    ):
+        items = {item["item_code"]: item for item in AQUEDUCT_EVALUATION_ITEMS}
+
+        # 过水流量
+        self.assertEqual(
+            items["hydraulic_flow_capacity"]["standards"]["C"],
+            ("过流能力为设计值的" "75%～90%。"),
+        )
+
+        # 槽身变形
+        self.assertEqual(
+            items["deformation_trough_body"]["standards"]["C"],
+            ("槽身及其支承结构" "变位为20mm~50mm。"),
+        )
+
+        # 支架或支墩破损
+        self.assertEqual(
+            items["damage_support"]["standards"]["B"],
+            "剥蚀、裂缝。",
+        )
+
+        # 原表中混凝土碳化深度
+        # A、B 两级文字确实相同，
+        # 程序不得自行“修正”。
+        carbonation = items["damage_carbonation_depth"]["standards"]
+
+        self.assertEqual(
+            carbonation["A"],
+            carbonation["B"],
+        )
+
+        self.assertEqual(
+            carbonation["C"],
+            ("混凝土碳化深度" "达到钢筋保护层厚度。"),
+        )
+
+        # 地基基础
+        self.assertEqual(
+            items["foundation_ground"]["standards"]["C"],
+            "地基胀沉量为20mm～50mm。",
+        )
+
+        self.assertEqual(
+            items["foundation_base"]["standards"]["D"],
+            "基础倾斜、位移。",
+        )
+
+    # =========================
+    # 测试11：
+    # 完整渡槽草稿可以正式完成
+    # =========================
+
+    def test_complete_aqueduct_record(
+        self,
+    ):
+        record_data = self.make_complete_record_data()
+
+        result = database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_id),
+            form_version_id=(self.form_version["id"]),
+            asset_name="测试渡槽",
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("TEST-AQ-COMPLETE"),
+            record_data=record_data,
+            single_stake_text="K1+250",
+            single_stake_value=1250.0,
+            inspection_results=(self.make_complete_inspection_results()),
+            survey_date="2026-09-14",
+            overall_grade="B",
+            survey_comment=("自动测试调查意见。"),
+        )
+
+        survey_record_id = int(result["survey_record_id"])
+
+        complete_result = database.complete_aqueduct_record(survey_record_id)
+
+        self.assertEqual(
+            complete_result["survey_record_id"],
+            survey_record_id,
+        )
+
+        self.assertEqual(
+            complete_result["inspection_count"],
+            12,
+        )
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+        assert record is not None
+
+        self.assertEqual(
+            record["record_status"],
+            "completed",
+        )
+
+    # =========================
+    # 测试12：
+    # 必须完成全部12项评价
+    # =========================
+
+    def test_aqueduct_completion_requires_all_12_items(
+        self,
+    ):
+        inspections = (self.make_complete_inspection_results())[:-1]
+
+        result = database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_id),
+            form_version_id=(self.form_version["id"]),
+            asset_name=("评价不完整渡槽"),
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("TEST-AQ-INCOMPLETE"),
+            record_data=(
+                self.make_complete_record_data(
+                    asset_name=("评价不完整渡槽"),
+                    stake="K2+000",
+                    stake_value=2000.0,
+                )
+            ),
+            single_stake_text="K2+000",
+            single_stake_value=2000.0,
+            inspection_results=(inspections),
+            survey_date="2026-09-14",
+            overall_grade="B",
+            survey_comment=("自动测试调查意见。"),
+        )
+
+        survey_record_id = int(result["survey_record_id"])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "全部12项",
+        ):
+            database.complete_aqueduct_record(survey_record_id)
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+        assert record is not None
+
+        self.assertEqual(
+            record["record_status"],
+            "draft",
+        )
+
+    # =========================
+    # 测试13：
+    # 正式基本信息缺失不能完成
+    # =========================
+
+    def test_aqueduct_completion_requires_basic_fields(
+        self,
+    ):
+        record_data = self.make_complete_record_data(
+            stake="K3+000",
+            stake_value=3000.0,
+        )
+
+        # 正式表“长度”为必填。
+        record_data["length"] = None
+
+        result = database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_id),
+            form_version_id=(self.form_version["id"]),
+            asset_name="缺少长度渡槽",
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("TEST-AQ-MISSING"),
+            record_data=record_data,
+            single_stake_text="K3+000",
+            single_stake_value=3000.0,
+            inspection_results=(self.make_complete_inspection_results()),
+            survey_date="2026-09-14",
+            overall_grade="B",
+            survey_comment=("自动测试调查意见。"),
+        )
+
+        survey_record_id = int(result["survey_record_id"])
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "长度",
+        ):
+            database.complete_aqueduct_record(survey_record_id)
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+        assert record is not None
+
+        self.assertEqual(
+            record["record_status"],
+            "draft",
+        )
 
 
 if __name__ == "__main__":
