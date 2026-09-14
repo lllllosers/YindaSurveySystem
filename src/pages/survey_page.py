@@ -34,6 +34,12 @@ from pages.sluice_gate_list_page import (
 from pages.sluice_gate_page import (
     SluiceGatePage,
 )
+from pages.tunnel_list_page import (
+    TunnelListPage,
+)
+from pages.tunnel_page import (
+    TunnelPage,
+)
 
 # =============================================================
 # 附表2工程现状调查页面注册
@@ -67,6 +73,12 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "list_page_class": (InvertedSiphonListPage),
         "edit_page_class": (InvertedSiphonPage),
     },
+    {
+        "form_code": "form_2_5",
+        "button_text": ("附表2.5 隧洞工程状况调查"),
+        "list_page_class": (TunnelListPage),
+        "edit_page_class": (TunnelPage),
+    },
 )
 
 
@@ -80,7 +92,7 @@ class SurveyPage(QWidget):
        - 附表2系列；
        - 基于 EngineeringAsset /
          SurveyRecord / InspectionResult；
-       - 当前已接入附表2.1～2.4。
+       - 当前已接入附表2.1～2.5。
 
     2. 灌区综合与水土资源调查
        - 附表1系列；
@@ -259,7 +271,7 @@ class SurveyPage(QWidget):
 
             layout.addWidget(button)
 
-        placeholder = QLabel("附表2.5～2.14将在后续" "逐步接入。")
+        placeholder = QLabel("附表2.6～2.14将在后续" "逐步接入。")
 
         placeholder.setStyleSheet("color: #7a8793;")
 
