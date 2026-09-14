@@ -1,7 +1,4 @@
-import gc
-import time
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,12 +19,18 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from workflow_test_support import (
+    EngineeringWorkflowTestCaseBase,
+)
+
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
 )
 
 
-class SluiceGateWorkflowTestCase(unittest.TestCase):
+class SluiceGateWorkflowTestCase(
+    EngineeringWorkflowTestCaseBase,
+):
     """
     附表2.2水闸核心业务回归测试。
 
@@ -35,117 +38,25 @@ class SluiceGateWorkflowTestCase(unittest.TestCase):
     不接触正式 local_data/yinda_survey.db。
     """
 
-    def setUp(self):
-        # =========================
-        # 临时测试数据库
-        # =========================
+    FORM_CODE = "form_2_2"
 
-        self.temp_directory = tempfile.TemporaryDirectory()
+    TEST_DB_FILENAME = "test_sluice_gate.db"
 
-        self.temp_data_dir = Path(self.temp_directory.name) / "local_data"
+    PROJECT_NAME = "水闸自动测试项目"
+    PROJECT_SHORT_NAME = "水闸测试"
 
-        self.temp_db_path = self.temp_data_dir / "test_sluice_gate.db"
+    BATCH_NAME = "水闸自动测试批次"
+    BATCH_CODE = "SG_TEST_2026"
 
-        self.original_data_dir = database.DATA_DIR
+    DEPARTMENT_NAME = "测试基层处"
+    DEPARTMENT_CODE = "01"
 
-        self.original_db_path = database.DB_PATH
+    OFFICE_NAME = "测试水管所"
+    OFFICE_CODE = "01"
 
-        database.DATA_DIR = self.temp_data_dir
-
-        database.DB_PATH = self.temp_db_path
-
-        database.init_database()
-        database.create_initial_forms()
-
-        # =========================
-        # 建立一套完整测试上下文
-        # =========================
-
-        project_result = database.create_project(
-            name="水闸自动测试项目",
-            short_name="水闸测试",
-        )
-
-        self.project_id = int(project_result["project_id"])
-
-        batch_result = database.create_survey_batch(
-            project_id=self.project_id,
-            batch_name="水闸自动测试批次",
-            batch_code="SG_TEST_2026",
-        )
-
-        self.batch_id = int(batch_result["batch_id"])
-
-        # -------------------------
-        # 基层处
-        # -------------------------
-
-        department_id = database.create_organization_unit(
-            name="测试基层处",
-            unit_type="department",
-            business_code="01",
-        )
-
-        self.assertIsNotNone(department_id)
-
-        assert department_id is not None
-
-        self.department_id = int(department_id)
-
-        # -------------------------
-        # 水管所
-        # -------------------------
-
-        office_id = database.create_organization_unit(
-            name="测试水管所",
-            unit_type="water_office",
-            business_code="01",
-            parent_id=self.department_id,
-        )
-
-        self.assertIsNotNone(office_id)
-
-        assert office_id is not None
-
-        self.office_id = int(office_id)
-
-        # -------------------------
-        # 渠系
-        # -------------------------
-
-        canal_id = database.create_canal_unit(
-            name="测试干渠",
-            canal_level="01",
-            parent_id=None,
-            organization_unit_id=(self.office_id),
-            description="自动测试",
-        )
-
-        self.assertIsNotNone(canal_id)
-
-        assert canal_id is not None
-
-        self.canal_id = int(canal_id)
-
-        # -------------------------
-        # 附表2.2当前版本
-        # -------------------------
-
-        self.form_version = database.get_current_form_version("form_2_2")
-
-        self.assertIsNotNone(self.form_version)
-
-        assert self.form_version is not None
-
-    def tearDown(self):
-        database.DATA_DIR = self.original_data_dir
-
-        database.DB_PATH = self.original_db_path
-
-        gc.collect()
-        time.sleep(0.05)
-
-        self.temp_directory.cleanup()
+    CANAL_NAME = "测试干渠"
+    CANAL_LEVEL = "01"
+    CANAL_DESCRIPTION = "自动测试"
 
     # =========================
     # 测试数据辅助

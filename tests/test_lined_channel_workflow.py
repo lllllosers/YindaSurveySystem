@@ -1,8 +1,5 @@
-import gc
 import json
 import sys
-import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -25,6 +22,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from workflow_test_support import (
+    EngineeringWorkflowTestCaseBase,
+)
+
 from services.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
 )
@@ -34,7 +35,9 @@ from services.lined_channel_export import (
 )
 
 
-class LinedChannelWorkflowTestCase(unittest.TestCase):
+class LinedChannelWorkflowTestCase(
+    EngineeringWorkflowTestCaseBase,
+):
     """
     附表2.1防渗衬砌渠道渠段
     V0.3.0-A1 最小持久化测试。
@@ -43,74 +46,28 @@ class LinedChannelWorkflowTestCase(unittest.TestCase):
     不接触正式数据库。
     """
 
-    def setUp(self):
-        # =========================
-        # 独立临时数据库
-        # =========================
+    FORM_CODE = "form_2_1"
 
-        self.temp_directory = tempfile.TemporaryDirectory()
+    TEST_DB_FILENAME = "test_yinda_survey.db"
 
-        self.temp_data_dir = Path(self.temp_directory.name) / "local_data"
+    PROJECT_NAME = "附表2.1自动测试项目"
+    PROJECT_SHORT_NAME = "2.1测试"
 
-        self.temp_db_path = self.temp_data_dir / "test_yinda_survey.db"
+    BATCH_NAME = "附表2.1自动测试批次"
+    BATCH_CODE = "FORM_2_1_TEST"
 
-        self.original_data_dir = database.DATA_DIR
-        self.original_db_path = database.DB_PATH
+    BATCH_START_DATE = "2026-09-01"
+    BATCH_END_DATE = "2026-12-31"
 
-        database.DATA_DIR = self.temp_data_dir
-        database.DB_PATH = self.temp_db_path
+    DEPARTMENT_NAME = "测试基层处"
+    DEPARTMENT_CODE = "1"
 
-        database.init_database()
-        database.create_initial_forms()
+    OFFICE_NAME = "测试水管所"
+    OFFICE_CODE = "01"
 
-        # =========================
-        # 建立最小业务环境
-        # =========================
-
-        project_result = database.create_project(
-            name="附表2.1自动测试项目",
-            short_name="2.1测试",
-        )
-
-        self.project_id = int(project_result["project_id"])
-
-        batch_result = database.create_survey_batch(
-            project_id=self.project_id,
-            batch_name="附表2.1自动测试批次",
-            batch_code="FORM_2_1_TEST",
-            start_date="2026-09-01",
-            end_date="2026-12-31",
-        )
-
-        self.batch_id = int(batch_result["batch_id"])
-
-        department_id = database.create_organization_unit(
-            name="测试基层处",
-            unit_type="department",
-            business_code="1",
-        )
-
-        self.office_id = database.create_organization_unit(
-            name="测试水管所",
-            unit_type="water_office",
-            business_code="01",
-            parent_id=department_id,
-        )
-
-        self.canal_id = database.create_canal_unit(
-            name="测试总干渠",
-            canal_level="01",
-            organization_unit_id=self.office_id,
-        )
-
-    def tearDown(self):
-        database.DATA_DIR = self.original_data_dir
-        database.DB_PATH = self.original_db_path
-
-        gc.collect()
-        time.sleep(0.05)
-
-        self.temp_directory.cleanup()
+    CANAL_NAME = "测试总干渠"
+    CANAL_LEVEL = "01"
+    CANAL_DESCRIPTION = None
 
     # =========================
     # 测试1：
