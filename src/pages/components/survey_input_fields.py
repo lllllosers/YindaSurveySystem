@@ -64,9 +64,13 @@ def create_signed_decimal_edit(
 
 def create_nonnegative_integer_edit(
     placeholder="可留空",
+    maximum=999999999,
 ):
     """
     创建允许为空的非负整数输入框。
+
+    maximum 用于兼容不同调查表
+    已经存在的输入上限。
     """
 
     edit = QLineEdit()
@@ -77,7 +81,7 @@ def create_nonnegative_integer_edit(
     edit.setValidator(
         QIntValidator(
             0,
-            999999999,
+            maximum,
             edit,
         )
     )
@@ -107,6 +111,7 @@ def _format_month_input(
         edit.setText(formatted)
         edit.setCursorPosition(len(formatted))
 
+
 def _format_date_input(
     edit,
     text,
@@ -118,33 +123,21 @@ def _format_date_input(
     20260914 -> 2026-09-14
     """
 
-    digits = "".join(
-        char
-        for char in text
-        if char.isdigit()
-    )[:8]
+    digits = "".join(char for char in text if char.isdigit())[:8]
 
     if len(digits) <= 4:
         formatted = digits
 
     elif len(digits) <= 6:
-        formatted = (
-            f"{digits[:4]}-"
-            f"{digits[4:6]}"
-        )
+        formatted = f"{digits[:4]}-" f"{digits[4:6]}"
 
     else:
-        formatted = (
-            f"{digits[:4]}-"
-            f"{digits[4:6]}-"
-            f"{digits[6:8]}"
-        )
+        formatted = f"{digits[:4]}-" f"{digits[4:6]}-" f"{digits[6:8]}"
 
     if formatted != text:
         edit.setText(formatted)
-        edit.setCursorPosition(
-            len(formatted)
-        )
+        edit.setCursorPosition(len(formatted))
+
 
 def create_month_edit(
     placeholder="直接输入6位数字，例如：201006",
@@ -169,6 +162,7 @@ def create_month_edit(
 
     return edit
 
+
 def create_date_edit(
     placeholder="直接输入8位数字，例如：20260914",
 ):
@@ -181,19 +175,17 @@ def create_date_edit(
     edit.setMaxLength(10)
 
     if placeholder:
-        edit.setPlaceholderText(
-            placeholder
-        )
+        edit.setPlaceholderText(placeholder)
 
     edit.textEdited.connect(
-        lambda text, target=edit:
-        _format_date_input(
+        lambda text, target=edit: _format_date_input(
             target,
             text,
         )
     )
 
     return edit
+
 
 def get_optional_float(
     edit,
@@ -246,6 +238,7 @@ def get_optional_month(
 
     return text
 
+
 def get_optional_date(
     edit,
     field_name,
@@ -263,16 +256,10 @@ def get_optional_date(
         return None
 
     expression = QRegularExpression(
-        r"^\d{4}-(0[1-9]|1[0-2])-"
-        r"(0[1-9]|[12]\d|3[01])$"
+        r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
     )
 
-    if not expression.match(
-        text
-    ).hasMatch():
-        raise ValueError(
-            f"{field_name}格式应为 "
-            "YYYY-MM-DD，例如：2026-09-14。"
-        )
+    if not expression.match(text).hasMatch():
+        raise ValueError(f"{field_name}格式应为 " "YYYY-MM-DD，例如：2026-09-14。")
 
     return text

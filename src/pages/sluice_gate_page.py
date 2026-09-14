@@ -1,13 +1,10 @@
 from datetime import datetime
 from PySide6.QtCore import (
-    QRegularExpression,
     QTimer,
     Qt,
     Signal,
 )
 from PySide6.QtGui import (
-    QDoubleValidator,
-    QIntValidator,
     QKeySequence,
     QShortcut,
 )
@@ -54,6 +51,21 @@ from services.stake import parse_stake
 
 from pages.components.evaluation_section import (
     EvaluationSection,
+)
+
+from pages.components.evaluation_section import (
+    EvaluationSection,
+)
+
+from pages.components.survey_input_fields import (
+    create_date_edit,
+    create_month_edit,
+    create_nonnegative_decimal_edit,
+    create_nonnegative_integer_edit,
+    get_optional_date,
+    get_optional_float,
+    get_optional_int,
+    get_optional_month,
 )
 
 
@@ -283,24 +295,24 @@ class SluiceGatePage(QWidget):
         self.stake_edit.setPlaceholderText("例如：CH12+350")
 
         # 设计流量
-        self.design_flow_edit = self._create_decimal_edit("例如：4.5，可留空")
+        self.design_flow_edit = create_nonnegative_decimal_edit("例如：4.5，可留空")
 
         # 建筑物等级
         self.structure_grade_edit = QLineEdit()
         self.structure_grade_edit.setPlaceholderText("按原始资料填写，可留空")
 
         # 建成年月
-        self.build_date_edit = self._create_month_edit()
+        self.build_date_edit = create_month_edit()
         self.build_date_edit.setPlaceholderText("直接输入6位数字，例如：200806")
 
         # 加固改造年月
-        self.renovation_date_edit = self._create_month_edit()
+        self.renovation_date_edit = create_month_edit()
         self.renovation_date_edit.setPlaceholderText(
             "直接输入6位数字，例如：202109，可留空"
         )
 
         # 加大流量
-        self.increased_flow_edit = self._create_decimal_edit("可留空")
+        self.increased_flow_edit = create_nonnegative_decimal_edit("可留空")
 
         basic_layout.addRow(
             "工程名称：",
@@ -345,13 +357,16 @@ class SluiceGatePage(QWidget):
         structure_layout.setVerticalSpacing(12)
 
         # 孔数
-        self.opening_count_edit = self._create_integer_edit("可留空")
+        self.opening_count_edit = create_nonnegative_integer_edit(
+            "可留空",
+            maximum=999999,
+        )
 
         # 孔宽
-        self.opening_width_edit = self._create_decimal_edit("可留空")
+        self.opening_width_edit = create_nonnegative_decimal_edit("可留空")
 
         # 孔高
-        self.opening_height_edit = self._create_decimal_edit("可留空")
+        self.opening_height_edit = create_nonnegative_decimal_edit("可留空")
 
         # 主要构件材料
         self.main_component_material_edit = QLineEdit()
@@ -368,10 +383,10 @@ class SluiceGatePage(QWidget):
         )
 
         # 保护层厚度
-        self.cover_thickness_edit = self._create_decimal_edit("可留空")
+        self.cover_thickness_edit = create_nonnegative_decimal_edit("可留空")
 
         # 裂缝限宽
-        self.crack_width_limit_edit = self._create_decimal_edit("可留空")
+        self.crack_width_limit_edit = create_nonnegative_decimal_edit("可留空")
 
         structure_layout.addRow(
             "孔数：",
@@ -465,7 +480,7 @@ class SluiceGatePage(QWidget):
         overall_grade_layout.addStretch()
 
         # 调查时间
-        self.survey_date_edit = self._create_date_edit()
+        self.survey_date_edit = create_date_edit()
         self.survey_date_edit.setPlaceholderText("直接输入8位数字，例如：20260913")
 
         # 调查意见与建议
@@ -770,220 +785,6 @@ class SluiceGatePage(QWidget):
     ):
         return self.evaluation_section.collect_results()
 
-    def _create_decimal_edit(
-        self,
-        placeholder="",
-    ):
-        """
-        创建允许为空的非负小数输入框。
-        """
-        edit = QLineEdit()
-
-        if placeholder:
-            edit.setPlaceholderText(placeholder)
-
-        validator = QDoubleValidator(
-            0.0,
-            999999999.0,
-            6,
-            edit,
-        )
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
-        edit.setValidator(validator)
-
-        return edit
-
-    def _create_integer_edit(
-        self,
-        placeholder="",
-    ):
-        """
-        创建允许为空的非负整数输入框。
-        """
-        edit = QLineEdit()
-
-        if placeholder:
-            edit.setPlaceholderText(placeholder)
-
-        validator = QIntValidator(
-            0,
-            999999,
-            edit,
-        )
-
-        edit.setValidator(validator)
-
-        return edit
-
-    def _format_month_input(
-        self,
-        edit,
-        text,
-    ):
-        """
-        年月高速录入。
-
-        例如：
-        200806 -> 2008-06
-        """
-
-        digits = "".join(char for char in text if char.isdigit())[:6]
-
-        if len(digits) <= 4:
-            formatted = digits
-        else:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
-
-        if formatted != text:
-            edit.setText(formatted)
-            edit.setCursorPosition(len(formatted))
-
-    def _format_date_input(
-        self,
-        edit,
-        text,
-    ):
-        """
-        完整日期高速录入。
-
-        例如：
-        20260913 -> 2026-09-13
-        """
-
-        digits = "".join(char for char in text if char.isdigit())[:8]
-
-        if len(digits) <= 4:
-            formatted = digits
-
-        elif len(digits) <= 6:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
-
-        else:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}-" f"{digits[6:8]}"
-
-        if formatted != text:
-            edit.setText(formatted)
-            edit.setCursorPosition(len(formatted))
-
-    def _create_date_edit(self):
-        """
-        创建日期输入框。
-
-        用户可直接连续输入8位数字，
-        系统自动格式化为 YYYY-MM-DD。
-        """
-
-        edit = QLineEdit()
-
-        edit.setMaxLength(10)
-
-        edit.textEdited.connect(
-            lambda text, target=edit: self._format_date_input(
-                target,
-                text,
-            )
-        )
-
-        return edit
-
-    def _get_optional_date(
-        self,
-        edit,
-        field_name,
-    ):
-        """
-        获取 YYYY-MM-DD 格式日期。
-        空值返回 None。
-        """
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        expression = QRegularExpression(
-            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
-        )
-
-        if not expression.match(text).hasMatch():
-            raise ValueError(f"{field_name}格式应为 YYYY-MM-DD，" "例如：2026-09-12。")
-
-        return text
-
-    def _create_month_edit(self):
-        """
-        创建年月输入框。
-
-        用户可直接连续输入6位数字，
-        系统自动格式化为 YYYY-MM。
-        """
-
-        edit = QLineEdit()
-
-        edit.setMaxLength(7)
-
-        edit.textEdited.connect(
-            lambda text, target=edit: self._format_month_input(
-                target,
-                text,
-            )
-        )
-
-        return edit
-
-    def _get_optional_float(
-        self,
-        edit,
-    ):
-        """
-        获取可为空的小数字段。
-        空值返回 None。
-        """
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        return float(text)
-
-    def _get_optional_int(
-        self,
-        edit,
-    ):
-        """
-        获取可为空的整数字段。
-        空值返回 None。
-        """
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        return int(text)
-
-    def _get_optional_month(
-        self,
-        edit,
-        field_name,
-    ):
-        """
-        获取 YYYY-MM 格式年月。
-
-        空值返回 None；
-        非空但格式不完整时阻止保存。
-        """
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        expression = QRegularExpression(r"^\d{4}-(0[1-9]|1[0-2])$")
-
-        if not expression.match(text).hasMatch():
-            raise ValueError(f"{field_name}格式应为 YYYY-MM，" "例如：2020-06。")
-
-        return text
-
     def load_departments(self):
         self.department_combo.blockSignals(True)
         self.department_combo.clear()
@@ -1171,27 +972,27 @@ class SluiceGatePage(QWidget):
 
             stake_text, stake_value = parse_stake(self.stake_edit.text())
 
-            design_flow = self._get_optional_float(self.design_flow_edit)
+            design_flow = get_optional_float(self.design_flow_edit)
 
             structure_grade = self.structure_grade_edit.text().strip() or None
 
-            build_date = self._get_optional_month(
+            build_date = get_optional_month(
                 self.build_date_edit,
                 "建成年月",
             )
 
-            renovation_date = self._get_optional_month(
+            renovation_date = get_optional_month(
                 self.renovation_date_edit,
                 "加固改造年月",
             )
 
-            opening_count = self._get_optional_int(self.opening_count_edit)
+            opening_count = get_optional_int(self.opening_count_edit)
 
-            opening_width = self._get_optional_float(self.opening_width_edit)
+            opening_width = get_optional_float(self.opening_width_edit)
 
-            opening_height = self._get_optional_float(self.opening_height_edit)
+            opening_height = get_optional_float(self.opening_height_edit)
 
-            increased_flow = self._get_optional_float(self.increased_flow_edit)
+            increased_flow = get_optional_float(self.increased_flow_edit)
 
             main_component_material = (
                 self.main_component_material_edit.text().strip() or None
@@ -1203,9 +1004,9 @@ class SluiceGatePage(QWidget):
                 self.reinforced_concrete_strength_edit.text().strip() or None
             )
 
-            cover_thickness = self._get_optional_float(self.cover_thickness_edit)
+            cover_thickness = get_optional_float(self.cover_thickness_edit)
 
-            crack_width_limit = self._get_optional_float(self.crack_width_limit_edit)
+            crack_width_limit = get_optional_float(self.crack_width_limit_edit)
 
             record_data = {
                 "asset_name": asset_name,
@@ -1228,7 +1029,7 @@ class SluiceGatePage(QWidget):
 
             inspection_results = self._collect_evaluation_results()
 
-            survey_date = self._get_optional_date(
+            survey_date = get_optional_date(
                 self.survey_date_edit,
                 "调查时间",
             )

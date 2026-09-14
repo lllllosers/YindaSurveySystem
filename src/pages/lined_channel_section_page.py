@@ -1,12 +1,10 @@
 from datetime import datetime
 from PySide6.QtCore import (
-    QRegularExpression,
     QTimer,
     Qt,
     Signal,
 )
 from PySide6.QtGui import (
-    QDoubleValidator,
     QKeySequence,
     QShortcut,
 )
@@ -52,8 +50,24 @@ from services.business_code import (
 )
 
 from services.stake import parse_stake
+
 from pages.components.evaluation_section import (
     EvaluationSection,
+)
+
+from pages.components.evaluation_section import (
+    EvaluationSection,
+)
+
+from pages.components.survey_input_fields import (
+    create_date_edit,
+    create_month_edit,
+    create_nonnegative_decimal_edit,
+    create_signed_decimal_edit,
+    get_optional_date,
+    get_optional_float,
+    get_optional_month,
+    get_optional_text,
 )
 
 
@@ -181,12 +195,12 @@ class LinedChannelSectionPage(QWidget):
         self.end_stake_edit = QLineEdit()
         self.end_stake_edit.setPlaceholderText("例如：CH13+250")
 
-        self.section_length_edit = self._create_nonnegative_decimal_edit("例如：1250")
+        self.section_length_edit = create_nonnegative_decimal_edit("例如：1250")
 
-        self.build_date_edit = self._create_month_edit()
+        self.build_date_edit = create_month_edit()
         self.build_date_edit.setPlaceholderText("直接输入6位数字，例如：200806")
 
-        self.renovation_date_edit = self._create_month_edit()
+        self.renovation_date_edit = create_month_edit()
         self.renovation_date_edit.setPlaceholderText(
             "直接输入6位数字，例如：202109，可留空"
         )
@@ -194,7 +208,7 @@ class LinedChannelSectionPage(QWidget):
         self.longitudinal_slope_edit = QLineEdit()
         self.longitudinal_slope_edit.setPlaceholderText("按原始资料填写，例如 1/2000")
 
-        self.design_flow_edit = self._create_nonnegative_decimal_edit()
+        self.design_flow_edit = create_nonnegative_decimal_edit()
 
         self.channel_grade_edit = QLineEdit()
         self.channel_grade_edit.setPlaceholderText("按原始资料填写")
@@ -255,7 +269,7 @@ class LinedChannelSectionPage(QWidget):
 
         self._setup_form_layout(section_layout)
 
-        self.embankment_top_width_edit = self._create_nonnegative_decimal_edit()
+        self.embankment_top_width_edit = create_nonnegative_decimal_edit()
 
         self.inner_slope_edit = QLineEdit()
         self.inner_slope_edit.setPlaceholderText("内边坡，按原始资料填写")
@@ -263,17 +277,17 @@ class LinedChannelSectionPage(QWidget):
         self.outer_slope_edit = QLineEdit()
         self.outer_slope_edit.setPlaceholderText("外边坡，按原始资料填写")
 
-        self.increased_flow_edit = self._create_nonnegative_decimal_edit()
+        self.increased_flow_edit = create_nonnegative_decimal_edit()
 
         self.bed_soil_edit = QLineEdit()
 
         self.lining_structure_edit = QLineEdit()
 
-        self.freeboard_edit = self._create_nonnegative_decimal_edit()
+        self.freeboard_edit = create_nonnegative_decimal_edit()
 
-        self.bottom_width_edit = self._create_nonnegative_decimal_edit()
+        self.bottom_width_edit = create_nonnegative_decimal_edit()
 
-        self.water_conveyance_loss_edit = self._create_nonnegative_decimal_edit()
+        self.water_conveyance_loss_edit = create_nonnegative_decimal_edit()
 
         section_layout.addRow(
             "堤顶宽度（m）：",
@@ -326,14 +340,14 @@ class LinedChannelSectionPage(QWidget):
 
         self.lining_material_edit = QLineEdit()
 
-        self.lining_thickness_edit = self._create_nonnegative_decimal_edit()
+        self.lining_thickness_edit = create_nonnegative_decimal_edit()
 
         self.concrete_strength_edit = QLineEdit()
         self.concrete_strength_edit.setPlaceholderText("例如：C20、C25")
 
-        self.channel_depth_edit = self._create_nonnegative_decimal_edit()
+        self.channel_depth_edit = create_nonnegative_decimal_edit()
 
-        self.channel_bottom_elevation_edit = self._create_signed_decimal_edit()
+        self.channel_bottom_elevation_edit = create_signed_decimal_edit()
 
         lining_layout.addRow(
             "衬砌材料：",
@@ -411,7 +425,7 @@ class LinedChannelSectionPage(QWidget):
 
         overall_grade_layout.addStretch()
 
-        self.survey_date_edit = self._create_date_edit()
+        self.survey_date_edit = create_date_edit()
 
         self.survey_date_edit.setPlaceholderText("直接输入8位数字，例如：20260913")
 
@@ -714,193 +728,6 @@ class LinedChannelSectionPage(QWidget):
         layout.setHorizontalSpacing(20)
         layout.setVerticalSpacing(12)
 
-    def _create_nonnegative_decimal_edit(
-        self,
-        placeholder="可留空",
-    ):
-        edit = QLineEdit()
-
-        edit.setPlaceholderText(placeholder)
-
-        validator = QDoubleValidator(
-            0.0,
-            999999999.0,
-            6,
-            edit,
-        )
-
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
-        edit.setValidator(validator)
-
-        return edit
-
-    def _create_signed_decimal_edit(
-        self,
-        placeholder="可留空",
-    ):
-        edit = QLineEdit()
-
-        edit.setPlaceholderText(placeholder)
-
-        validator = QDoubleValidator(
-            -999999999.0,
-            999999999.0,
-            6,
-            edit,
-        )
-
-        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-
-        edit.setValidator(validator)
-
-        return edit
-
-    def _format_month_input(
-        self,
-        edit,
-        text,
-    ):
-        """
-        年月高速录入。
-
-        例如：
-        200806 -> 2008-06
-        """
-
-        digits = "".join(char for char in text if char.isdigit())[:6]
-
-        if len(digits) <= 4:
-            formatted = digits
-        else:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
-
-        if formatted != text:
-            edit.setText(formatted)
-            edit.setCursorPosition(len(formatted))
-
-    def _format_date_input(
-        self,
-        edit,
-        text,
-    ):
-        """
-        完整日期高速录入。
-
-        例如：
-        20260913 -> 2026-09-13
-        """
-
-        digits = "".join(char for char in text if char.isdigit())[:8]
-
-        if len(digits) <= 4:
-            formatted = digits
-
-        elif len(digits) <= 6:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}"
-
-        else:
-            formatted = f"{digits[:4]}-" f"{digits[4:6]}-" f"{digits[6:8]}"
-
-        if formatted != text:
-            edit.setText(formatted)
-            edit.setCursorPosition(len(formatted))
-
-    def _create_date_edit(self):
-        """
-        创建日期输入框。
-
-        用户可直接连续输入8位数字，
-        系统自动格式化为 YYYY-MM-DD。
-        """
-
-        edit = QLineEdit()
-
-        edit.setMaxLength(10)
-
-        edit.textEdited.connect(
-            lambda text, target=edit: self._format_date_input(
-                target,
-                text,
-            )
-        )
-
-        return edit
-
-    def _get_optional_date(
-        self,
-        edit,
-        field_name,
-    ):
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        expression = QRegularExpression(
-            r"^\d{4}-(0[1-9]|1[0-2])-" r"(0[1-9]|[12]\d|3[01])$"
-        )
-
-        if not expression.match(text).hasMatch():
-            raise ValueError(f"{field_name}格式应为 " "YYYY-MM-DD。")
-
-        return text
-
-    def _create_month_edit(self):
-        """
-        创建年月输入框。
-
-        用户可直接连续输入6位数字，
-        系统自动格式化为 YYYY-MM。
-        """
-
-        edit = QLineEdit()
-
-        edit.setMaxLength(7)
-
-        edit.textEdited.connect(
-            lambda text, target=edit: self._format_month_input(
-                target,
-                text,
-            )
-        )
-
-        return edit
-
-    def _get_optional_float(
-        self,
-        edit,
-    ):
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        return float(text)
-
-    def _get_optional_text(
-        self,
-        edit,
-    ):
-        return edit.text().strip() or None
-
-    def _get_optional_month(
-        self,
-        edit,
-        field_name,
-    ):
-        text = edit.text().strip()
-
-        if not text:
-            return None
-
-        expression = QRegularExpression(r"^\d{4}-(0[1-9]|1[0-2])$")
-
-        if not expression.match(text).hasMatch():
-            raise ValueError(f"{field_name}格式应为 YYYY-MM，" "例如：2008-06。")
-
-        return text
-
     # =========================================================
     # 脏数据保护
     # =========================================================
@@ -1159,12 +986,12 @@ class LinedChannelSectionPage(QWidget):
         ):
             raise ValueError("终止桩号不能小于起始桩号。")
 
-        build_date = self._get_optional_month(
+        build_date = get_optional_month(
             self.build_date_edit,
             "建成年月",
         )
 
-        renovation_date = self._get_optional_month(
+        renovation_date = get_optional_month(
             self.renovation_date_edit,
             "加固改造年月",
         )
@@ -1175,36 +1002,36 @@ class LinedChannelSectionPage(QWidget):
             "start_stake_value": (start_stake_value),
             "end_stake": (end_stake_text),
             "end_stake_value": (end_stake_value),
-            "section_length": (self._get_optional_float(self.section_length_edit)),
+            "section_length": (get_optional_float(self.section_length_edit)),
             "build_date": build_date,
             "renovation_date": (renovation_date),
             "longitudinal_slope": (
-                self._get_optional_text(self.longitudinal_slope_edit)
+                get_optional_text(self.longitudinal_slope_edit)
             ),
-            "design_flow": (self._get_optional_float(self.design_flow_edit)),
-            "channel_grade": (self._get_optional_text(self.channel_grade_edit)),
+            "design_flow": (get_optional_float(self.design_flow_edit)),
+            "channel_grade": (get_optional_text(self.channel_grade_edit)),
             "cross_section_form": (
-                self._get_optional_text(self.cross_section_form_edit)
+                get_optional_text(self.cross_section_form_edit)
             ),
             "embankment_top_width": (
-                self._get_optional_float(self.embankment_top_width_edit)
+                get_optional_float(self.embankment_top_width_edit)
             ),
-            "inner_slope": (self._get_optional_text(self.inner_slope_edit)),
-            "outer_slope": (self._get_optional_text(self.outer_slope_edit)),
-            "increased_flow": (self._get_optional_float(self.increased_flow_edit)),
-            "bed_soil": (self._get_optional_text(self.bed_soil_edit)),
-            "lining_structure": (self._get_optional_text(self.lining_structure_edit)),
-            "freeboard": (self._get_optional_float(self.freeboard_edit)),
-            "bottom_width": (self._get_optional_float(self.bottom_width_edit)),
+            "inner_slope": (get_optional_text(self.inner_slope_edit)),
+            "outer_slope": (get_optional_text(self.outer_slope_edit)),
+            "increased_flow": (get_optional_float(self.increased_flow_edit)),
+            "bed_soil": (get_optional_text(self.bed_soil_edit)),
+            "lining_structure": (get_optional_text(self.lining_structure_edit)),
+            "freeboard": (get_optional_float(self.freeboard_edit)),
+            "bottom_width": (get_optional_float(self.bottom_width_edit)),
             "water_conveyance_loss": (
-                self._get_optional_float(self.water_conveyance_loss_edit)
+                get_optional_float(self.water_conveyance_loss_edit)
             ),
-            "lining_material": (self._get_optional_text(self.lining_material_edit)),
-            "lining_thickness": (self._get_optional_float(self.lining_thickness_edit)),
-            "concrete_strength": (self._get_optional_text(self.concrete_strength_edit)),
-            "channel_depth": (self._get_optional_float(self.channel_depth_edit)),
+            "lining_material": (get_optional_text(self.lining_material_edit)),
+            "lining_thickness": (get_optional_float(self.lining_thickness_edit)),
+            "concrete_strength": (get_optional_text(self.concrete_strength_edit)),
+            "channel_depth": (get_optional_float(self.channel_depth_edit)),
             "channel_bottom_elevation": (
-                self._get_optional_float(self.channel_bottom_elevation_edit)
+                get_optional_float(self.channel_bottom_elevation_edit)
             ),
         }
 
@@ -1266,7 +1093,7 @@ class LinedChannelSectionPage(QWidget):
 
             inspection_results = self._collect_evaluation_results()
 
-            survey_date = self._get_optional_date(
+            survey_date = get_optional_date(
                 self.survey_date_edit,
                 "调查时间",
             )
