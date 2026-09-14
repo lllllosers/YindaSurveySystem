@@ -22,6 +22,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.business_code import (
+    get_engineering_type_code,
+)
+
 
 class DatabaseCoreTestCase(unittest.TestCase):
     """
@@ -421,6 +425,70 @@ class DatabaseCoreTestCase(unittest.TestCase):
                 batch_name="第二批次",
                 batch_code="DUPLICATE",
             )
+
+
+def test_form_2_4_metadata_and_business_type_code(
+    self,
+):
+    form_version = database.get_current_form_version("form_2_4")
+
+    self.assertIsNotNone(form_version)
+
+    self.assertEqual(
+        get_engineering_type_code("form_2_4"),
+        "04",
+    )
+
+    with database.get_connection() as connection:
+        form = connection.execute(
+            """
+            SELECT
+                form_code,
+                form_number,
+                form_name,
+                series,
+                record_type,
+                asset_type,
+                sort_order
+            FROM form_definitions
+            WHERE form_code = ?
+            """,
+            ("form_2_4",),
+        ).fetchone()
+
+    self.assertIsNotNone(form)
+
+    assert form is not None
+
+    self.assertEqual(
+        form["form_number"],
+        "2.4",
+    )
+
+    self.assertEqual(
+        form["form_name"],
+        "倒虹吸工程状况调查表",
+    )
+
+    self.assertEqual(
+        form["series"],
+        "series_2",
+    )
+
+    self.assertEqual(
+        form["record_type"],
+        "engineering",
+    )
+
+    self.assertEqual(
+        form["asset_type"],
+        "inverted_siphon",
+    )
+
+    self.assertEqual(
+        int(form["sort_order"]),
+        204,
+    )
 
 
 if __name__ == "__main__":

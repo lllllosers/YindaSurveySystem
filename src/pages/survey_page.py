@@ -16,6 +16,12 @@ from pages.aqueduct_list_page import (
 from pages.aqueduct_page import (
     AqueductPage,
 )
+from pages.inverted_siphon_list_page import (
+    InvertedSiphonListPage,
+)
+from pages.inverted_siphon_page import (
+    InvertedSiphonPage,
+)
 from pages.lined_channel_section_list_page import (
     LinedChannelSectionListPage,
 )
@@ -55,6 +61,12 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "list_page_class": (AqueductListPage),
         "edit_page_class": (AqueductPage),
     },
+    {
+        "form_code": "form_2_4",
+        "button_text": ("附表2.4 倒虹吸工程状况调查"),
+        "list_page_class": (InvertedSiphonListPage),
+        "edit_page_class": (InvertedSiphonPage),
+    },
 )
 
 
@@ -68,7 +80,7 @@ class SurveyPage(QWidget):
        - 附表2系列；
        - 基于 EngineeringAsset /
          SurveyRecord / InspectionResult；
-       - 当前已接入附表2.1～2.3。
+       - 当前已接入附表2.1～2.4。
 
     2. 灌区综合与水土资源调查
        - 附表1系列；
@@ -247,7 +259,7 @@ class SurveyPage(QWidget):
 
             layout.addWidget(button)
 
-        placeholder = QLabel("附表2.4～2.14将在后续" "逐步接入。")
+        placeholder = QLabel("附表2.5～2.14将在后续" "逐步接入。")
 
         placeholder.setStyleSheet("color: #7a8793;")
 

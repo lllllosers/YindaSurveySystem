@@ -961,6 +961,7 @@ def create_initial_forms():
     - 附表2.1 防渗衬砌渠道
     - 附表2.2 水闸
     - 附表2.3 渡槽（座槽）
+    - 附表2.4 倒虹吸
     """
 
     forms = [
@@ -990,6 +991,15 @@ def create_initial_forms():
             "record_type": "engineering",
             "asset_type": "aqueduct",
             "sort_order": 203,
+        },
+        {
+            "form_code": "form_2_4",
+            "form_number": "2.4",
+            "form_name": "倒虹吸工程状况调查表",
+            "series": "series_2",
+            "record_type": "engineering",
+            "asset_type": "inverted_siphon",
+            "sort_order": 204,
         },
     ]
 
@@ -4204,29 +4214,19 @@ def complete_aqueduct_record(
         ).fetchone()
 
         if record is None:
-            raise ValueError(
-                "没有找到该附表2.3调查记录。"
-            )
+            raise ValueError("没有找到该附表2.3调查记录。")
 
         if record["record_status"] != "draft":
-            raise ValueError(
-                "只有草稿记录可以执行完成调查。"
-            )
+            raise ValueError("只有草稿记录可以执行完成调查。")
 
         # =========================
         # 解析调查数据
         # =========================
 
         try:
-            record_data = json.loads(
-                record["record_data_json"]
-                or "{}"
-            )
+            record_data = json.loads(record["record_data_json"] or "{}")
         except json.JSONDecodeError as error:
-            raise ValueError(
-                "当前调查记录数据异常，"
-                "无法执行完成调查。"
-            ) from error
+            raise ValueError("当前调查记录数据异常，" "无法执行完成调查。") from error
 
         # =========================
         # 检查必填字段
@@ -4270,25 +4270,15 @@ def complete_aqueduct_record(
             "waterstop_form": "止水形式",
             "trough_bottom_elevation": "槽底高程",
             "span_count": "跨数",
-            "lower_support_structure_form": (
-                "下部支撑结构型式"
-            ),
+            "lower_support_structure_form": ("下部支撑结构型式"),
         }
 
-        for field_key, field_name in (
-            required_record_fields.items()
-        ):
-            if is_missing(
-                record_data.get(field_key)
-            ):
-                missing_fields.append(
-                    field_name
-                )
+        for field_key, field_name in required_record_fields.items():
+            if is_missing(record_data.get(field_key)):
+                missing_fields.append(field_name)
 
         if is_missing(record["survey_date"]):
-            missing_fields.append(
-                "调查时间"
-            )
+            missing_fields.append("调查时间")
 
         if record["overall_grade"] not in (
             "A",
@@ -4296,26 +4286,15 @@ def complete_aqueduct_record(
             "C",
             "D",
         ):
-            missing_fields.append(
-                "工程状况类别"
-            )
+            missing_fields.append("工程状况类别")
 
-        if is_missing(
-            record["survey_comment"]
-        ):
-            missing_fields.append(
-                "调查意见与建议"
-            )
+        if is_missing(record["survey_comment"]):
+            missing_fields.append("调查意见与建议")
 
         if missing_fields:
-            field_text = "、".join(
-                missing_fields
-            )
+            field_text = "、".join(missing_fields)
 
-            raise ValueError(
-                "完成调查前仍有必填内容未填写："
-                f"{field_text}。"
-            )
+            raise ValueError("完成调查前仍有必填内容未填写：" f"{field_text}。")
 
         # =========================
         # 日期有效性
@@ -4327,16 +4306,9 @@ def complete_aqueduct_record(
                 "%Y-%m",
             )
         except (TypeError, ValueError) as error:
-            raise ValueError(
-                "建成年月不是有效的 "
-                "YYYY-MM 日期。"
-            ) from error
+            raise ValueError("建成年月不是有效的 " "YYYY-MM 日期。") from error
 
-        renovation_date = (
-            record_data.get(
-                "renovation_date"
-            )
-        )
+        renovation_date = record_data.get("renovation_date")
 
         if renovation_date:
             try:
@@ -4348,10 +4320,7 @@ def complete_aqueduct_record(
                 TypeError,
                 ValueError,
             ) as error:
-                raise ValueError(
-                    "加固改造年月不是有效的 "
-                    "YYYY-MM 日期。"
-                ) from error
+                raise ValueError("加固改造年月不是有效的 " "YYYY-MM 日期。") from error
 
         try:
             datetime.strptime(
@@ -4362,25 +4331,20 @@ def complete_aqueduct_record(
             TypeError,
             ValueError,
         ) as error:
-            raise ValueError(
-                "调查时间不是有效的 "
-                "YYYY-MM-DD 日期。"
-            ) from error
+            raise ValueError("调查时间不是有效的 " "YYYY-MM-DD 日期。") from error
 
         # =========================
         # 12项分项评价
         # =========================
 
-        inspection_count = (
-            connection.execute(
-                """
+        inspection_count = connection.execute(
+            """
                 SELECT COUNT(*) AS count
                 FROM inspection_results
                 WHERE survey_record_id = ?
                 """,
-                (survey_record_id,),
-            ).fetchone()["count"]
-        )
+            (survey_record_id,),
+        ).fetchone()["count"]
 
         if inspection_count != 12:
             raise ValueError(
@@ -4409,14 +4373,213 @@ def complete_aqueduct_record(
         )
 
         return {
-            "survey_record_id": (
-                survey_record_id
-            ),
-            "inspection_count": (
-                inspection_count
-            ),
+            "survey_record_id": (survey_record_id),
+            "inspection_count": (inspection_count),
         }
-    
+
+
+def complete_inverted_siphon_record(
+    survey_record_id,
+):
+    """
+    将附表2.4倒虹吸调查草稿
+    正式标记为 completed。
+
+    完成条件：
+    1. 记录必须属于附表2.4且当前为 draft；
+    2. 工程身份信息完整；
+    3. 正式基本信息完整；
+    4. 12项分项评价全部完成；
+    5. 工程状况类别已确定；
+    6. 调查时间有效；
+    7. 调查意见与建议已填写。
+
+    加固改造年月允许为空。
+    """
+
+    with get_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT
+                sr.id,
+                sr.record_status,
+                sr.organization_unit_id,
+                sr.canal_unit_id,
+                sr.business_code,
+                sr.survey_date,
+                sr.overall_grade,
+                sr.survey_comment,
+                sr.record_data_json,
+
+                ea.asset_name,
+
+                fd.form_code
+
+            FROM survey_records AS sr
+
+            LEFT JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            WHERE sr.id = ?
+              AND fd.form_code = 'form_2_4'
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if record is None:
+            raise ValueError("没有找到该附表2.4调查记录。")
+
+        if record["record_status"] != "draft":
+            raise ValueError("只有草稿记录可以执行完成调查。")
+
+        try:
+            record_data = json.loads(record["record_data_json"] or "{}")
+        except json.JSONDecodeError as error:
+            raise ValueError("当前调查记录数据异常，" "无法执行完成调查。") from error
+
+        missing_fields = []
+
+        def is_missing(value):
+            if value is None:
+                return True
+
+            if isinstance(value, str):
+                return not value.strip()
+
+            return False
+
+        # 工程身份
+        if is_missing(record["asset_name"]):
+            missing_fields.append("名称")
+
+        if record["organization_unit_id"] is None:
+            missing_fields.append("所属水管所")
+
+        if record["canal_unit_id"] is None:
+            missing_fields.append("所属渠系")
+
+        if is_missing(record["business_code"]):
+            missing_fields.append("业务编号")
+
+        # 正式基本信息
+        required_record_fields = {
+            "stake": "桩号",
+            "design_flow": "设计流量",
+            "structure_grade": "建筑物等级",
+            "build_date": "建成年月",
+            "length": "长度",
+            "increased_flow": "加大流量",
+            "structure_form": "结构形式",
+            "section_size": "尺寸",
+            "pipe_body_structure": "管身结构",
+            "wall_thickness": "壁厚度",
+            "waterstop_form": "止水形式",
+            "channel_bottom_elevation": "渠底高程",
+        }
+
+        for field_key, field_name in required_record_fields.items():
+            if is_missing(record_data.get(field_key)):
+                missing_fields.append(field_name)
+
+        if is_missing(record["survey_date"]):
+            missing_fields.append("调查时间")
+
+        if record["overall_grade"] not in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            missing_fields.append("工程状况类别")
+
+        if is_missing(record["survey_comment"]):
+            missing_fields.append("调查意见与建议")
+
+        if missing_fields:
+            field_text = "、".join(missing_fields)
+
+            raise ValueError("完成调查前仍有必填内容未填写：" f"{field_text}。")
+
+        # 日期有效性
+        try:
+            datetime.strptime(
+                record_data["build_date"],
+                "%Y-%m",
+            )
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ValueError("建成年月不是有效的 " "YYYY-MM 日期。") from error
+
+        renovation_date = record_data.get("renovation_date")
+
+        if renovation_date:
+            try:
+                datetime.strptime(
+                    renovation_date,
+                    "%Y-%m",
+                )
+            except (
+                TypeError,
+                ValueError,
+            ) as error:
+                raise ValueError("加固改造年月不是有效的 " "YYYY-MM 日期。") from error
+
+        try:
+            datetime.strptime(
+                record["survey_date"],
+                "%Y-%m-%d",
+            )
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ValueError("调查时间不是有效的 " "YYYY-MM-DD 日期。") from error
+
+        # 12项分项评价
+        inspection_count = connection.execute(
+            """
+                SELECT COUNT(*) AS count
+                FROM inspection_results
+                WHERE survey_record_id = ?
+                """,
+            (survey_record_id,),
+        ).fetchone()["count"]
+
+        if inspection_count != 12:
+            raise ValueError(
+                "完成调查前必须完成全部12项"
+                "分项评价。"
+                f"当前已完成 "
+                f"{inspection_count} 项。"
+            )
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                record_status = 'completed',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (survey_record_id,),
+        )
+
+        return {
+            "survey_record_id": (survey_record_id),
+            "inspection_count": (inspection_count),
+        }
+
 
 def get_engineering_assets(
     project_id,

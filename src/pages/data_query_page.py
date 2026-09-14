@@ -37,6 +37,10 @@ from services.aqueduct_export import (
     export_aqueduct_summary,
 )
 
+from services.inverted_siphon_export import (
+    export_inverted_siphon_summary,
+)
+
 # =============================================================
 # 附表2单表详细汇总导出注册
 # =============================================================
@@ -45,6 +49,7 @@ ENGINEERING_SUMMARY_EXPORTERS = {
     "form_2_1": export_lined_channel_summary,
     "form_2_2": export_sluice_gate_summary,
     "form_2_3": export_aqueduct_summary,
+    "form_2_4": export_inverted_siphon_summary,
 }
 
 
@@ -54,7 +59,7 @@ class DataQueryPage(QWidget):
 
     当前第一版：
     - 当前项目内跨批次查询；
-    - 跨附表2.1 / 2.2 / 2.3查询；
+    - 跨附表2.1 ~ 2.4查询；
     - 公共条件筛选；
     - 轻量统计；
     - 当前查询结果导出。
