@@ -20,6 +20,12 @@ from pages.sluice_gate_list_page import (
 from pages.sluice_gate_page import (
     SluiceGatePage,
 )
+from pages.aqueduct_list_page import (
+    AqueductListPage,
+)
+from pages.aqueduct_page import (
+    AqueductPage,
+)
 
 
 class SurveyPage(QWidget):
@@ -62,6 +68,14 @@ class SurveyPage(QWidget):
         self.sluice_edit_page = SluiceGatePage()
 
         # =========================
+        # 附表2.3
+        # =========================
+
+        self.aqueduct_list_page = AqueductListPage()
+
+        self.aqueduct_edit_page = AqueductPage()
+
+        # =========================
         # Stack
         # =========================
 
@@ -74,6 +88,10 @@ class SurveyPage(QWidget):
         self.stack.addWidget(self.sluice_list_page)
 
         self.stack.addWidget(self.sluice_edit_page)
+
+        self.stack.addWidget(self.aqueduct_list_page)
+
+        self.stack.addWidget(self.aqueduct_edit_page)
 
         # =========================
         # 附表2.1信号
@@ -106,6 +124,20 @@ class SurveyPage(QWidget):
         self.sluice_edit_page.survey_saved.connect(self.sluice_saved)
 
         self.sluice_list_page.edit_requested.connect(self.open_edit_sluice)
+
+        # =========================
+        # 附表2.3信号
+        # =========================
+
+        self.aqueduct_list_page.new_requested.connect(self.open_new_aqueduct)
+
+        self.aqueduct_list_page.back_requested.connect(self.open_home)
+
+        self.aqueduct_list_page.edit_requested.connect(self.open_edit_aqueduct)
+
+        self.aqueduct_edit_page.back_requested.connect(self.open_aqueduct_list)
+
+        self.aqueduct_edit_page.survey_saved.connect(self.aqueduct_saved)
 
         layout.addWidget(self.stack)
 
@@ -148,7 +180,19 @@ class SurveyPage(QWidget):
 
         layout.addWidget(sluice_button)
 
-        placeholder = QLabel("附表2.3及其他调查表将在后续逐步接入。")
+        # =========================
+        # 附表2.3
+        # =========================
+
+        aqueduct_button = QPushButton("附表2.3 渡槽（座槽）工程状况调查")
+
+        aqueduct_button.setMinimumHeight(46)
+
+        aqueduct_button.clicked.connect(self.open_aqueduct_list)
+
+        layout.addWidget(aqueduct_button)
+
+        placeholder = QLabel("附表2.4及其他调查表" "将在后续逐步接入。")
 
         placeholder.setStyleSheet("color: #7a8793;")
 
@@ -168,6 +212,9 @@ class SurveyPage(QWidget):
 
         if self.stack.currentWidget() is self.sluice_edit_page:
             return self.sluice_edit_page.confirm_leave_changes()
+
+        if self.stack.currentWidget() is self.aqueduct_edit_page:
+            return self.aqueduct_edit_page.confirm_leave_changes()
 
         return True
 
@@ -236,6 +283,39 @@ class SurveyPage(QWidget):
                 "打开失败",
                 str(error),
             )
+
+    # =========================================================
+    # 附表2.3
+    # =========================================================
+
+    def open_aqueduct_list(self):
+        self.aqueduct_list_page.load_data()
+
+        self.stack.setCurrentWidget(self.aqueduct_list_page)
+
+    def open_new_aqueduct(self):
+        self.aqueduct_edit_page.prepare_new()
+
+        self.stack.setCurrentWidget(self.aqueduct_edit_page)
+
+    def open_edit_aqueduct(
+        self,
+        survey_record_id,
+    ):
+        try:
+            self.aqueduct_edit_page.load_record(survey_record_id)
+
+            self.stack.setCurrentWidget(self.aqueduct_edit_page)
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "打开失败",
+                str(error),
+            )
+
+    def aqueduct_saved(self):
+        self.aqueduct_list_page.load_data()
 
     def sluice_saved(self):
         self.sluice_list_page.load_data()
