@@ -33,6 +33,10 @@ from services.sluice_gate_export import (
     export_sluice_gate_summary,
 )
 
+from services.aqueduct_export import (
+    export_aqueduct_summary,
+)
+
 
 class DataQueryPage(QWidget):
     """
@@ -40,7 +44,7 @@ class DataQueryPage(QWidget):
 
     当前第一版：
     - 当前项目内跨批次查询；
-    - 跨附表2.1 / 2.2查询；
+    - 跨附表2.1 / 2.2 / 2.3查询；
     - 公共条件筛选；
     - 轻量统计；
     - 当前查询结果导出。
@@ -654,6 +658,9 @@ class DataQueryPage(QWidget):
         elif form_code == "form_2_2":
             default_name = "数据查询_附表2.2_" f"{safe_batch_text}.xlsx"
 
+        elif form_code == "form_2_3":
+            default_name = "数据查询_附表2.3_" f"{safe_batch_text}.xlsx"
+
         else:
             default_name = "数据查询_工程调查汇总_" f"{safe_batch_text}.xlsx"
 
@@ -679,6 +686,12 @@ class DataQueryPage(QWidget):
 
             elif form_code == "form_2_2":
                 result = export_sluice_gate_summary(
+                    records=(self.filtered_records),
+                    file_path=file_path,
+                )
+
+            elif form_code == "form_2_3":
+                result = export_aqueduct_summary(
                     records=(self.filtered_records),
                     file_path=file_path,
                 )

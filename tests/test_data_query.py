@@ -23,6 +23,12 @@ import database
 from services.query_export import (
     export_common_query_summary,
 )
+from services.aqueduct_export import (
+    export_aqueduct_summary,
+)
+from services.aqueduct_evaluation import (
+    AQUEDUCT_EVALUATION_ITEMS,
+)
 
 
 class DataQueryTestCase(unittest.TestCase):
@@ -156,6 +162,88 @@ class DataQueryTestCase(unittest.TestCase):
         )
 
         # =====================================================
+        # 附表2.3：2026
+        # =====================================================
+
+        form_2_3 = database.get_current_form_version("form_2_3")
+
+        database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_1_id),
+            form_version_id=(form_2_3["id"]),
+            asset_name="测试渡槽A",
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("1-01-01-03-001"),
+            record_data={
+                "stake": "K25+300",
+                "design_flow": 8.0,
+                "length": 120.0,
+            },
+            single_stake_text=("K25+300"),
+            single_stake_value=(25300.0),
+            survey_date=("2026-09-15"),
+            overall_grade="D",
+            survey_comment=("测试意见D"),
+        )
+
+        # =====================================================
+        # 附表2.3：2026
+        # 详细汇总导出测试记录
+        # =====================================================
+
+        aqueduct_record_data = {
+            "stake": "K26+100",
+            "stake_value": 26100.0,
+            "design_flow": 8.5,
+            "structure_grade": "3级",
+            "build_date": "2010-06",
+            "renovation_date": "2021-09",
+            "length": 150.0,
+            "increased_flow": 10.0,
+            "structure_form": "梁式渡槽",
+            "section_width": 3.2,
+            "section_height": 2.4,
+            "trough_body_structure": ("钢筋混凝土"),
+            "trough_wall_thickness": 0.25,
+            "waterstop_form": "橡胶止水",
+            "trough_bottom_elevation": -3.5,
+            "span_count": 5,
+            "lower_support_structure_form": ("排架式"),
+        }
+
+        aqueduct_inspections = [
+            {
+                "item_code": (item["item_code"]),
+                "category": (item["category"]),
+                "item_name": (item["item_name"]),
+                "grade": "B",
+                "description": None,
+                "remark": None,
+            }
+            for item in AQUEDUCT_EVALUATION_ITEMS
+        ]
+
+        database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_1_id),
+            form_version_id=(form_2_3["id"]),
+            asset_name=("详细汇总测试渡槽"),
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("1-01-01-03-002"),
+            record_data=(aqueduct_record_data),
+            single_stake_text="K26+100",
+            single_stake_value=26100.0,
+            inspection_results=(aqueduct_inspections),
+            survey_date="2026-09-16",
+            overall_grade="B",
+            survey_comment=("详细汇总导出测试。"),
+        )
+
+        # =====================================================
         # 附表2.1：2027
         # =====================================================
 
@@ -191,19 +279,19 @@ class DataQueryTestCase(unittest.TestCase):
         self.temp_directory.cleanup()
 
     # =========================================================
-    # 测试1：两个表统一查询
+    # 测试1：3个表统一查询
     # =========================================================
 
     def test_query_returns_multiple_forms(
         self,
     ):
         records = database.get_engineering_survey_query_records(
-            project_id=(self.project_id)
+            project_id=self.project_id
         )
 
         self.assertEqual(
             len(records),
-            3,
+            5,
         )
 
         form_codes = {record["form_code"] for record in records}
@@ -213,6 +301,7 @@ class DataQueryTestCase(unittest.TestCase):
             {
                 "form_2_1",
                 "form_2_2",
+                "form_2_3",
             },
         )
 
@@ -234,6 +323,25 @@ class DataQueryTestCase(unittest.TestCase):
             "K20+500",
         )
 
+        aqueduct_record = next(
+            record for record in records if record["asset_name"] == "测试渡槽A"
+        )
+
+        self.assertEqual(
+            aqueduct_record["engineering_position"],
+            "K25+300",
+        )
+
+        self.assertEqual(
+            aqueduct_record["form_code"],
+            "form_2_3",
+        )
+
+        self.assertEqual(
+            aqueduct_record["overall_grade"],
+            "D",
+        )
+
     # =========================================================
     # 测试2：数据库层按批次 / 表单过滤
     # =========================================================
@@ -242,17 +350,17 @@ class DataQueryTestCase(unittest.TestCase):
         self,
     ):
         batch_records = database.get_engineering_survey_query_records(
-            project_id=(self.project_id),
+            project_id=self.project_id,
             survey_batch_id=(self.batch_1_id),
         )
 
         self.assertEqual(
             len(batch_records),
-            2,
+            4,
         )
 
         form_records = database.get_engineering_survey_query_records(
-            project_id=(self.project_id),
+            project_id=self.project_id,
             form_code="form_2_1",
         )
 
@@ -261,20 +369,51 @@ class DataQueryTestCase(unittest.TestCase):
             2,
         )
 
-        combined_records = database.get_engineering_survey_query_records(
-            project_id=(self.project_id),
+        sluice_records = database.get_engineering_survey_query_records(
+            project_id=self.project_id,
             survey_batch_id=(self.batch_1_id),
             form_code="form_2_2",
         )
 
         self.assertEqual(
-            len(combined_records),
+            len(sluice_records),
             1,
         )
 
         self.assertEqual(
-            combined_records[0]["asset_name"],
+            sluice_records[0]["asset_name"],
             "测试水闸A",
+        )
+
+        aqueduct_records = database.get_engineering_survey_query_records(
+            project_id=(self.project_id),
+            survey_batch_id=(self.batch_1_id),
+            form_code="form_2_3",
+        )
+
+        self.assertEqual(
+            len(aqueduct_records),
+            2,
+        )
+
+        aqueduct_record = next(
+            record for record in aqueduct_records if record["asset_name"] == "测试渡槽A"
+        )
+
+        self.assertEqual(
+            aqueduct_record["engineering_position"],
+            "K25+300",
+        )
+
+        detailed_record = next(
+            record
+            for record in aqueduct_records
+            if record["asset_name"] == "详细汇总测试渡槽"
+        )
+
+        self.assertEqual(
+            detailed_record["engineering_position"],
+            "K26+100",
         )
 
     # =========================================================
@@ -285,7 +424,7 @@ class DataQueryTestCase(unittest.TestCase):
         self,
     ):
         records = database.get_engineering_survey_query_records(
-            project_id=(self.project_id)
+            project_id=self.project_id
         )
 
         file_path = Path(self.temp_directory.name) / "query_summary.xlsx"
@@ -297,7 +436,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             result["exported_count"],
-            3,
+            5,
         )
 
         self.assertTrue(file_path.exists())
@@ -332,22 +471,221 @@ class DataQueryTestCase(unittest.TestCase):
             )
         }
 
-        self.assertCountEqual(
-            exported_names,
-            [
-                "测试渠段A",
-                "测试水闸A",
-                "测试渠段B",
-            ],
-        )
-
         self.assertEqual(
             exported_names,
             {
                 "测试渠段A",
                 "测试水闸A",
+                "测试渡槽A",
                 "测试渠段B",
+                "详细汇总测试渡槽",
             },
+        )
+
+        # =============================================
+        # 专门检查附表2.3公共字段导出
+        # =============================================
+
+        aqueduct_row = None
+
+        for row in range(
+            2,
+            worksheet.max_row + 1,
+        ):
+            if (
+                worksheet.cell(
+                    row=row,
+                    column=5,
+                ).value
+                == "测试渡槽A"
+            ):
+                aqueduct_row = row
+                break
+
+        self.assertIsNotNone(aqueduct_row)
+
+        assert aqueduct_row is not None
+
+        # I列：工程位置
+        self.assertEqual(
+            worksheet.cell(
+                row=aqueduct_row,
+                column=9,
+            ).value,
+            "K25+300",
+        )
+
+        # J列：工程状况类别
+        self.assertEqual(
+            worksheet.cell(
+                row=aqueduct_row,
+                column=10,
+            ).value,
+            "D",
+        )
+
+        # K列：调查时间
+        self.assertEqual(
+            worksheet.cell(
+                row=aqueduct_row,
+                column=11,
+            ).value,
+            "2026-09-15",
+        )
+
+        workbook.close()
+
+    # =========================================================
+    # 测试4：附表2.3详细汇总导出
+    # =========================================================
+
+    def test_export_aqueduct_summary(
+        self,
+    ):
+        records = database.get_engineering_survey_query_records(
+            project_id=(self.project_id),
+            survey_batch_id=(self.batch_1_id),
+            form_code="form_2_3",
+        )
+
+        file_path = Path(self.temp_directory.name) / "aqueduct_summary.xlsx"
+
+        result = export_aqueduct_summary(
+            records=records,
+            file_path=file_path,
+        )
+
+        self.assertEqual(
+            result["exported_count"],
+            2,
+        )
+
+        self.assertTrue(file_path.exists())
+
+        workbook = load_workbook(file_path)
+
+        worksheet = workbook["渡槽调查汇总"]
+
+        self.assertEqual(
+            worksheet["A1"].value,
+            "序号",
+        )
+
+        self.assertEqual(
+            worksheet["C1"].value,
+            "名称",
+        )
+
+        self.assertEqual(
+            worksheet["G1"].value,
+            "桩号",
+        )
+
+        self.assertEqual(
+            worksheet["H1"].value,
+            "设计流量（m³/s）",
+        )
+
+        self.assertEqual(
+            worksheet["L1"].value,
+            "长度",
+        )
+
+        self.assertEqual(
+            worksheet["O1"].value,
+            "断面尺寸（宽×高）",
+        )
+
+        self.assertEqual(
+            worksheet["Q1"].value,
+            "槽壁厚度",
+        )
+
+        self.assertEqual(
+            worksheet["S1"].value,
+            "槽底高程",
+        )
+
+        detailed_row = None
+
+        for row in range(
+            2,
+            worksheet.max_row + 1,
+        ):
+            if (
+                worksheet.cell(
+                    row=row,
+                    column=3,
+                ).value
+                == "详细汇总测试渡槽"
+            ):
+                detailed_row = row
+                break
+
+        self.assertIsNotNone(detailed_row)
+
+        assert detailed_row is not None
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=7,
+            ).value,
+            "K26+100",
+        )
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=15,
+            ).value,
+            "3.2×2.4",
+        )
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=19,
+            ).value,
+            -3.5,
+        )
+
+        # 12项评价从第22列开始，
+        # 本测试统一填写为B。
+        for column in range(
+            22,
+            34,
+        ):
+            self.assertEqual(
+                worksheet.cell(
+                    row=detailed_row,
+                    column=column,
+                ).value,
+                "B",
+            )
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=34,
+            ).value,
+            "B",
+        )
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=35,
+            ).value,
+            "2026-09-16",
+        )
+
+        self.assertEqual(
+            worksheet.cell(
+                row=detailed_row,
+                column=36,
+            ).value,
+            "详细汇总导出测试。",
         )
 
         workbook.close()
