@@ -8,7 +8,7 @@
 
 APP_NAME = "引大入秦工程现状调查采集系统"
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.4.0"
 
 APP_VERSION_LABEL = f"V{APP_VERSION}"
 
