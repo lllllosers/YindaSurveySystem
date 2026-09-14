@@ -2782,108 +2782,6 @@ def create_range_engineering_survey(
             "business_code": business_code,
         }
 
-
-def _find_duplicate_lined_channel_section_survey(
-    connection,
-    project_id,
-    survey_batch_id,
-    form_version_id,
-    organization_unit_id,
-    canal_unit_id,
-    start_stake_value,
-    end_stake_value,
-    exclude_survey_record_id=None,
-):
-    """
-    查找当前调查批次中是否已经存在
-    完全相同起止桩号的附表2.1渠段调查。
-
-    当前重复身份：
-    - 同一项目
-    - 同一调查批次
-    - 同一表单定义
-    - 同一水管所
-    - 同一渠系
-    - 同一起始桩号
-    - 同一终止桩号
-
-    当前不判断渠段交叉或重叠。
-    """
-
-    # 草稿允许暂时没有完整起止桩号。
-    # 任一端缺失时暂时无法可靠判断重复。
-    if start_stake_value is None or end_stake_value is None:
-        return None
-
-    return connection.execute(
-        """
-        SELECT
-            sr.id AS survey_record_id,
-            sr.business_code,
-            sr.record_status,
-
-            ea.id AS engineering_asset_id,
-            ea.asset_name,
-            ea.start_stake_text,
-            ea.start_stake_value,
-            ea.end_stake_text,
-            ea.end_stake_value
-
-        FROM survey_records AS sr
-
-        JOIN engineering_assets AS ea
-            ON sr.engineering_asset_id = ea.id
-
-        JOIN form_versions AS sr_fv
-            ON sr.form_version_id = sr_fv.id
-
-        JOIN form_versions AS target_fv
-            ON target_fv.id = ?
-
-        WHERE sr.project_id = ?
-          AND sr.survey_batch_id = ?
-
-          AND sr_fv.form_definition_id
-              = target_fv.form_definition_id
-
-          AND sr.organization_unit_id = ?
-          AND sr.canal_unit_id = ?
-
-          AND ea.start_stake_value IS NOT NULL
-          AND ea.end_stake_value IS NOT NULL
-
-          AND ABS(
-              ea.start_stake_value - ?
-          ) < 0.001
-
-          AND ABS(
-              ea.end_stake_value - ?
-          ) < 0.001
-
-          AND (
-              ? IS NULL
-              OR sr.id != ?
-          )
-
-          AND sr.record_status != 'void'
-
-        ORDER BY sr.id DESC
-        LIMIT 1
-        """,
-        (
-            form_version_id,
-            project_id,
-            survey_batch_id,
-            organization_unit_id,
-            canal_unit_id,
-            start_stake_value,
-            end_stake_value,
-            exclude_survey_record_id,
-            exclude_survey_record_id,
-        ),
-    ).fetchone()
-
-
 def create_lined_channel_section_survey(
     project_id,
     survey_batch_id,
@@ -2903,22 +2801,10 @@ def create_lined_channel_section_survey(
     survey_comment=None,
 ):
     """
-    第一次创建附表2.1防渗衬砌渠道渠段调查时，
-    同时创建：
+    附表2.1渠道渠段创建兼容入口。
 
-    1. EngineeringAsset 渠段工程对象
-    2. SurveyRecord 本批次调查记录
-
-    当前 V0.3.0-A1 仅验证渠段型工程的数据模型，
-    暂不处理：
-    - 重复渠段检查
-    - 分项评价
-    - 完成调查
-    - 2.1完整字段校验
-
-    与附表2.2不同：
-    - single_stake_* 保持为空；
-    - 使用 start_stake_* 和 end_stake_*。
+    实际区间工程创建逻辑统一由
+    create_range_engineering_survey 提供。
     """
 
     if not asset_name or not asset_name.strip():
@@ -2927,134 +2813,25 @@ def create_lined_channel_section_survey(
     if not business_code:
         raise ValueError("业务编号不能为空。")
 
-    record_json = json.dumps(
-        record_data,
-        ensure_ascii=False,
+    return create_range_engineering_survey(
+        project_id=project_id,
+        survey_batch_id=(survey_batch_id),
+        form_version_id=(form_version_id),
+        asset_name=asset_name,
+        asset_type=("lined_channel_section"),
+        organization_unit_id=(organization_unit_id),
+        canal_unit_id=(canal_unit_id),
+        business_code=(business_code),
+        record_data=record_data,
+        start_stake_text=(start_stake_text),
+        start_stake_value=(start_stake_value),
+        end_stake_text=(end_stake_text),
+        end_stake_value=(end_stake_value),
+        inspection_results=(inspection_results),
+        survey_date=survey_date,
+        overall_grade=overall_grade,
+        survey_comment=survey_comment,
     )
-
-    with get_connection() as connection:
-        duplicate = _find_duplicate_lined_channel_section_survey(
-            connection=connection,
-            project_id=project_id,
-            survey_batch_id=survey_batch_id,
-            form_version_id=form_version_id,
-            organization_unit_id=(organization_unit_id),
-            canal_unit_id=canal_unit_id,
-            start_stake_value=(start_stake_value),
-            end_stake_value=(end_stake_value),
-        )
-
-        if duplicate is not None:
-            status_text = {
-                "draft": "草稿",
-                "completed": "录入完成",
-            }.get(
-                duplicate["record_status"],
-                duplicate["record_status"],
-            )
-
-            raise ValueError(
-                "当前调查批次中已存在相同起止桩号的"
-                "渠道渠段调查记录。\n\n"
-                f"渠道名称："
-                f"{duplicate['asset_name']}\n"
-                f"业务编号："
-                f"{duplicate['business_code']}\n"
-                f"渠段："
-                f"{duplicate['start_stake_text']}"
-                " ～ "
-                f"{duplicate['end_stake_text']}\n"
-                f"状态：{status_text}\n\n"
-                "请返回调查列表打开已有记录，"
-                "不要重复新增。"
-            )
-
-        asset_cursor = connection.execute(
-            """
-            INSERT INTO engineering_assets (
-                project_id,
-                asset_name,
-                asset_type,
-                organization_unit_id,
-                canal_unit_id,
-                business_code,
-                code_scheme_version,
-                start_stake_text,
-                start_stake_value,
-                end_stake_text,
-                end_stake_value,
-                first_survey_batch_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                project_id,
-                asset_name.strip(),
-                "lined_channel_section",
-                organization_unit_id,
-                canal_unit_id,
-                business_code,
-                "V1",
-                start_stake_text,
-                start_stake_value,
-                end_stake_text,
-                end_stake_value,
-                survey_batch_id,
-            ),
-        )
-
-        engineering_asset_id = asset_cursor.lastrowid
-
-        record_cursor = connection.execute(
-            """
-            INSERT INTO survey_records (
-                project_id,
-                survey_batch_id,
-                form_version_id,
-                record_type,
-                organization_unit_id,
-                canal_unit_id,
-                engineering_asset_id,
-                business_code,
-                survey_date,
-                overall_grade,
-                survey_comment,
-                record_status,
-                record_data_json
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                project_id,
-                survey_batch_id,
-                form_version_id,
-                "engineering",
-                organization_unit_id,
-                canal_unit_id,
-                engineering_asset_id,
-                business_code,
-                survey_date,
-                overall_grade,
-                survey_comment,
-                "draft",
-                record_json,
-            ),
-        )
-
-        survey_record_id = record_cursor.lastrowid
-
-        if inspection_results is not None:
-            _replace_inspection_results(
-                connection,
-                survey_record_id,
-                inspection_results,
-            )
-
-        return {
-            "engineering_asset_id": engineering_asset_id,
-            "survey_record_id": survey_record_id,
-            "business_code": business_code,
-        }
 
 
 def get_lined_channel_section_records(
@@ -3157,98 +2934,21 @@ def get_lined_channel_section_record(
     survey_record_id,
 ):
     """
-    获取一条附表2.1渠段调查记录，
-    用于草稿重新打开和页面回填。
+    附表2.1渠道渠段读取兼容入口。
+
+    实际区间工程读取逻辑统一由
+    get_range_engineering_record 提供。
     """
 
-    with get_connection() as connection:
-        row = connection.execute(
-            """
-            SELECT
-                sr.id AS survey_record_id,
-                sr.project_id,
-                sr.survey_batch_id,
-                sr.form_version_id,
-                sr.organization_unit_id,
-                sr.canal_unit_id,
-                sr.business_code,
-                sr.record_status,
-                sr.record_data_json,
-                sr.survey_date,
-                sr.overall_grade,
-                sr.survey_comment,
+    record = get_range_engineering_record(
+        survey_record_id=(survey_record_id),
+        form_code="form_2_1",
+    )
 
-                ea.id AS engineering_asset_id,
-                ea.asset_name,
-                ea.asset_type,
-                department.id AS department_id,
-                ea.single_stake_text,
-                ea.single_stake_value,
-                ea.start_stake_text,
-                ea.start_stake_value,
-                ea.end_stake_text,
-                ea.end_stake_value,
+    if record is None:
+        raise ValueError("没有找到指定的" "渠道渠段调查记录。")
 
-                fd.form_code
-
-            FROM survey_records AS sr
-
-            JOIN engineering_assets AS ea
-                ON sr.engineering_asset_id = ea.id
-
-            JOIN form_versions AS fv
-                ON sr.form_version_id = fv.id
-
-            JOIN form_definitions AS fd
-                ON fv.form_definition_id = fd.id
-
-            LEFT JOIN organization_units AS office
-                ON sr.organization_unit_id = office.id
-
-            LEFT JOIN organization_units AS department
-                ON office.parent_id = department.id
-
-            WHERE sr.id = ?
-            LIMIT 1
-            """,
-            (survey_record_id,),
-        ).fetchone()
-
-        if row is None:
-            raise ValueError("没有找到指定的渠道渠段调查记录。")
-
-        if row["form_code"] != "form_2_1":
-            raise ValueError("指定记录不是附表2.1调查记录。")
-
-        try:
-            record_data = json.loads(row["record_data_json"] or "{}")
-        except json.JSONDecodeError:
-            record_data = {}
-
-        return {
-            "survey_record_id": (row["survey_record_id"]),
-            "engineering_asset_id": (row["engineering_asset_id"]),
-            "project_id": (row["project_id"]),
-            "survey_batch_id": (row["survey_batch_id"]),
-            "form_version_id": (row["form_version_id"]),
-            "organization_unit_id": (row["organization_unit_id"]),
-            "canal_unit_id": (row["canal_unit_id"]),
-            "business_code": (row["business_code"] or ""),
-            "record_status": (row["record_status"]),
-            "asset_name": (row["asset_name"] or ""),
-            "asset_type": (row["asset_type"]),
-            "start_stake_text": (row["start_stake_text"] or ""),
-            "start_stake_value": (row["start_stake_value"]),
-            "end_stake_text": (row["end_stake_text"] or ""),
-            "end_stake_value": (row["end_stake_value"]),
-            "record_data": record_data,
-            "single_stake_text": (row["single_stake_text"]),
-            "single_stake_value": (row["single_stake_value"]),
-            "department_id": (row["department_id"]),
-            "survey_date": (row["survey_date"]),
-            "overall_grade": (row["overall_grade"]),
-            "survey_comment": (row["survey_comment"] or ""),
-        }
+    return record
 
 
 def update_lined_channel_section_draft(
@@ -3268,11 +2968,10 @@ def update_lined_channel_section_draft(
     survey_comment=None,
 ):
     """
-    修改附表2.1渠段调查草稿。
+    附表2.1渠道渠段修改兼容入口。
 
-    当前阶段只允许修改 draft 记录。
-    EngineeringAsset 与 SurveyRecord
-    在同一个事务中同步更新。
+    实际区间工程修改逻辑统一由
+    update_range_engineering_survey 提供。
     """
 
     if not asset_name or not asset_name.strip():
@@ -3281,164 +2980,23 @@ def update_lined_channel_section_draft(
     if not business_code:
         raise ValueError("业务编号不能为空。")
 
-    record_json = json.dumps(
-        record_data,
-        ensure_ascii=False,
+    return update_range_engineering_survey(
+        survey_record_id=(survey_record_id),
+        form_code="form_2_1",
+        asset_name=asset_name,
+        record_data=record_data,
+        start_stake_text=(start_stake_text),
+        start_stake_value=(start_stake_value),
+        end_stake_text=(end_stake_text),
+        end_stake_value=(end_stake_value),
+        inspection_results=(inspection_results),
+        survey_date=survey_date,
+        overall_grade=overall_grade,
+        survey_comment=survey_comment,
+        organization_unit_id=(organization_unit_id),
+        canal_unit_id=(canal_unit_id),
+        business_code=(business_code),
     )
-
-    with get_connection() as connection:
-        existing = connection.execute(
-            """
-            SELECT
-                sr.id AS survey_record_id,
-                sr.engineering_asset_id,
-                sr.record_status,
-                sr.project_id,
-                sr.survey_batch_id,
-                sr.form_version_id,
-                sr.organization_unit_id,
-                sr.canal_unit_id,
-
-                fd.form_code
-
-            FROM survey_records AS sr
-
-            JOIN form_versions AS fv
-                ON sr.form_version_id = fv.id
-
-            JOIN form_definitions AS fd
-                ON fv.form_definition_id = fd.id
-
-            WHERE sr.id = ?
-            LIMIT 1
-            """,
-            (survey_record_id,),
-        ).fetchone()
-
-        if existing is None:
-            raise ValueError("没有找到指定的渠道渠段调查记录。")
-
-        if existing["form_code"] != "form_2_1":
-            raise ValueError("指定记录不是附表2.1调查记录。")
-
-        if existing["record_status"] not in (
-            "draft",
-            "completed",
-        ):
-            raise ValueError("当前调查记录状态不支持修改。")
-
-        duplicate = _find_duplicate_lined_channel_section_survey(
-            connection=connection,
-            project_id=existing["project_id"],
-            survey_batch_id=existing["survey_batch_id"],
-            form_version_id=existing["form_version_id"],
-            organization_unit_id=(organization_unit_id),
-            canal_unit_id=canal_unit_id,
-            start_stake_value=(start_stake_value),
-            end_stake_value=(end_stake_value),
-            exclude_survey_record_id=(survey_record_id),
-        )
-
-        if duplicate is not None:
-            status_text = {
-                "draft": "草稿",
-                "completed": "录入完成",
-            }.get(
-                duplicate["record_status"],
-                duplicate["record_status"],
-            )
-
-            raise ValueError(
-                "当前调查批次中已存在相同起止桩号的"
-                "渠道渠段调查记录。\n\n"
-                f"渠道名称："
-                f"{duplicate['asset_name']}\n"
-                f"业务编号："
-                f"{duplicate['business_code']}\n"
-                f"渠段："
-                f"{duplicate['start_stake_text']}"
-                " ～ "
-                f"{duplicate['end_stake_text']}\n"
-                f"状态：{status_text}\n\n"
-                "当前记录不能修改为该渠段。"
-            )
-
-        engineering_asset_id = existing["engineering_asset_id"]
-
-        connection.execute(
-            """
-            UPDATE engineering_assets
-            SET
-                asset_name = ?,
-                organization_unit_id = ?,
-                canal_unit_id = ?,
-                business_code = ?,
-                single_stake_text = NULL,
-                single_stake_value = NULL,
-                start_stake_text = ?,
-                start_stake_value = ?,
-                end_stake_text = ?,
-                end_stake_value = ?,
-                updated_at = datetime(
-                    'now',
-                    'localtime'
-                )
-            WHERE id = ?
-            """,
-            (
-                asset_name.strip(),
-                organization_unit_id,
-                canal_unit_id,
-                business_code,
-                start_stake_text,
-                start_stake_value,
-                end_stake_text,
-                end_stake_value,
-                engineering_asset_id,
-            ),
-        )
-
-        connection.execute(
-            """
-            UPDATE survey_records
-            SET
-                organization_unit_id = ?,
-                canal_unit_id = ?,
-                business_code = ?,
-                survey_date = ?,
-                overall_grade = ?,
-                survey_comment = ?,
-                record_data_json = ?,
-                updated_at = datetime(
-                    'now',
-                    'localtime'
-                )
-            WHERE id = ?
-            """,
-            (
-                organization_unit_id,
-                canal_unit_id,
-                business_code,
-                survey_date,
-                overall_grade,
-                survey_comment,
-                record_json,
-                survey_record_id,
-            ),
-        )
-
-        if inspection_results is not None:
-            _replace_inspection_results(
-                connection,
-                survey_record_id,
-                inspection_results,
-            )
-
-        return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
-            "business_code": business_code,
-        }
 
 
 def complete_lined_channel_section_record(
@@ -4224,8 +3782,9 @@ def get_range_engineering_record(
     """
     获取一条区间型工程调查记录。
 
-    当前供附表2.5、2.7等
-    起止桩号工程共同使用。
+    返回区间工程公共字段，
+    同时保留组织、渠系及工程身份信息，
+    供附表2.1、2.5、2.7等共同使用。
     """
 
     with get_connection() as connection:
@@ -4234,6 +3793,13 @@ def get_range_engineering_record(
             SELECT
                 sr.id
                     AS survey_record_id,
+
+                sr.project_id,
+                sr.survey_batch_id,
+                sr.form_version_id,
+
+                sr.organization_unit_id,
+                sr.canal_unit_id,
 
                 sr.record_status,
                 sr.business_code,
@@ -4248,16 +3814,22 @@ def get_range_engineering_record(
                 ea.asset_name,
                 ea.asset_type,
 
+                ea.single_stake_text,
+                ea.single_stake_value,
+
                 ea.start_stake_text,
                 ea.start_stake_value,
                 ea.end_stake_text,
                 ea.end_stake_value,
 
-                office.id AS office_id,
+                office.id
+                    AS office_id,
+
                 department.id
                     AS department_id,
 
-                canal.id AS canal_id,
+                canal.id
+                    AS canal_id,
 
                 fd.form_code
 
@@ -4291,8 +3863,7 @@ def get_range_engineering_record(
 
             WHERE sr.id = ?
               AND fd.form_code = ?
-              AND sr.record_status
-                    != 'void'
+              AND sr.record_status != 'void'
             """,
             (
                 survey_record_id,
@@ -4309,24 +3880,31 @@ def get_range_engineering_record(
         record_data = {}
 
     return {
-        "survey_record_id": (row["survey_record_id"]),
-        "engineering_asset_id": (row["engineering_asset_id"]),
-        "record_status": (row["record_status"]),
-        "business_code": (row["business_code"] or ""),
-        "asset_name": (row["asset_name"] or ""),
-        "asset_type": (row["asset_type"]),
-        "form_code": (row["form_code"]),
-        "start_stake_text": (row["start_stake_text"]),
-        "start_stake_value": (row["start_stake_value"]),
-        "end_stake_text": (row["end_stake_text"]),
-        "end_stake_value": (row["end_stake_value"]),
-        "department_id": (row["department_id"]),
-        "office_id": (row["office_id"]),
-        "canal_id": (row["canal_id"]),
+        "survey_record_id": row["survey_record_id"],
+        "engineering_asset_id": row["engineering_asset_id"],
+        "project_id": row["project_id"],
+        "survey_batch_id": row["survey_batch_id"],
+        "form_version_id": row["form_version_id"],
+        "organization_unit_id": row["organization_unit_id"],
+        "canal_unit_id": row["canal_unit_id"],
+        "record_status": row["record_status"],
+        "business_code": row["business_code"] or "",
+        "asset_name": row["asset_name"] or "",
+        "asset_type": row["asset_type"],
+        "form_code": row["form_code"],
+        "single_stake_text": row["single_stake_text"],
+        "single_stake_value": row["single_stake_value"],
+        "start_stake_text": row["start_stake_text"] or "",
+        "start_stake_value": row["start_stake_value"],
+        "end_stake_text": row["end_stake_text"] or "",
+        "end_stake_value": row["end_stake_value"],
+        "department_id": row["department_id"],
+        "office_id": row["office_id"],
+        "canal_id": row["canal_id"],
         "record_data": record_data,
-        "survey_date": (row["survey_date"]),
-        "overall_grade": (row["overall_grade"]),
-        "survey_comment": (row["survey_comment"] or ""),
+        "survey_date": row["survey_date"],
+        "overall_grade": row["overall_grade"],
+        "survey_comment": row["survey_comment"] or "",
     }
 
 
@@ -4343,19 +3921,22 @@ def update_range_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    organization_unit_id=None,
+    canal_unit_id=None,
+    business_code=None,
 ):
     """
     修改已有区间型工程调查记录。
 
-    允许修改：
-    - draft；
-    - completed。
+    支持 draft / completed。
 
-    不允许通过此函数修改：
-    - 所属机构；
-    - 所属渠系；
-    - 业务编号；
-    - 调查表类型。
+    organization_unit_id、
+    canal_unit_id、business_code
+    未传入时保持原值，
+    因此现有2.5调用无需修改。
+
+    附表2.1等需要修改工程归属时，
+    可以显式传入新的值。
     """
 
     if not asset_name or not asset_name.strip():
@@ -4372,11 +3953,14 @@ def update_range_engineering_survey(
             SELECT
                 sr.engineering_asset_id,
                 sr.record_status,
+
                 sr.project_id,
                 sr.survey_batch_id,
                 sr.form_version_id,
+
                 sr.organization_unit_id,
                 sr.canal_unit_id,
+                sr.business_code,
 
                 fd.form_code
 
@@ -4408,28 +3992,69 @@ def update_range_engineering_survey(
         ):
             raise ValueError("当前记录状态" "不允许直接修改。")
 
+        # =====================================================
+        # 目标归属信息
+        # =====================================================
+
+        target_organization_unit_id = (
+            record["organization_unit_id"]
+            if organization_unit_id is None
+            else organization_unit_id
+        )
+
+        target_canal_unit_id = (
+            record["canal_unit_id"] if canal_unit_id is None else canal_unit_id
+        )
+
+        target_business_code = (
+            record["business_code"]
+            if business_code is None
+            else str(business_code).strip()
+        )
+
+        if target_organization_unit_id is None:
+            raise ValueError("所属水管所不能为空。")
+
+        if target_canal_unit_id is None:
+            raise ValueError("所属渠系不能为空。")
+
+        if not target_business_code:
+            raise ValueError("业务编号不能为空。")
+
+        # =====================================================
+        # 区间重复保护
+        # =====================================================
+
         duplicate = _find_duplicate_range_engineering_survey(
             connection=connection,
             project_id=(record["project_id"]),
             survey_batch_id=(record["survey_batch_id"]),
             form_version_id=(record["form_version_id"]),
-            organization_unit_id=(record["organization_unit_id"]),
-            canal_unit_id=(record["canal_unit_id"]),
+            organization_unit_id=(target_organization_unit_id),
+            canal_unit_id=(target_canal_unit_id),
             start_stake_value=(start_stake_value),
             end_stake_value=(end_stake_value),
             exclude_survey_record_id=(survey_record_id),
         )
 
         if duplicate is not None:
-            raise ValueError("当前调查批次中已存在" "相同起止桩号的工程调查记录。")
+            raise ValueError("当前调查批次中已存在" "相同起止桩号的" "工程调查记录。")
 
         engineering_asset_id = record["engineering_asset_id"]
+
+        # =====================================================
+        # EngineeringAsset
+        # =====================================================
 
         connection.execute(
             """
             UPDATE engineering_assets
             SET
                 asset_name = ?,
+
+                organization_unit_id = ?,
+                canal_unit_id = ?,
+                business_code = ?,
 
                 single_stake_text = NULL,
                 single_stake_value = NULL,
@@ -4448,6 +4073,9 @@ def update_range_engineering_survey(
             """,
             (
                 asset_name.strip(),
+                target_organization_unit_id,
+                target_canal_unit_id,
+                target_business_code,
                 start_stake_text,
                 start_stake_value,
                 end_stake_text,
@@ -4456,10 +4084,18 @@ def update_range_engineering_survey(
             ),
         )
 
+        # =====================================================
+        # SurveyRecord
+        # =====================================================
+
         connection.execute(
             """
             UPDATE survey_records
             SET
+                organization_unit_id = ?,
+                canal_unit_id = ?,
+                business_code = ?,
+
                 survey_date = ?,
                 overall_grade = ?,
                 survey_comment = ?,
@@ -4473,6 +4109,9 @@ def update_range_engineering_survey(
             WHERE id = ?
             """,
             (
+                target_organization_unit_id,
+                target_canal_unit_id,
+                target_business_code,
                 survey_date,
                 overall_grade,
                 survey_comment,
@@ -4489,8 +4128,9 @@ def update_range_engineering_survey(
             )
 
         return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
+            "engineering_asset_id": engineering_asset_id,
+            "survey_record_id": survey_record_id,
+            "business_code": target_business_code,
         }
 
 
@@ -5213,25 +4853,15 @@ def complete_tunnel_record(
         ).fetchone()
 
         if record is None:
-            raise ValueError(
-                "没有找到该附表2.5调查记录。"
-            )
+            raise ValueError("没有找到该附表2.5调查记录。")
 
         if record["record_status"] != "draft":
-            raise ValueError(
-                "只有草稿记录可以执行完成调查。"
-            )
+            raise ValueError("只有草稿记录可以执行完成调查。")
 
         try:
-            record_data = json.loads(
-                record["record_data_json"]
-                or "{}"
-            )
+            record_data = json.loads(record["record_data_json"] or "{}")
         except json.JSONDecodeError as error:
-            raise ValueError(
-                "当前调查记录数据异常，"
-                "无法执行完成调查。"
-            ) from error
+            raise ValueError("当前调查记录数据异常，" "无法执行完成调查。") from error
 
         missing_fields = []
 
@@ -5252,33 +4882,19 @@ def complete_tunnel_record(
             missing_fields.append("名称")
 
         if record["organization_unit_id"] is None:
-            missing_fields.append(
-                "所属水管所"
-            )
+            missing_fields.append("所属水管所")
 
         if record["canal_unit_id"] is None:
-            missing_fields.append(
-                "所属渠系"
-            )
+            missing_fields.append("所属渠系")
 
         if is_missing(record["business_code"]):
-            missing_fields.append(
-                "业务编号"
-            )
+            missing_fields.append("业务编号")
 
-        if is_missing(
-            record["start_stake_text"]
-        ):
-            missing_fields.append(
-                "起始桩号"
-            )
+        if is_missing(record["start_stake_text"]):
+            missing_fields.append("起始桩号")
 
-        if is_missing(
-            record["end_stake_text"]
-        ):
-            missing_fields.append(
-                "终止桩号"
-            )
+        if is_missing(record["end_stake_text"]):
+            missing_fields.append("终止桩号")
 
         # =====================================================
         # 正式基本信息
@@ -5293,36 +4909,20 @@ def complete_tunnel_record(
             "lining_form": "衬砌形式",
             "lining_thickness": "衬砌厚度",
             "concrete_strength": "混凝土强度",
-            "inlet_outlet_bottom_elevation": (
-                "进出口底部高程"
-            ),
-            "longitudinal_slope": (
-                "纵坡（n/1000）"
-            ),
+            "inlet_outlet_bottom_elevation": ("进出口底部高程"),
+            "longitudinal_slope": ("纵坡（n/1000）"),
             "section_form": "断面型式",
             "section_width": "尺寸（宽）",
             "section_height": "尺寸（高）",
-            "cover_thickness": (
-                "钢筋保护层厚度"
-            ),
+            "cover_thickness": ("钢筋保护层厚度"),
         }
 
-        for field_key, field_name in (
-            required_record_fields.items()
-        ):
-            if is_missing(
-                record_data.get(field_key)
-            ):
-                missing_fields.append(
-                    field_name
-                )
+        for field_key, field_name in required_record_fields.items():
+            if is_missing(record_data.get(field_key)):
+                missing_fields.append(field_name)
 
-        if is_missing(
-            record["survey_date"]
-        ):
-            missing_fields.append(
-                "调查时间"
-            )
+        if is_missing(record["survey_date"]):
+            missing_fields.append("调查时间")
 
         if record["overall_grade"] not in (
             "A",
@@ -5330,22 +4930,14 @@ def complete_tunnel_record(
             "C",
             "D",
         ):
-            missing_fields.append(
-                "工程状况类别"
-            )
+            missing_fields.append("工程状况类别")
 
-        if is_missing(
-            record["survey_comment"]
-        ):
-            missing_fields.append(
-                "调查意见与建议"
-            )
+        if is_missing(record["survey_comment"]):
+            missing_fields.append("调查意见与建议")
 
         if missing_fields:
             raise ValueError(
-                "完成调查前仍有必填内容未填写："
-                + "、".join(missing_fields)
-                + "。"
+                "完成调查前仍有必填内容未填写：" + "、".join(missing_fields) + "。"
             )
 
         # =====================================================
@@ -5353,16 +4945,11 @@ def complete_tunnel_record(
         # =====================================================
 
         if (
-            record["start_stake_value"]
-            is not None
-            and record["end_stake_value"]
-            is not None
-            and record["end_stake_value"]
-            < record["start_stake_value"]
+            record["start_stake_value"] is not None
+            and record["end_stake_value"] is not None
+            and record["end_stake_value"] < record["start_stake_value"]
         ):
-            raise ValueError(
-                "终止桩号不能小于起始桩号。"
-            )
+            raise ValueError("终止桩号不能小于起始桩号。")
 
         # =====================================================
         # 日期
@@ -5377,16 +4964,9 @@ def complete_tunnel_record(
             TypeError,
             ValueError,
         ) as error:
-            raise ValueError(
-                "建成年月不是有效的 "
-                "YYYY-MM 日期。"
-            ) from error
+            raise ValueError("建成年月不是有效的 " "YYYY-MM 日期。") from error
 
-        renovation_date = (
-            record_data.get(
-                "renovation_date"
-            )
-        )
+        renovation_date = record_data.get("renovation_date")
 
         if renovation_date:
             try:
@@ -5398,10 +4978,7 @@ def complete_tunnel_record(
                 TypeError,
                 ValueError,
             ) as error:
-                raise ValueError(
-                    "加固改造年月不是有效的 "
-                    "YYYY-MM 日期。"
-                ) from error
+                raise ValueError("加固改造年月不是有效的 " "YYYY-MM 日期。") from error
 
         try:
             datetime.strptime(
@@ -5412,25 +4989,20 @@ def complete_tunnel_record(
             TypeError,
             ValueError,
         ) as error:
-            raise ValueError(
-                "调查时间不是有效的 "
-                "YYYY-MM-DD 日期。"
-            ) from error
+            raise ValueError("调查时间不是有效的 " "YYYY-MM-DD 日期。") from error
 
         # =====================================================
         # 13项评价
         # =====================================================
 
-        inspection_count = (
-            connection.execute(
-                """
+        inspection_count = connection.execute(
+            """
                 SELECT COUNT(*) AS count
                 FROM inspection_results
                 WHERE survey_record_id = ?
                 """,
-                (survey_record_id,),
-            ).fetchone()["count"]
-        )
+            (survey_record_id,),
+        ).fetchone()["count"]
 
         if inspection_count != 13:
             raise ValueError(
@@ -5455,14 +5027,10 @@ def complete_tunnel_record(
         )
 
         return {
-            "survey_record_id": (
-                survey_record_id
-            ),
-            "inspection_count": (
-                inspection_count
-            ),
+            "survey_record_id": (survey_record_id),
+            "inspection_count": (inspection_count),
         }
-    
+
 
 def get_engineering_assets(
     project_id,

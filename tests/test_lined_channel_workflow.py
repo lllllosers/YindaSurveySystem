@@ -1139,5 +1139,158 @@ class LinedChannelWorkflowTestCase(
         workbook.close()
 
 
+def test_lined_channel_update_can_change_ownership(
+    self,
+):
+    form_version = database.get_current_form_version("form_2_1")
+
+    result = database.create_lined_channel_section_survey(
+        project_id=self.project_id,
+        survey_batch_id=self.batch_id,
+        form_version_id=(form_version["id"]),
+        asset_name="原渠段",
+        organization_unit_id=(self.office_id),
+        canal_unit_id=(self.canal_id),
+        business_code=("1-01-01-01-001"),
+        record_data={
+            "channel_name": "原渠段",
+        },
+        start_stake_text=("K10+000"),
+        start_stake_value=(10000.0),
+        end_stake_text=("K11+000"),
+        end_stake_value=(11000.0),
+    )
+
+    new_office_id = database.create_organization_unit(
+        name="测试第二水管所",
+        unit_type="water_office",
+        business_code="02",
+        parent_id=(self.department_id),
+    )
+
+    self.assertIsNotNone(new_office_id)
+
+    assert new_office_id is not None
+
+    new_canal_id = database.create_canal_unit(
+        name="测试第二干渠",
+        canal_level="01",
+        parent_id=None,
+        organization_unit_id=(new_office_id),
+        description=None,
+    )
+
+    self.assertIsNotNone(new_canal_id)
+
+    assert new_canal_id is not None
+
+    database.update_lined_channel_section_draft(
+        survey_record_id=(result["survey_record_id"]),
+        asset_name="修改归属后的渠段",
+        organization_unit_id=(new_office_id),
+        canal_unit_id=(new_canal_id),
+        business_code=("1-02-01-01-001"),
+        record_data={
+            "channel_name": "修改归属后的渠段",
+        },
+        start_stake_text=("K10+000"),
+        start_stake_value=(10000.0),
+        end_stake_text=("K11+000"),
+        end_stake_value=(11000.0),
+    )
+
+    loaded = database.get_lined_channel_section_record(result["survey_record_id"])
+
+    self.assertEqual(
+        loaded["organization_unit_id"],
+        new_office_id,
+    )
+
+    self.assertEqual(
+        loaded["office_id"],
+        new_office_id,
+    )
+
+    self.assertEqual(
+        loaded["canal_unit_id"],
+        new_canal_id,
+    )
+
+    self.assertEqual(
+        loaded["canal_id"],
+        new_canal_id,
+    )
+
+    self.assertEqual(
+        loaded["business_code"],
+        "1-02-01-01-001",
+    )
+
+    # EngineeringAsset 与
+    # SurveyRecord 必须同步更新。
+    with database.get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                ea.organization_unit_id
+                    AS asset_office_id,
+                ea.canal_unit_id
+                    AS asset_canal_id,
+                ea.business_code
+                    AS asset_business_code,
+
+                sr.organization_unit_id
+                    AS record_office_id,
+                sr.canal_unit_id
+                    AS record_canal_id,
+                sr.business_code
+                    AS record_business_code
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id
+                    = ea.id
+
+            WHERE sr.id = ?
+            """,
+            (result["survey_record_id"],),
+        ).fetchone()
+
+    self.assertIsNotNone(rows)
+
+    assert rows is not None
+
+    self.assertEqual(
+        rows["asset_office_id"],
+        new_office_id,
+    )
+
+    self.assertEqual(
+        rows["record_office_id"],
+        new_office_id,
+    )
+
+    self.assertEqual(
+        rows["asset_canal_id"],
+        new_canal_id,
+    )
+
+    self.assertEqual(
+        rows["record_canal_id"],
+        new_canal_id,
+    )
+
+    self.assertEqual(
+        rows["asset_business_code"],
+        "1-02-01-01-001",
+    )
+
+    self.assertEqual(
+        rows["record_business_code"],
+        "1-02-01-01-001",
+    )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -454,6 +454,27 @@ class TunnelWorkflowTestCase(
             1300.0,
         )
 
+        self.assertEqual(
+            updated_record[
+                "business_code"
+            ],
+            "1-01-01-05-001",
+        )
+
+        self.assertEqual(
+            updated_record[
+                "office_id"
+            ],
+            self.office_id,
+        )
+
+        self.assertEqual(
+            updated_record[
+                "canal_id"
+            ],
+            self.canal_id,
+        )        
+
     def test_tunnel_evaluation_configuration(
         self,
     ):
