@@ -1,5 +1,6 @@
 from datetime import datetime
 from PySide6.QtCore import (
+    QTimer,
     Qt,
     Signal,
 )
@@ -1014,6 +1015,12 @@ class AqueductPage(QWidget):
         show_message=True,
     ):
         try:
+            # 已完成记录允许继续修改，
+            # 但保存后必须仍然满足
+            # completed 的全部完整性要求。
+            if self.editing_record_status == "completed":
+                self._validate_completion_fields()
+
             self.current_context = get_current_context()
 
             if not self.current_context:
@@ -1134,23 +1141,50 @@ class AqueductPage(QWidget):
 
             self.canal_combo.setEnabled(False)
 
-            self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿")
+            if self.editing_record_status == "completed":
+                self.title_label.setText(
+                    "附表2.3 渡槽（座槽）" "工程状况调查 - " "编辑已完成记录"
+                )
+
+                self.save_button.setText("保存修改")
+
+                self.complete_button.setEnabled(False)
+
+            else:
+                self.title_label.setText(
+                    "附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿"
+                )
+
+                self.save_button.setText("保存草稿")
+
+                self.complete_button.setEnabled(True)
+
+            self.is_dirty = False
 
             self.save_button.setEnabled(True)
 
             self.complete_button.setEnabled(True)
 
-            self.save_button.setText("保存草稿")
-
-            self.is_dirty = False
-
             self.survey_saved.emit()
 
             if show_message:
+                if self.editing_record_status == "completed":
+                    message = (
+                        "当前已完成调查的修改"
+                        "已保存。\n\n"
+                        f"业务编号："
+                        f"{business_code}"
+                    )
+
+                else:
+                    message = (
+                        "当前调查草稿已保存。\n\n" f"业务编号：" f"{business_code}"
+                    )
+
                 QMessageBox.information(
                     self,
                     "保存成功",
-                    ("当前调查草稿已保存。\n\n" f"业务编号：" f"{business_code}"),
+                    message,
                 )
 
             return True
@@ -1423,22 +1457,80 @@ class AqueductPage(QWidget):
             # 先刷新列表数据源。
             self.survey_saved.emit()
 
-            QMessageBox.information(
-                self,
-                "完成成功",
+            # 保存当前调查日期。
+            # 连续录入下一条时继续沿用。
+            previous_survey_date = self.survey_date_edit.text().strip()
+
+            success_box = QMessageBox(self)
+
+            success_box.setIcon(QMessageBox.Icon.Information)
+
+            success_box.setWindowTitle("完成成功")
+
+            success_box.setText(
                 (
                     "当前渡槽（座槽）调查"
                     "已标记为已完成。\n\n"
                     f"调查记录ID："
                     f"{result['survey_record_id']}\n"
                     f"已填写分项评价："
-                    f"{result['inspection_count']} 项"
-                ),
+                    f"{result['inspection_count']} 项\n\n"
+                    "是否继续录入下一条"
+                    "渡槽（座槽）调查？"
+                )
             )
 
-            # B2阶段完成后直接回列表。
-            # 连续录入放到B3。
+            continue_button = success_box.addButton(
+                "继续录入下一条",
+                QMessageBox.ButtonRole.AcceptRole,
+            )
+
+            return_button = success_box.addButton(
+                "返回列表",
+                QMessageBox.ButtonRole.RejectRole,
+            )
+
+            success_box.setDefaultButton(continue_button)
+
+            success_box.setEscapeButton(return_button)
+
+            success_box.exec()
+
+            # =================================================
+            # 继续下一条
+            # =================================================
+
+            if success_box.clickedButton() is continue_button:
+                # prepare_new()：
+                # 1. 保留处 / 所 / 渠系；
+                # 2. 重新生成业务编号；
+                # 3. 清空工程信息；
+                # 4. 清空评价与调查结论。
+                self.prepare_new()
+
+                # 连续录入时保留上一条调查日期，
+                # 而不是重新使用系统当天。
+                if previous_survey_date:
+                    self.survey_date_edit.setText(previous_survey_date)
+
+                # 上述初始化均属于程序行为。
+                self.is_dirty = False
+
+                QTimer.singleShot(
+                    0,
+                    self._focus_new_entry_start,
+                )
+
+                return
+
+            # =================================================
+            # 返回列表
+            # =================================================
+
             self.back_requested.emit()
+
+            if self.editing_record_status == "completed":
+                raise ValueError("当前调查已经完成，" "无需再次执行完成调查。")
 
         except Exception as error:
             QMessageBox.warning(
@@ -1498,8 +1590,13 @@ class AqueductPage(QWidget):
         if record is None:
             raise ValueError("没有找到该附表2.3调查记录。")
 
-        if record["record_status"] != "draft":
-            raise ValueError("当前阶段仅支持打开" "附表2.3草稿记录。")
+        record_status = record["record_status"]
+
+        if record_status not in (
+            "draft",
+            "completed",
+        ):
+            raise ValueError("当前记录状态暂不支持打开。")
 
         self.current_context = get_current_context()
 
@@ -1507,9 +1604,7 @@ class AqueductPage(QWidget):
 
         self.editing_record_id = int(record["survey_record_id"])
 
-        self.editing_record_status = record["record_status"]
-
-        self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿")
+        self.editing_record_status = record_status
 
         # =====================================================
         # 1. 回填归属
@@ -1660,36 +1755,130 @@ class AqueductPage(QWidget):
 
         self.survey_comment_edit.setPlainText(record.get("survey_comment") or "")
 
-        self.save_button.setText("保存草稿")
+        # =============================================
+        # 根据记录状态设置页面模式
+        # =============================================
 
-        # 数据库回填属于程序行为，
-        # 不属于用户未保存修改。
+        if record_status == "draft":
+            self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿")
+
+            self.save_button.setText("保存草稿")
+
+            self.save_button.setEnabled(True)
+
+            self.complete_button.setEnabled(True)
+
+        elif record_status == "completed":
+            self.title_label.setText(
+                "附表2.3 渡槽（座槽）" "工程状况调查 - " "编辑已完成记录"
+            )
+
+            # 已完成记录仍允许修改调查内容。
+            self.save_button.setText("保存修改")
+
+            self.save_button.setEnabled(True)
+
+            # 已经完成，不允许再次执行
+            # draft -> completed。
+            self.complete_button.setEnabled(False)
+
+        # 工程归属无论 draft/completed
+        # 都属于既有 EngineeringAsset 身份，
+        # 不允许直接修改。
+        self.department_combo.setEnabled(False)
+
+        self.office_combo.setEnabled(False)
+
+        self.canal_combo.setEnabled(False)
+
+        # 数据库回填不是用户修改。
         self.is_dirty = False
 
     # =========================================================
     # 新增状态
     # =========================================================
+    def _focus_new_entry_start(self):
+        """
+        连续录入下一条时回到表单顶部，
+        并聚焦第一个工程信息字段。
+        """
+
+        self.scroll_area.verticalScrollBar().setValue(
+            self.scroll_area.verticalScrollBar().minimum()
+        )
+
+        self.name_edit.setFocus()
 
     def prepare_new(self):
         """
-        初始化一条新的附表2.3调查。
+        切换到新增模式。
 
-        B1阶段暂不做“连续录入保留归属”。
-        该行为统一留到 B3 接入。
+        如果页面此前已有归属选择，
+        优先保留基层处、水管所和渠系。
+
+        工程内容、评价和调查结论清空，
+        业务编号重新生成。
         """
+
+        # =====================================================
+        # 记录上一条归属
+        # =====================================================
+
+        previous_department_data = self.department_combo.currentData()
+
+        previous_office_data = self.office_combo.currentData()
+
+        previous_canal_data = self.canal_combo.currentData()
+
+        previous_department_id = (
+            previous_department_data.get("id")
+            if isinstance(
+                previous_department_data,
+                dict,
+            )
+            else None
+        )
+
+        previous_office_id = (
+            previous_office_data.get("id")
+            if isinstance(
+                previous_office_data,
+                dict,
+            )
+            else None
+        )
+
+        previous_canal_id = (
+            previous_canal_data.get("id")
+            if isinstance(
+                previous_canal_data,
+                dict,
+            )
+            else None
+        )
+
+        # =====================================================
+        # 刷新当前上下文
+        # =====================================================
 
         self.current_context = get_current_context()
 
         self.form_version = get_current_form_version("form_2_3")
+
+        # =====================================================
+        # 新增状态
+        # =====================================================
 
         self.editing_record_id = None
         self.editing_record_status = None
 
         self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 新增")
 
-        # =====================================================
-        # 1. 恢复新增模式
-        # =====================================================
+        self.save_button.setText("保存草稿")
+
+        self.save_button.setEnabled(True)
+
+        self.complete_button.setEnabled(True)
 
         self.department_combo.setEnabled(True)
 
@@ -1697,16 +1886,13 @@ class AqueductPage(QWidget):
 
         self.canal_combo.setEnabled(True)
 
-        self.save_button.setEnabled(True)
-
-        self.save_button.setText("保存草稿")
-
         # =====================================================
-        # 2. 清空工程基本信息
+        # 清空工程基本信息
         # =====================================================
 
         self.name_edit.clear()
         self.stake_edit.clear()
+
         self.design_flow_edit.clear()
         self.structure_grade_edit.clear()
 
@@ -1733,30 +1919,69 @@ class AqueductPage(QWidget):
 
         self.lower_support_structure_form_edit.clear()
 
+        # =====================================================
+        # 清空评价与调查结论
+        # =====================================================
+
         self._clear_evaluation_controls()
 
         self._clear_overall_grade()
 
-        self.survey_date_edit.setText(datetime.now().strftime("%Y-%m-%d"))
-
         self.survey_comment_edit.clear()
 
+        # 普通新增默认当天。
+        self.survey_date_edit.setText(datetime.now().strftime("%Y-%m-%d"))
+
         # =====================================================
-        # 3. 重新加载当前有效归属
+        # 重新加载组织机构
         # =====================================================
 
         self.load_departments()
 
-        # load_departments -> department_changed
-        # -> office_changed 已经会自动触发
-        # 业务编号生成。
-        #
-        # 这里再执行一次没有副作用，
-        # 同时保证初始化结束后编号与当前选择一致。
+        department_restored = False
+        office_restored = False
+
+        # -------------------------
+        # 基层处
+        # -------------------------
+
+        if previous_department_id is not None:
+            department_restored = self._set_combo_by_id(
+                self.department_combo,
+                previous_department_id,
+            )
+
+        # -------------------------
+        # 水管所
+        # -------------------------
+
+        if department_restored:
+            self.department_changed()
+
+            if previous_office_id is not None:
+                office_restored = self._set_combo_by_id(
+                    self.office_combo,
+                    previous_office_id,
+                )
+
+        # -------------------------
+        # 渠系
+        # -------------------------
+
+        if office_restored:
+            self.office_changed()
+
+            if previous_canal_id is not None:
+                self._set_combo_by_id(
+                    self.canal_combo,
+                    previous_canal_id,
+                )
+
+        # =====================================================
+        # 新记录必须重新生成业务编号
+        # =====================================================
+
         self.update_business_code()
 
-        # =====================================================
-        # 4. 初始化不属于用户修改
-        # =====================================================
-
+        # 程序性初始化不属于用户修改。
         self.is_dirty = False

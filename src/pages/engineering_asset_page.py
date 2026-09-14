@@ -21,6 +21,7 @@ from pages.engineering_asset_detail_dialog import (
 ASSET_TYPE_NAMES = {
     "lined_channel_section": "防渗衬砌渠道",
     "sluice_gate": "水闸",
+    "aqueduct": "渡槽（座槽）",
 }
 
 

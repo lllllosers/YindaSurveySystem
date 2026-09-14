@@ -1052,6 +1052,88 @@ class AqueductWorkflowTestCase(unittest.TestCase):
             "draft",
         )
 
+    # =========================
+    # 测试14：
+    # 已完成记录允许修改，
+    # 且修改后状态保持 completed
+    # =========================
+
+    def test_update_completed_aqueduct_keeps_completed_status(
+        self,
+    ):
+        record_data = self.make_complete_record_data(
+            stake="K8+000",
+            stake_value=8000.0,
+        )
+
+        result = database.create_engineering_survey(
+            project_id=self.project_id,
+            survey_batch_id=(self.batch_id),
+            form_version_id=(self.form_version["id"]),
+            asset_name="已完成渡槽",
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("TEST-AQ-COMP-EDIT"),
+            record_data=record_data,
+            single_stake_text="K8+000",
+            single_stake_value=8000.0,
+            inspection_results=(self.make_complete_inspection_results()),
+            survey_date="2026-09-14",
+            overall_grade="B",
+            survey_comment=("完成记录修改测试。"),
+        )
+
+        survey_record_id = int(result["survey_record_id"])
+
+        database.complete_aqueduct_record(survey_record_id)
+
+        updated_data = dict(record_data)
+
+        updated_data["length"] = 188.0
+
+        database.update_point_engineering_survey(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+            asset_name="已完成渡槽",
+            record_data=updated_data,
+            single_stake_text="K8+000",
+            single_stake_value=8000.0,
+            inspection_results=(self.make_complete_inspection_results()),
+            survey_date="2026-09-14",
+            overall_grade="A",
+            survey_comment=("修改后的调查意见。"),
+        )
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_3",
+        )
+
+        self.assertIsNotNone(record)
+
+        assert record is not None
+
+        self.assertEqual(
+            record["record_status"],
+            "completed",
+        )
+
+        self.assertEqual(
+            record["record_data"]["length"],
+            188.0,
+        )
+
+        self.assertEqual(
+            record["overall_grade"],
+            "A",
+        )
+
+        self.assertEqual(
+            record["survey_comment"],
+            "修改后的调查意见。",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
