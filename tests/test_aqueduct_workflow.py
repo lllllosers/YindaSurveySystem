@@ -23,6 +23,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from openpyxl import (
+    load_workbook,
+)
+
 from services.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
@@ -30,6 +34,10 @@ from services.aqueduct_evaluation import (
 from services.business_code import (
     build_business_code,
     get_engineering_type_code,
+)
+
+from services.aqueduct_export import (
+    export_aqueduct_original_form,
 )
 
 
@@ -1133,6 +1141,279 @@ class AqueductWorkflowTestCase(unittest.TestCase):
             record["survey_comment"],
             "修改后的调查意见。",
         )
+
+    # =========================================================
+    # 附表2.3正式原表导出
+    # =========================================================
+
+    def test_export_aqueduct_original_form(
+        self,
+    ):
+        record_data = self.make_complete_record_data()
+
+        # 专门补一个加固年月，
+        # 同时使用较长支撑结构名称，
+        # 验证正式模板坐标。
+        record_data["renovation_date"] = "2021-09"
+
+        record_data["lower_support_structure_form"] = "排架式钢筋混凝土支撑结构"
+
+        inspection_results = self.make_complete_inspection_results()
+
+        # 使用循环等级，
+        # 避免只验证“12个B写进去了”，
+        # 同时锁定E10:E21的顺序。
+        grades = (
+            "A",
+            "B",
+            "C",
+            "D",
+        )
+
+        for index, result in enumerate(inspection_results):
+            result["grade"] = grades[index % len(grades)]
+
+        create_result = database.create_engineering_survey(
+            project_id=(self.project_id),
+            survey_batch_id=(self.batch_id),
+            form_version_id=(self.form_version["id"]),
+            asset_name=("原表导出测试渡槽"),
+            asset_type="aqueduct",
+            organization_unit_id=(self.office_id),
+            canal_unit_id=(self.canal_id),
+            business_code=("TEST-AQ-EXPORT"),
+            record_data=(record_data),
+            single_stake_text=("K1+250"),
+            single_stake_value=(1250.0),
+            inspection_results=(inspection_results),
+            survey_date=("2026-09-14"),
+            overall_grade="C",
+            survey_comment=("附表2.3原表导出测试意见。"),
+        )
+
+        survey_record_id = int(create_result["survey_record_id"])
+
+        output_path = Path(self.temp_directory.name) / "form_2_3_export.xlsx"
+
+        export_result = export_aqueduct_original_form(
+            survey_record_id=(survey_record_id),
+            file_path=(output_path),
+        )
+
+        self.assertTrue(output_path.exists())
+
+        self.assertEqual(
+            export_result["survey_record_id"],
+            survey_record_id,
+        )
+
+        self.assertEqual(
+            export_result["business_code"],
+            "TEST-AQ-EXPORT",
+        )
+
+        workbook = load_workbook(output_path)
+
+        self.assertIn(
+            "附表2.3",
+            workbook.sheetnames,
+        )
+
+        worksheet = workbook["附表2.3"]
+
+        # -------------------------
+        # 顶部归属
+        # -------------------------
+
+        self.assertEqual(
+            worksheet["A3"].value,
+            "测试基层",
+        )
+
+        self.assertEqual(
+            worksheet["C3"].value,
+            "测试水管",
+        )
+
+        self.assertEqual(
+            worksheet["E3"].value,
+            "测试",
+        )
+
+        self.assertEqual(
+            worksheet["G3"].value,
+            None,
+        )
+
+        self.assertEqual(
+            worksheet["J3"].value,
+            "TEST-AQ-EXPORT",
+        )
+
+        # -------------------------
+        # 基本信息
+        # -------------------------
+
+        self.assertEqual(
+            worksheet["B5"].value,
+            "原表导出测试渡槽",
+        )
+
+        self.assertEqual(
+            worksheet["H5"].value,
+            "K1+250",
+        )
+
+        self.assertEqual(
+            worksheet["J5"].value,
+            4.5,
+        )
+
+        self.assertEqual(
+            worksheet["B6"].value,
+            "3级",
+        )
+
+        self.assertEqual(
+            worksheet["D6"].value,
+            "2010-06",
+        )
+
+        self.assertEqual(
+            worksheet["F6"].value,
+            "2021-09",
+        )
+
+        self.assertEqual(
+            worksheet["H6"].value,
+            120.0,
+        )
+
+        self.assertEqual(
+            worksheet["J6"].value,
+            5.5,
+        )
+
+        self.assertEqual(
+            worksheet["B7"].value,
+            "梁式渡槽",
+        )
+
+        self.assertEqual(
+            worksheet["D7"].value,
+            "3.2×2.4",
+        )
+
+        self.assertEqual(
+            worksheet["F7"].value,
+            "钢筋混凝土",
+        )
+
+        self.assertEqual(
+            worksheet["H7"].value,
+            0.25,
+        )
+
+        self.assertEqual(
+            worksheet["J7"].value,
+            "橡胶止水",
+        )
+
+        self.assertEqual(
+            worksheet["B8"].value,
+            1685.35,
+        )
+
+        self.assertEqual(
+            worksheet["D8"].value,
+            6,
+        )
+
+        self.assertEqual(
+            worksheet["F8"].value,
+            "排架式钢筋混凝土支撑结构",
+        )
+
+        # -------------------------
+        # 12项评价
+        # E10:E21
+        # -------------------------
+
+        expected_grades = [
+            "A",
+            "B",
+            "C",
+            "D",
+            "A",
+            "B",
+            "C",
+            "D",
+            "A",
+            "B",
+            "C",
+            "D",
+        ]
+
+        actual_grades = [
+            worksheet[f"E{row_number}"].value
+            for row_number in range(
+                10,
+                22,
+            )
+        ]
+
+        self.assertEqual(
+            actual_grades,
+            expected_grades,
+        )
+
+        # -------------------------
+        # 调查结论
+        # -------------------------
+
+        self.assertEqual(
+            worksheet["C22"].value,
+            "附表2.3原表导出测试意见。",
+        )
+
+        self.assertEqual(
+            worksheet["J22"].value,
+            "C",
+        )
+
+        self.assertEqual(
+            worksheet["J23"].value,
+            "2026-09-14",
+        )
+
+        # -------------------------
+        # 签字区域必须保持空白
+        # -------------------------
+
+        for cell_name in (
+            "B23",
+            "D23",
+            "F23",
+            "H23",
+        ):
+            self.assertIsNone(worksheet[cell_name].value)
+
+        # -------------------------
+        # 正式注释必须由模板保留，
+        # 导出过程不能改写。
+        # -------------------------
+
+        self.assertEqual(
+            str(worksheet["A25"].value or "").strip(),
+            ("注：渡槽其它部位指" "进、出口渐变段、护栏等。"),
+        )
+
+        self.assertEqual(
+            worksheet.print_area,
+            "'附表2.3'!$A$1:$J$26",
+        )
+
+        workbook.close()
 
 
 if __name__ == "__main__":

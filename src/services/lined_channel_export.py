@@ -10,7 +10,6 @@ from openpyxl.utils import get_column_letter
 
 from database import (
     get_app_root,
-    get_canal_lineage,
     get_engineering_asset_detail,
     get_inspection_results,
     get_lined_channel_section_record,
@@ -18,6 +17,10 @@ from database import (
 
 from services.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
+)
+from services.original_form_export_common import (
+    display_value,
+    fill_original_form_ownership_header,
 )
 
 
@@ -382,34 +385,6 @@ def export_lined_channel_summary(
     }
 
 
-def _strip_trailing_suffix(
-    value,
-    suffix,
-):
-    text = str(value or "").strip()
-
-    if suffix and text.endswith(suffix):
-        text = text[: -len(suffix)].strip()
-
-    return text
-
-
-def _display_value(
-    value,
-):
-    if value is None:
-        return ""
-
-    if isinstance(
-        value,
-        float,
-    ):
-        if value.is_integer():
-            return str(int(value))
-
-    return str(value)
-
-
 def _format_stake_range(
     start_stake,
     end_stake,
@@ -434,9 +409,9 @@ def _format_side_slope(
     内坡 6、外坡 6 -> 6/6
     """
 
-    inner = _display_value(record_data.get("inner_slope"))
+    inner = display_value(record_data.get("inner_slope"))
 
-    outer = _display_value(record_data.get("outer_slope"))
+    outer = display_value(record_data.get("outer_slope"))
 
     if not inner and not outer:
         return ""
@@ -512,62 +487,12 @@ def export_lined_channel_original_form(
     # 顶部归属和编号
     # =========================================================
 
-    worksheet["B3"] = "处"
-    worksheet["D3"] = "所"
-    worksheet["F3"] = "干渠"
-    worksheet["H3"] = "支渠"
-    worksheet["I3"] = "编号："
-
-    department_name = asset["department_name"] or ""
-
-    worksheet["A3"] = _strip_trailing_suffix(
-        department_name,
-        "处",
+    fill_original_form_ownership_header(
+        worksheet,
+        asset=asset,
+        canal_id=record["canal_unit_id"],
+        business_code=record["business_code"],
     )
-
-    office_name = asset["office_name"] or ""
-
-    worksheet["C3"] = _strip_trailing_suffix(
-        office_name,
-        "所",
-    )
-
-    worksheet["E3"] = ""
-    worksheet["G3"] = ""
-
-    canal_lineage = get_canal_lineage(record["canal_unit_id"])
-
-    main_canal_name = ""
-    branch_canal_name = ""
-
-    for canal in canal_lineage:
-        canal_level = canal["canal_level"]
-
-        canal_name = canal["name"] or ""
-
-        if canal_level in (
-            "01",
-            "02",
-        ):
-            main_canal_name = canal_name
-
-        elif canal_level in (
-            "03",
-            "04",
-        ):
-            branch_canal_name = canal_name
-
-    worksheet["E3"] = _strip_trailing_suffix(
-        main_canal_name,
-        "干渠",
-    )
-
-    worksheet["G3"] = _strip_trailing_suffix(
-        branch_canal_name,
-        "支渠",
-    )
-
-    worksheet["J3"] = record["business_code"] or ""
 
     # =========================================================
     # 基本信息

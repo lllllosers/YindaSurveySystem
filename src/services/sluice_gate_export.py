@@ -13,11 +13,14 @@ from database import (
     get_engineering_asset_detail,
     get_inspection_results,
     get_sluice_gate_record,
-    get_canal_lineage,
 )
 
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
+)
+from services.original_form_export_common import (
+    display_value,
+    fill_original_form_ownership_header,
 )
 
 
@@ -354,49 +357,17 @@ def export_sluice_gate_summary(
     }
 
 
-def _strip_trailing_suffix(
-    value,
-    suffix,
-):
-    """
-    原表顶部已经固定显示“处、所、干渠、支渠”，
-    因此填入名称时去掉重复的末尾单位名称。
-    """
-
-    text = str(value or "").strip()
-
-    if suffix and text.endswith(suffix):
-        text = text[: -len(suffix)].strip()
-
-    return text
-
-
-def _display_value(value):
-    """
-    将数据库值转换为适合原表显示的文本。
-    """
-
-    if value is None:
-        return ""
-
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(value))
-
-    return str(value)
-
-
 def _format_opening_size(record_data):
     """
     将孔数、孔宽、孔高组合为原表要求的：
     孔数/宽×高
     """
 
-    count = _display_value(record_data.get("opening_count"))
+    count = display_value(record_data.get("opening_count"))
 
-    width = _display_value(record_data.get("opening_width"))
+    width = display_value(record_data.get("opening_width"))
 
-    height = _display_value(record_data.get("opening_height"))
+    height = display_value(record_data.get("opening_height"))
 
     if not count and not width and not height:
         return ""
@@ -498,105 +469,12 @@ def export_sluice_gate_original_form(
     # 因此固定单位文字放在偶数列，
     # 实际名称放在前一个单元格。
 
-    worksheet["B3"] = "处"
-    worksheet["D3"] = "所"
-    worksheet["F3"] = "干渠"
-    worksheet["H3"] = "支渠"
-    worksheet["I3"] = "编号："
-
-    # -------------------------
-    # 基层处
-    # -------------------------
-
-    department_name = asset["department_name"] or ""
-
-    worksheet["A3"] = _strip_trailing_suffix(
-        department_name,
-        "处",
+    fill_original_form_ownership_header(
+        worksheet,
+        asset=asset,
+        canal_id=record["canal_id"],
+        business_code=record["business_code"],
     )
-
-    # -------------------------
-    # 水管所
-    # -------------------------
-
-    office_name = asset["office_name"] or ""
-
-    # 数据库通常保存：
-    # “清水水管所”
-    #
-    # 原表已经固定显示“所”，
-    # 因此这里只输出“清水”。
-
-    worksheet["C3"] = _strip_trailing_suffix(
-        office_name,
-        "所",
-    )
-
-    # -------------------------
-    # 渠系层级
-    # -------------------------
-
-    worksheet["E3"] = ""
-    worksheet["G3"] = ""
-
-    canal_lineage = get_canal_lineage(record["canal_id"])
-
-    main_canal_name = ""
-    branch_canal_name = ""
-
-    for canal in canal_lineage:
-
-        canal_level = canal["canal_level"]
-
-        canal_name = canal["name"] or ""
-
-        # 01 干渠
-        # 02 分干渠
-        #
-        # 如果存在多级，
-        # 取距离当前工程最近的一个。
-        if canal_level in (
-            "01",
-            "02",
-        ):
-            main_canal_name = canal_name
-
-        # 03 支渠
-        # 04 分支渠
-        #
-        # 同样取最接近当前工程的节点。
-        elif canal_level in (
-            "03",
-            "04",
-        ):
-            branch_canal_name = canal_name
-
-    # 原表单元格后面已经固定写“干渠”，
-    # 所以去掉名称末尾重复的“干渠”。
-    #
-    # 例如：
-    # 东二干渠 -> 东二 + 干渠
-    # 某某分干渠 -> 某某分 + 干渠
-
-    worksheet["E3"] = _strip_trailing_suffix(
-        main_canal_name,
-        "干渠",
-    )
-
-    # 同理：
-    # 某某支渠 -> 某某 + 支渠
-    # 某某分支渠 -> 某某分 + 支渠
-
-    worksheet["G3"] = _strip_trailing_suffix(
-        branch_canal_name,
-        "支渠",
-    )
-
-    # -------------------------
-    # 业务编号
-    # -------------------------
-
-    worksheet["J3"] = record["business_code"] or ""
 
     # =========================
     # 5. 工程基本信息

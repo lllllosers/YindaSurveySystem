@@ -14,12 +14,16 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
 )
 
 from database import (
     delete_engineering_survey_record,
     get_current_context,
     get_engineering_survey_query_records,
+)
+from services.aqueduct_export import (
+    export_aqueduct_original_form,
 )
 
 
@@ -87,6 +91,10 @@ class AqueductListPage(QWidget):
 
         refresh_button.clicked.connect(self.load_data)
 
+        export_button = QPushButton("导出结果")
+
+        export_button.clicked.connect(self.export_original_excel)
+
         delete_button = QPushButton("删除选中记录")
 
         delete_button.clicked.connect(self.delete_selected_record)
@@ -96,6 +104,8 @@ class AqueductListPage(QWidget):
         button_layout.addWidget(new_button)
 
         button_layout.addWidget(refresh_button)
+
+        button_layout.addWidget(export_button)
 
         button_layout.addWidget(delete_button)
 
@@ -690,6 +700,139 @@ class AqueductListPage(QWidget):
                 self,
                 "删除失败",
                 str(error),
+            )
+
+    # =========================================================
+    # Excel 正式原表导出
+    # =========================================================
+
+    def export_original_excel(
+        self,
+    ):
+        """
+        将当前选中的一条附表2.3
+        渡槽（座槽）调查记录，
+        导出为正式原表格式。
+        """
+
+        # =====================================================
+        # 1. 当前选中记录
+        # =====================================================
+
+        row = self.table.currentRow()
+
+        if row < 0:
+            QMessageBox.warning(
+                self,
+                "未选择记录",
+                (
+                    "请先在列表中选择一条"
+                    "渡槽（座槽）调查记录，"
+                    "再导出附表2.3正式原表。"
+                ),
+            )
+            return
+
+        # C1已经冻结：
+        #
+        # 第0列 = 业务编号，
+        # 并在 UserRole 中保存 survey_record_id
+        #
+        # 第1列 = 工程名称
+
+        id_item = self.table.item(
+            row,
+            0,
+        )
+
+        name_item = self.table.item(
+            row,
+            1,
+        )
+
+        if id_item is None:
+            return
+
+        survey_record_id = id_item.data(Qt.ItemDataRole.UserRole)
+
+        if survey_record_id is None:
+            return
+
+        business_code = id_item.text().strip()
+
+        asset_name = name_item.text().strip() if name_item is not None else "渡槽"
+
+        # =====================================================
+        # 2. 默认文件名
+        # =====================================================
+
+        safe_asset_name = asset_name or "渡槽"
+
+        safe_business_code = business_code or "未编号"
+
+        invalid_chars = '\\/:*?"<>|'
+
+        for char in invalid_chars:
+            safe_asset_name = safe_asset_name.replace(
+                char,
+                "_",
+            )
+
+            safe_business_code = safe_business_code.replace(
+                char,
+                "_",
+            )
+
+        default_name = (
+            "附表2.3_"
+            "渡槽（座槽）工程状况调查表_"
+            f"{safe_business_code}_"
+            f"{safe_asset_name}.xlsx"
+        )
+
+        # =====================================================
+        # 3. 保存位置
+        # =====================================================
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出附表2.3正式原表",
+            default_name,
+            "Excel 工作簿 (*.xlsx)",
+        )
+
+        if not file_path:
+            return
+
+        # =====================================================
+        # 4. 正式导出
+        # =====================================================
+
+        try:
+            result = export_aqueduct_original_form(
+                survey_record_id=int(survey_record_id),
+                file_path=file_path,
+            )
+
+            QMessageBox.information(
+                self,
+                "导出成功",
+                (
+                    "附表2.3正式原表已导出。\n\n"
+                    f"工程名称："
+                    f"{result['asset_name']}\n"
+                    f"业务编号："
+                    f"{result['business_code']}\n\n"
+                    f"保存位置：\n"
+                    f"{file_path}"
+                ),
+            )
+
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "导出失败",
+                ("附表2.3正式原表" "导出失败。\n\n" f"{error}"),
             )
 
     # =========================================================
