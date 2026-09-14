@@ -1,3 +1,4 @@
+from datetime import datetime
 from PySide6.QtCore import (
     Qt,
     Signal,
@@ -7,40 +8,55 @@ from PySide6.QtGui import (
     QShortcut,
 )
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
-    QHBoxLayout,
 )
 
 from database import (
+    complete_aqueduct_record,
     create_engineering_survey,
     get_canal_units_for_organization,
     get_current_context,
     get_current_form_version,
     get_departments,
     get_engineering_business_codes,
+    get_inspection_results,
     get_point_engineering_record,
     get_water_offices,
     update_point_engineering_survey,
 )
 
 from pages.components.survey_input_fields import (
+    create_date_edit,
     create_month_edit,
     create_nonnegative_decimal_edit,
     create_nonnegative_integer_edit,
     create_signed_decimal_edit,
+    get_optional_date,
     get_optional_float,
     get_optional_int,
     get_optional_month,
     get_optional_text,
+)
+
+from pages.components.evaluation_section import (
+    EvaluationSection,
+)
+
+from services.aqueduct_evaluation import (
+    AQUEDUCT_EVALUATION_ITEMS,
 )
 
 from services.business_code import (
@@ -81,6 +97,8 @@ class AqueductPage(QWidget):
 
         self.form_version = get_current_form_version("form_2_3")
 
+        self.evaluation_section: EvaluationSection
+
         self.init_ui()
 
         self._setup_tab_order()
@@ -110,9 +128,9 @@ class AqueductPage(QWidget):
         root_layout.addWidget(self.title_label)
 
         description = QLabel(
-            "当前阶段录入附表2.3正式基本信息。"
-            "草稿允许基本信息暂时不完整；"
-            "分项评价和调查结论将在后续阶段接入。"
+            "填写附表2.3基本信息、分项评价及调查结论。"
+            "草稿允许暂时不完整；"
+            "完成调查前系统将检查全部必填内容。"
         )
 
         description.setWordWrap(True)
@@ -370,14 +388,123 @@ class AqueductPage(QWidget):
 
         form_layout.addWidget(structure_group)
 
-        form_layout.addStretch()
-
         self.scroll_area.setWidget(form_container)
 
         root_layout.addWidget(
             self.scroll_area,
             1,
         )
+
+        # =====================================================
+        # 四、分项评价
+        # =====================================================
+
+        self.evaluation_section = EvaluationSection(
+            title="四、分项评价",
+            evaluation_items=(AQUEDUCT_EVALUATION_ITEMS),
+            description=(
+                "各项目始终显示 "
+                "A、B、C、D 四级评价标准，"
+                "请根据现场情况直接选择"
+                "对应等级。"
+            ),
+        )
+
+        form_layout.addWidget(self.evaluation_section)
+
+        evaluation_note = QLabel("注：渡槽其它部位指进、出口" "渐变段、护栏等。")
+
+        evaluation_note.setWordWrap(True)
+
+        evaluation_note.setStyleSheet("color: #607080;")
+
+        form_layout.addWidget(evaluation_note)
+
+        # =====================================================
+        # 五、调查结论
+        # =====================================================
+
+        conclusion_group = QGroupBox("五、调查结论")
+
+        conclusion_layout = QFormLayout(conclusion_group)
+
+        self._setup_form_layout(conclusion_layout)
+
+        # -------------------------
+        # 工程状况类别
+        # -------------------------
+
+        self.overall_grade_widget = QWidget()
+
+        grade_layout = QHBoxLayout(self.overall_grade_widget)
+
+        grade_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        grade_layout.setSpacing(20)
+
+        self.overall_grade_group = QButtonGroup(self)
+
+        self.overall_grade_group.setExclusive(True)
+
+        self.overall_grade_buttons = {}
+
+        for grade in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            button = QRadioButton(grade)
+
+            self.overall_grade_group.addButton(button)
+
+            self.overall_grade_buttons[grade] = button
+
+            grade_layout.addWidget(button)
+
+        grade_layout.addStretch()
+
+        # -------------------------
+        # 调查时间
+        # -------------------------
+
+        self.survey_date_edit = create_date_edit()
+
+        # -------------------------
+        # 调查意见与建议
+        # -------------------------
+
+        self.survey_comment_edit = QPlainTextEdit()
+
+        self.survey_comment_edit.setPlaceholderText("填写调查意见与建议")
+
+        self.survey_comment_edit.setMinimumHeight(100)
+
+        self.survey_comment_edit.setTabChangesFocus(True)
+
+        conclusion_layout.addRow(
+            "工程状况类别：",
+            self.overall_grade_widget,
+        )
+
+        conclusion_layout.addRow(
+            "调查时间：",
+            self.survey_date_edit,
+        )
+
+        conclusion_layout.addRow(
+            "调查意见与建议：",
+            self.survey_comment_edit,
+        )
+
+        form_layout.addWidget(conclusion_group)
+
+        form_layout.addStretch()
 
         # =====================================================
         # 底部
@@ -387,13 +514,21 @@ class AqueductPage(QWidget):
 
         self.back_button.clicked.connect(self.request_back)
 
-        shortcut_hint = QLabel("快捷键：Ctrl+S 保存草稿")
+        shortcut_hint = QLabel("快捷键：Ctrl+S 保存　|　" "Ctrl+Enter 完成调查")
 
         shortcut_hint.setStyleSheet("color: #607080;")
 
         self.save_button = QPushButton("保存草稿")
 
         self.save_button.setMinimumWidth(120)
+
+        self.complete_button = QPushButton("完成调查")
+
+        self.complete_button.setMinimumWidth(120)
+
+        self.complete_button.setToolTip("完成调查（Ctrl+Enter）")
+
+        self.complete_button.clicked.connect(self.complete_survey)
 
         self.save_button.setToolTip("保存当前草稿（Ctrl+S）")
 
@@ -411,7 +546,49 @@ class AqueductPage(QWidget):
 
         button_layout.addWidget(self.save_button)
 
+        button_layout.addWidget(self.complete_button)
+
         root_layout.addLayout(button_layout)
+
+    def _get_overall_grade(self):
+        for grade, button in self.overall_grade_buttons.items():
+            if button.isChecked():
+                return grade
+
+        return None
+
+    def _clear_overall_grade(self):
+        self.overall_grade_group.setExclusive(False)
+
+        for button in self.overall_grade_buttons.values():
+            button.setChecked(False)
+
+        self.overall_grade_group.setExclusive(True)
+
+    def _set_overall_grade(
+        self,
+        grade,
+    ):
+        self._clear_overall_grade()
+
+        button = self.overall_grade_buttons.get(grade)
+
+        if button is not None:
+            button.setChecked(True)
+
+    def _clear_evaluation_controls(self):
+        self.evaluation_section.clear()
+
+    def _load_evaluation_results(
+        self,
+        results,
+    ):
+        self.evaluation_section.load_results(results)
+
+    def _collect_evaluation_results(
+        self,
+    ):
+        return self.evaluation_section.collect_results()
 
     def _setup_form_layout(
         self,
@@ -448,7 +625,14 @@ class AqueductPage(QWidget):
             self.trough_bottom_elevation_edit,
             self.span_count_edit,
             self.lower_support_structure_form_edit,
+            self.overall_grade_buttons["A"],
+            self.overall_grade_buttons["B"],
+            self.overall_grade_buttons["C"],
+            self.overall_grade_buttons["D"],
+            self.survey_date_edit,
+            self.survey_comment_edit,
             self.save_button,
+            self.complete_button,
             self.back_button,
         ]
 
@@ -463,7 +647,14 @@ class AqueductPage(QWidget):
 
     def _setup_keyboard_shortcuts(self):
         """
-        设置附表2.3草稿保存快捷键。
+        高频调查录入快捷键。
+
+        Ctrl+S：
+            保存当前调查。
+
+        Ctrl+Enter：
+            执行完成调查，
+            不绕过完整性校验和确认。
         """
 
         self.save_shortcut = QShortcut(
@@ -474,6 +665,34 @@ class AqueductPage(QWidget):
         self.save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
 
         self.save_shortcut.activated.connect(self.save_draft)
+
+        # 主键盘 Enter。
+        self.complete_shortcut = QShortcut(
+            QKeySequence("Ctrl+Return"),
+            self,
+        )
+
+        self.complete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+
+        self.complete_shortcut.activated.connect(self._complete_from_shortcut)
+
+        # 数字小键盘 Enter。
+        self.complete_enter_shortcut = QShortcut(
+            QKeySequence("Ctrl+Enter"),
+            self,
+        )
+
+        self.complete_enter_shortcut.setContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut
+        )
+
+        self.complete_enter_shortcut.activated.connect(self._complete_from_shortcut)
+
+    def _complete_from_shortcut(self):
+        if not self.complete_button.isEnabled():
+            return
+
+        self.complete_survey()
 
     def _connect_dirty_tracking(self):
         """
@@ -501,6 +720,7 @@ class AqueductPage(QWidget):
             self.trough_bottom_elevation_edit,
             self.span_count_edit,
             self.lower_support_structure_form_edit,
+            self.survey_date_edit,
         ]
 
         for edit in line_edits:
@@ -514,6 +734,13 @@ class AqueductPage(QWidget):
 
         for combo in user_combos:
             combo.activated.connect(self._mark_dirty)
+
+        for button in self.overall_grade_buttons.values():
+            button.clicked.connect(self._mark_dirty)
+
+        self.evaluation_section.grade_changed.connect(self._mark_dirty)
+
+        self.survey_comment_edit.textChanged.connect(self._mark_dirty)
 
     def _mark_dirty(
         self,
@@ -841,6 +1068,17 @@ class AqueductPage(QWidget):
 
             record_data = basic_data["record_data"]
 
+            inspection_results = self._collect_evaluation_results()
+
+            survey_date = get_optional_date(
+                self.survey_date_edit,
+                "调查时间",
+            )
+
+            overall_grade = self._get_overall_grade()
+
+            survey_comment = self.survey_comment_edit.toPlainText().strip() or None
+
             # =============================================
             # 第一次保存：创建
             # =============================================
@@ -858,6 +1096,10 @@ class AqueductPage(QWidget):
                     record_data=(record_data),
                     single_stake_text=(stake_text),
                     single_stake_value=(stake_value),
+                    inspection_results=(inspection_results),
+                    survey_date=(survey_date),
+                    overall_grade=(overall_grade),
+                    survey_comment=(survey_comment),
                 )
 
                 self.editing_record_id = int(result["survey_record_id"])
@@ -876,6 +1118,10 @@ class AqueductPage(QWidget):
                     record_data=(record_data),
                     single_stake_text=(stake_text),
                     single_stake_value=(stake_value),
+                    inspection_results=(inspection_results),
+                    survey_date=(survey_date),
+                    overall_grade=(overall_grade),
+                    survey_comment=(survey_comment),
                 )
 
             # =============================================
@@ -891,6 +1137,8 @@ class AqueductPage(QWidget):
             self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿")
 
             self.save_button.setEnabled(True)
+
+            self.complete_button.setEnabled(True)
 
             self.save_button.setText("保存草稿")
 
@@ -925,6 +1173,279 @@ class AqueductPage(QWidget):
         """
 
         self._save_current_draft(show_message=True)
+
+    def _validate_completion_fields(self):
+        """
+        校验附表2.3完成调查所需内容。
+
+        草稿保存不调用本方法，
+        因此草稿仍然允许不完整。
+        """
+
+        missing_fields = []
+
+        # =====================================================
+        # 1. 归属与编号
+        # =====================================================
+
+        if not self.department_combo.currentData():
+            missing_fields.append("所属基层处")
+
+        if not self.office_combo.currentData():
+            missing_fields.append("所属水管所")
+
+        if not self.canal_combo.currentData():
+            missing_fields.append("所属渠系")
+
+        if not (self.business_code_edit.text().strip()):
+            missing_fields.append("业务编号")
+
+        # =====================================================
+        # 2. 正式基本信息
+        # =====================================================
+
+        required_line_edits = [
+            (
+                self.name_edit,
+                "名称",
+            ),
+            (
+                self.stake_edit,
+                "桩号",
+            ),
+            (
+                self.design_flow_edit,
+                "设计流量",
+            ),
+            (
+                self.structure_grade_edit,
+                "建筑物等级",
+            ),
+            (
+                self.build_date_edit,
+                "建成年月",
+            ),
+            (
+                self.length_edit,
+                "长度",
+            ),
+            (
+                self.increased_flow_edit,
+                "加大流量",
+            ),
+            (
+                self.structure_form_edit,
+                "结构形式",
+            ),
+            (
+                self.section_width_edit,
+                "断面尺寸（宽）",
+            ),
+            (
+                self.section_height_edit,
+                "断面尺寸（高）",
+            ),
+            (
+                self.trough_body_structure_edit,
+                "槽身结构",
+            ),
+            (
+                self.trough_wall_thickness_edit,
+                "槽壁厚度",
+            ),
+            (
+                self.waterstop_form_edit,
+                "止水形式",
+            ),
+            (
+                self.trough_bottom_elevation_edit,
+                "槽底高程",
+            ),
+            (
+                self.span_count_edit,
+                "跨数",
+            ),
+            (
+                self.lower_support_structure_form_edit,
+                "下部支撑结构型式",
+            ),
+            (
+                self.survey_date_edit,
+                "调查时间",
+            ),
+        ]
+
+        for edit, field_name in required_line_edits:
+            if not edit.text().strip():
+                missing_fields.append(field_name)
+
+        # 加固改造年月故意不在必填列表中。
+
+        # =====================================================
+        # 3. 调查结论
+        # =====================================================
+
+        if self._get_overall_grade() not in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            missing_fields.append("工程状况类别")
+
+        if not (self.survey_comment_edit.toPlainText().strip()):
+            missing_fields.append("调查意见与建议")
+
+        # =====================================================
+        # 4. 12项分项评价
+        # =====================================================
+
+        evaluation_results = self._collect_evaluation_results()
+
+        evaluation_total = len(AQUEDUCT_EVALUATION_ITEMS)
+
+        if len(evaluation_results) != evaluation_total:
+            missing_count = evaluation_total - len(evaluation_results)
+
+            missing_fields.append("分项评价" f"（还缺 {missing_count} 项）")
+
+        # =====================================================
+        # 5. 汇总缺项
+        # =====================================================
+
+        if missing_fields:
+            field_text = "\n".join(f"• {field_name}" for field_name in missing_fields)
+
+            raise ValueError("完成调查前请补充以下" "必填内容：\n\n" f"{field_text}")
+
+        # =====================================================
+        # 6. 桩号有效性
+        # =====================================================
+
+        parse_stake(self.stake_edit.text())
+
+        # =====================================================
+        # 7. 日期有效性
+        # =====================================================
+
+        try:
+            datetime.strptime(
+                self.build_date_edit.text().strip(),
+                "%Y-%m",
+            )
+
+        except ValueError as error:
+            raise ValueError(
+                "建成年月格式或日期无效，" "应填写为 YYYY-MM，" "例如：2010-06。"
+            ) from error
+
+        renovation_date = self.renovation_date_edit.text().strip()
+
+        if renovation_date:
+            try:
+                datetime.strptime(
+                    renovation_date,
+                    "%Y-%m",
+                )
+
+            except ValueError as error:
+                raise ValueError(
+                    "加固改造年月格式或日期无效，"
+                    "应填写为 YYYY-MM，"
+                    "例如：2021-09。"
+                ) from error
+
+        try:
+            datetime.strptime(
+                self.survey_date_edit.text().strip(),
+                "%Y-%m-%d",
+            )
+
+        except ValueError as error:
+            raise ValueError(
+                "调查时间不是有效日期，" "应填写为 YYYY-MM-DD，" "例如：2026-09-14。"
+            ) from error
+
+    def complete_survey(self):
+        """
+        保存页面最新内容，
+        再将附表2.3调查推进为 completed。
+        """
+
+        try:
+            # =================================================
+            # 1. 页面端完整性校验
+            # =================================================
+
+            self._validate_completion_fields()
+
+            # =================================================
+            # 2. 用户确认
+            # =================================================
+
+            reply = QMessageBox.question(
+                self,
+                "确认完成调查",
+                (
+                    "系统将先保存当前页面的全部修改，"
+                    "然后把本次调查标记为“已完成”。\n\n"
+                    "是否确认完成本次调查？"
+                ),
+                (QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # =================================================
+            # 3. 先保存最新页面内容
+            # =================================================
+
+            saved = self._save_current_draft(show_message=False)
+
+            if not saved:
+                raise ValueError("当前页面保存失败，" "因此没有执行完成调查。")
+
+            if self.editing_record_id is None:
+                raise ValueError("没有有效的调查记录ID。")
+
+            # =================================================
+            # 4. 数据库正式完成
+            # =================================================
+
+            result = complete_aqueduct_record(self.editing_record_id)
+
+            self.editing_record_status = "completed"
+
+            self.is_dirty = False
+
+            # 先刷新列表数据源。
+            self.survey_saved.emit()
+
+            QMessageBox.information(
+                self,
+                "完成成功",
+                (
+                    "当前渡槽（座槽）调查"
+                    "已标记为已完成。\n\n"
+                    f"调查记录ID："
+                    f"{result['survey_record_id']}\n"
+                    f"已填写分项评价："
+                    f"{result['inspection_count']} 项"
+                ),
+            )
+
+            # B2阶段完成后直接回列表。
+            # 连续录入放到B3。
+            self.back_requested.emit()
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "完成失败",
+                str(error),
+            )
 
     # =========================================================
     # Combo 辅助
@@ -1119,6 +1640,26 @@ class AqueductPage(QWidget):
 
         self.save_button.setEnabled(True)
 
+        # =============================================
+        # 分项评价
+        # =============================================
+
+        self._clear_evaluation_controls()
+
+        inspection_results = get_inspection_results(survey_record_id)
+
+        self._load_evaluation_results(inspection_results)
+
+        # =============================================
+        # 调查结论
+        # =============================================
+
+        self._set_overall_grade(record.get("overall_grade"))
+
+        self.survey_date_edit.setText(record.get("survey_date") or "")
+
+        self.survey_comment_edit.setPlainText(record.get("survey_comment") or "")
+
         self.save_button.setText("保存草稿")
 
         # 数据库回填属于程序行为，
@@ -1190,7 +1731,15 @@ class AqueductPage(QWidget):
 
         self.span_count_edit.clear()
 
-        (self.lower_support_structure_form_edit.clear())
+        self.lower_support_structure_form_edit.clear()
+
+        self._clear_evaluation_controls()
+
+        self._clear_overall_grade()
+
+        self.survey_date_edit.setText(datetime.now().strftime("%Y-%m-%d"))
+
+        self.survey_comment_edit.clear()
 
         # =====================================================
         # 3. 重新加载当前有效归属
