@@ -1,3 +1,6 @@
+from functools import partial
+from typing import Any
+
 from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
@@ -7,35 +10,90 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pages.lined_channel_section_list_page import (
-    LinedChannelSectionListPage,
-)
-from pages.lined_channel_section_page import (
-    LinedChannelSectionPage,
-)
-
-from pages.sluice_gate_list_page import (
-    SluiceGateListPage,
-)
-from pages.sluice_gate_page import (
-    SluiceGatePage,
-)
 from pages.aqueduct_list_page import (
     AqueductListPage,
 )
 from pages.aqueduct_page import (
     AqueductPage,
 )
+from pages.lined_channel_section_list_page import (
+    LinedChannelSectionListPage,
+)
+from pages.lined_channel_section_page import (
+    LinedChannelSectionPage,
+)
+from pages.sluice_gate_list_page import (
+    SluiceGateListPage,
+)
+from pages.sluice_gate_page import (
+    SluiceGatePage,
+)
+
+# =============================================================
+# 附表2工程现状调查页面注册
+# =============================================================
+
+ENGINEERING_SURVEY_FORMS: tuple[
+    dict[str, Any],
+    ...,
+] = (
+    {
+        "form_code": "form_2_1",
+        "button_text": ("附表2.1 " "防渗衬砌渠道渠段工程状况调查"),
+        "list_page_class": (LinedChannelSectionListPage),
+        "edit_page_class": (LinedChannelSectionPage),
+    },
+    {
+        "form_code": "form_2_2",
+        "button_text": ("附表2.2 水闸工程状况调查"),
+        "list_page_class": (SluiceGateListPage),
+        "edit_page_class": (SluiceGatePage),
+    },
+    {
+        "form_code": "form_2_3",
+        "button_text": ("附表2.3 " "渡槽（座槽）工程状况调查"),
+        "list_page_class": (AqueductListPage),
+        "edit_page_class": (AqueductPage),
+    },
+)
 
 
 class SurveyPage(QWidget):
+    """
+    调查录入模块。
+
+    当前按业务性质划分为两个调查域：
+
+    1. 工程现状调查
+       - 附表2系列；
+       - 基于 EngineeringAsset /
+         SurveyRecord / InspectionResult；
+       - 当前已接入附表2.1～2.3。
+
+    2. 灌区综合与水土资源调查
+       - 附表1系列；
+       - 当前仅建立业务域入口；
+       - 后续独立设计数据模型和录入方式。
+
+    附表2具体页面通过注册表接入，
+    避免每增加一张表就在本类中
+    重复增加一整套导航方法。
+    """
+
     def __init__(self):
         super().__init__()
 
+        self.engineering_pages = {}
+
         self.init_ui()
+
+    # =========================================================
+    # UI
+    # =========================================================
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+
         layout.setContentsMargins(
             0,
             0,
@@ -45,101 +103,33 @@ class SurveyPage(QWidget):
 
         self.stack = QStackedWidget()
 
-        # =========================
-        # 首页
-        # =========================
+        # =====================================================
+        # 两级业务导航页面
+        # =====================================================
 
         self.home_page = self.create_home_page()
 
-        # =========================
-        # 附表2.1
-        # =========================
+        self.engineering_home_page = self.create_engineering_home_page()
 
-        self.lined_channel_list_page = LinedChannelSectionListPage()
-
-        self.lined_channel_edit_page = LinedChannelSectionPage()
-
-        # =========================
-        # 附表2.2
-        # =========================
-
-        self.sluice_list_page = SluiceGateListPage()
-
-        self.sluice_edit_page = SluiceGatePage()
-
-        # =========================
-        # 附表2.3
-        # =========================
-
-        self.aqueduct_list_page = AqueductListPage()
-
-        self.aqueduct_edit_page = AqueductPage()
-
-        # =========================
-        # Stack
-        # =========================
+        self.comprehensive_home_page = self.create_comprehensive_home_page()
 
         self.stack.addWidget(self.home_page)
 
-        self.stack.addWidget(self.lined_channel_list_page)
+        self.stack.addWidget(self.engineering_home_page)
 
-        self.stack.addWidget(self.lined_channel_edit_page)
+        self.stack.addWidget(self.comprehensive_home_page)
 
-        self.stack.addWidget(self.sluice_list_page)
+        # =====================================================
+        # 注册附表2工程调查页面
+        # =====================================================
 
-        self.stack.addWidget(self.sluice_edit_page)
-
-        self.stack.addWidget(self.aqueduct_list_page)
-
-        self.stack.addWidget(self.aqueduct_edit_page)
-
-        # =========================
-        # 附表2.1信号
-        # =========================
-
-        self.lined_channel_list_page.new_requested.connect(self.open_new_lined_channel)
-
-        self.lined_channel_list_page.back_requested.connect(self.open_home)
-
-        self.lined_channel_list_page.edit_requested.connect(
-            self.open_edit_lined_channel
-        )
-
-        self.lined_channel_edit_page.back_requested.connect(
-            self.open_lined_channel_list
-        )
-
-        self.lined_channel_edit_page.survey_saved.connect(self.lined_channel_saved)
-
-        # =========================
-        # 附表2.2信号
-        # =========================
-
-        self.sluice_list_page.new_requested.connect(self.open_new_sluice)
-
-        self.sluice_list_page.back_requested.connect(self.open_home)
-
-        self.sluice_edit_page.back_requested.connect(self.open_sluice_list)
-
-        self.sluice_edit_page.survey_saved.connect(self.sluice_saved)
-
-        self.sluice_list_page.edit_requested.connect(self.open_edit_sluice)
-
-        # =========================
-        # 附表2.3信号
-        # =========================
-
-        self.aqueduct_list_page.new_requested.connect(self.open_new_aqueduct)
-
-        self.aqueduct_list_page.back_requested.connect(self.open_home)
-
-        self.aqueduct_list_page.edit_requested.connect(self.open_edit_aqueduct)
-
-        self.aqueduct_edit_page.back_requested.connect(self.open_aqueduct_list)
-
-        self.aqueduct_edit_page.survey_saved.connect(self.aqueduct_saved)
+        self._register_engineering_pages()
 
         layout.addWidget(self.stack)
+
+    # =========================================================
+    # 调查录入首页
+    # =========================================================
 
     def create_home_page(self):
         page = QWidget()
@@ -148,51 +138,116 @@ class SurveyPage(QWidget):
         layout.setSpacing(16)
 
         title = QLabel("调查录入")
-        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+
+        title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
         layout.addWidget(title)
 
-        description = QLabel("工程设施现状调查与评价")
+        description = QLabel("请选择需要开展的调查业务类型。")
+
+        description.setWordWrap(True)
+
+        description.setStyleSheet("color: #607080; " "font-size: 14px;")
 
         layout.addWidget(description)
 
-        # =========================
-        # 附表2.1
-        # =========================
+        # =====================================================
+        # 工程现状调查
+        # =====================================================
 
-        lined_channel_button = QPushButton("附表2.1 防渗衬砌渠道渠段工程状况调查")
+        engineering_button = QPushButton("工程现状调查（附表2系列）")
 
-        lined_channel_button.setMinimumHeight(46)
+        engineering_button.setMinimumHeight(52)
 
-        lined_channel_button.clicked.connect(self.open_lined_channel_list)
+        engineering_button.clicked.connect(self.open_engineering_home)
 
-        layout.addWidget(lined_channel_button)
+        layout.addWidget(engineering_button)
 
-        # =========================
-        # 附表2.2
-        # =========================
+        engineering_description = QLabel(
+            "工程设施现状、工程状况评价及" "工程调查记录管理。"
+        )
 
-        sluice_button = QPushButton("附表2.2 水闸工程状况调查")
+        engineering_description.setWordWrap(True)
 
-        sluice_button.setMinimumHeight(46)
+        engineering_description.setStyleSheet("color: #7a8793;")
 
-        sluice_button.clicked.connect(self.open_sluice_list)
+        layout.addWidget(engineering_description)
 
-        layout.addWidget(sluice_button)
+        # =====================================================
+        # 灌区综合与水土资源调查
+        # =====================================================
 
-        # =========================
-        # 附表2.3
-        # =========================
+        comprehensive_button = QPushButton("灌区综合与水土资源调查" "（附表1系列）")
 
-        aqueduct_button = QPushButton("附表2.3 渡槽（座槽）工程状况调查")
+        comprehensive_button.setMinimumHeight(52)
 
-        aqueduct_button.setMinimumHeight(46)
+        comprehensive_button.clicked.connect(self.open_comprehensive_home)
 
-        aqueduct_button.clicked.connect(self.open_aqueduct_list)
+        layout.addWidget(comprehensive_button)
 
-        layout.addWidget(aqueduct_button)
+        comprehensive_description = QLabel(
+            "灌区基本情况、自然条件、" "水土资源、农业生产、管理运行" "等综合调查。"
+        )
 
-        placeholder = QLabel("附表2.4及其他调查表" "将在后续逐步接入。")
+        comprehensive_description.setWordWrap(True)
+
+        comprehensive_description.setStyleSheet("color: #7a8793;")
+
+        layout.addWidget(comprehensive_description)
+
+        layout.addStretch()
+
+        return page
+
+    # =========================================================
+    # 工程现状调查首页
+    # =========================================================
+
+    def create_engineering_home_page(self):
+        page = QWidget()
+
+        layout = QVBoxLayout(page)
+        layout.setSpacing(16)
+
+        back_button = QPushButton("返回调查分类")
+
+        back_button.clicked.connect(self.open_home)
+
+        layout.addWidget(back_button)
+
+        title = QLabel("工程现状调查")
+
+        title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
+
+        layout.addWidget(title)
+
+        description = QLabel("附表2系列工程设施现状调查与评价。")
+
+        description.setWordWrap(True)
+
+        description.setStyleSheet("color: #607080; " "font-size: 14px;")
+
+        layout.addWidget(description)
+
+        # =====================================================
+        # 根据注册表生成工程调查入口
+        # =====================================================
+
+        for definition in ENGINEERING_SURVEY_FORMS:
+            button = QPushButton(definition["button_text"])
+
+            button.setMinimumHeight(46)
+
+            button.clicked.connect(
+                partial(
+                    self.open_engineering_list,
+                    definition["form_code"],
+                )
+            )
+
+            layout.addWidget(button)
+
+        placeholder = QLabel("附表2.4～2.14将在后续" "逐步接入。")
 
         placeholder.setStyleSheet("color: #7a8793;")
 
@@ -203,46 +258,179 @@ class SurveyPage(QWidget):
         return page
 
     # =========================================================
+    # 灌区综合与水土资源调查首页
+    # =========================================================
+
+    def create_comprehensive_home_page(self):
+        page = QWidget()
+
+        layout = QVBoxLayout(page)
+        layout.setSpacing(16)
+
+        back_button = QPushButton("返回调查分类")
+
+        back_button.clicked.connect(self.open_home)
+
+        layout.addWidget(back_button)
+
+        title = QLabel("灌区综合与水土资源调查")
+
+        title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
+
+        layout.addWidget(title)
+
+        description = QLabel("本业务域用于附表1系列综合调查。")
+
+        description.setWordWrap(True)
+
+        layout.addWidget(description)
+
+        placeholder = QLabel(
+            "业务域入口已经建立。\n\n"
+            "附表1系列的数据模型、"
+            "矩阵录入和统计方式将在"
+            "附表2工程现状调查完成后"
+            "单独设计和开发。"
+        )
+
+        placeholder.setWordWrap(True)
+
+        placeholder.setStyleSheet("color: #7a8793;")
+
+        layout.addWidget(placeholder)
+
+        layout.addStretch()
+
+        return page
+
+    # =========================================================
+    # 附表2页面注册
+    # =========================================================
+
+    def _register_engineering_pages(self):
+        for definition in ENGINEERING_SURVEY_FORMS:
+            form_code = definition["form_code"]
+
+            list_page = definition["list_page_class"]()
+
+            edit_page = definition["edit_page_class"]()
+
+            self.engineering_pages[form_code] = {
+                "list_page": list_page,
+                "edit_page": edit_page,
+            }
+
+            self.stack.addWidget(list_page)
+
+            self.stack.addWidget(edit_page)
+
+            # ---------------------------------------------
+            # 列表页信号
+            # ---------------------------------------------
+
+            list_page.new_requested.connect(
+                partial(
+                    self.open_engineering_new,
+                    form_code,
+                )
+            )
+
+            list_page.back_requested.connect(self.open_engineering_home)
+
+            list_page.edit_requested.connect(
+                partial(
+                    self.open_engineering_edit,
+                    form_code,
+                )
+            )
+
+            # ---------------------------------------------
+            # 编辑页信号
+            # ---------------------------------------------
+
+            edit_page.back_requested.connect(
+                partial(
+                    self.open_engineering_list,
+                    form_code,
+                )
+            )
+
+            edit_page.survey_saved.connect(
+                partial(
+                    self.engineering_saved,
+                    form_code,
+                )
+            )
+
+    # =========================================================
     # 离开模块检查
     # =========================================================
 
     def can_leave_page(self):
-        if self.stack.currentWidget() is self.lined_channel_edit_page:
-            return self.lined_channel_edit_page.confirm_leave_changes()
+        current_widget = self.stack.currentWidget()
 
-        if self.stack.currentWidget() is self.sluice_edit_page:
-            return self.sluice_edit_page.confirm_leave_changes()
+        for pages in self.engineering_pages.values():
+            edit_page = pages["edit_page"]
 
-        if self.stack.currentWidget() is self.aqueduct_edit_page:
-            return self.aqueduct_edit_page.confirm_leave_changes()
+            if current_widget is edit_page:
+                return edit_page.confirm_leave_changes()
 
         return True
+
+    # =========================================================
+    # 一级业务域导航
+    # =========================================================
 
     def open_home(self):
         self.stack.setCurrentWidget(self.home_page)
 
+    def open_engineering_home(self):
+        self.stack.setCurrentWidget(self.engineering_home_page)
+
+    def open_comprehensive_home(self):
+        self.stack.setCurrentWidget(self.comprehensive_home_page)
+
     # =========================================================
-    # 附表2.1
+    # 工程调查统一导航
     # =========================================================
 
-    def open_lined_channel_list(self):
-        self.lined_channel_list_page.load_data()
-
-        self.stack.setCurrentWidget(self.lined_channel_list_page)
-
-    def open_new_lined_channel(self):
-        self.lined_channel_edit_page.prepare_new()
-
-        self.stack.setCurrentWidget(self.lined_channel_edit_page)
-
-    def open_edit_lined_channel(
+    def open_engineering_list(
         self,
+        form_code,
+    ):
+        pages = self.engineering_pages[form_code]
+
+        list_page = pages["list_page"]
+
+        list_page.load_data()
+
+        self.stack.setCurrentWidget(list_page)
+
+    def open_engineering_new(
+        self,
+        form_code,
+    ):
+        pages = self.engineering_pages[form_code]
+
+        edit_page = pages["edit_page"]
+
+        edit_page.prepare_new()
+
+        self.stack.setCurrentWidget(edit_page)
+
+    def open_engineering_edit(
+        self,
+        form_code,
         survey_record_id,
     ):
-        try:
-            (self.lined_channel_edit_page.load_record(survey_record_id))
+        pages = self.engineering_pages[form_code]
 
-            self.stack.setCurrentWidget(self.lined_channel_edit_page)
+        edit_page = pages["edit_page"]
+
+        try:
+            edit_page.load_record(survey_record_id)
+
+            self.stack.setCurrentWidget(edit_page)
 
         except Exception as error:
             QMessageBox.warning(
@@ -251,71 +439,10 @@ class SurveyPage(QWidget):
                 str(error),
             )
 
-    def lined_channel_saved(self):
-        self.lined_channel_list_page.load_data()
-
-    # =========================================================
-    # 附表2.2
-    # =========================================================
-
-    def open_sluice_list(self):
-        self.sluice_list_page.load_data()
-
-        self.stack.setCurrentWidget(self.sluice_list_page)
-
-    def open_new_sluice(self):
-        self.sluice_edit_page.prepare_new()
-
-        self.stack.setCurrentWidget(self.sluice_edit_page)
-
-    def open_edit_sluice(
+    def engineering_saved(
         self,
-        survey_record_id,
+        form_code,
     ):
-        try:
-            self.sluice_edit_page.load_record(survey_record_id)
+        pages = self.engineering_pages[form_code]
 
-            self.stack.setCurrentWidget(self.sluice_edit_page)
-
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "打开失败",
-                str(error),
-            )
-
-    # =========================================================
-    # 附表2.3
-    # =========================================================
-
-    def open_aqueduct_list(self):
-        self.aqueduct_list_page.load_data()
-
-        self.stack.setCurrentWidget(self.aqueduct_list_page)
-
-    def open_new_aqueduct(self):
-        self.aqueduct_edit_page.prepare_new()
-
-        self.stack.setCurrentWidget(self.aqueduct_edit_page)
-
-    def open_edit_aqueduct(
-        self,
-        survey_record_id,
-    ):
-        try:
-            self.aqueduct_edit_page.load_record(survey_record_id)
-
-            self.stack.setCurrentWidget(self.aqueduct_edit_page)
-
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "打开失败",
-                str(error),
-            )
-
-    def aqueduct_saved(self):
-        self.aqueduct_list_page.load_data()
-
-    def sluice_saved(self):
-        self.sluice_list_page.load_data()
+        pages["list_page"].load_data()

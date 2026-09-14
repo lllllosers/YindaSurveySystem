@@ -37,6 +37,16 @@ from services.aqueduct_export import (
     export_aqueduct_summary,
 )
 
+# =============================================================
+# 附表2单表详细汇总导出注册
+# =============================================================
+
+ENGINEERING_SUMMARY_EXPORTERS = {
+    "form_2_1": export_lined_channel_summary,
+    "form_2_2": export_sluice_gate_summary,
+    "form_2_3": export_aqueduct_summary,
+}
+
 
 class DataQueryPage(QWidget):
     """
@@ -652,14 +662,10 @@ class DataQueryPage(QWidget):
         # 单一表单
         # =========================
 
-        if form_code == "form_2_1":
-            default_name = "数据查询_附表2.1_" f"{safe_batch_text}.xlsx"
+        if form_code is not None:
+            form_number = str(form_code).removeprefix("form_").replace("_", ".")
 
-        elif form_code == "form_2_2":
-            default_name = "数据查询_附表2.2_" f"{safe_batch_text}.xlsx"
-
-        elif form_code == "form_2_3":
-            default_name = "数据查询_附表2.3_" f"{safe_batch_text}.xlsx"
+            default_name = f"数据查询_附表{form_number}_" f"{safe_batch_text}.xlsx"
 
         else:
             default_name = "数据查询_工程调查汇总_" f"{safe_batch_text}.xlsx"
@@ -678,27 +684,21 @@ class DataQueryPage(QWidget):
             file_path += ".xlsx"
 
         try:
-            if form_code == "form_2_1":
-                result = export_lined_channel_summary(
-                    records=(self.filtered_records),
-                    file_path=file_path,
-                )
+            exporter = (
+                ENGINEERING_SUMMARY_EXPORTERS.get(form_code)
+                if form_code is not None
+                else None
+            )
 
-            elif form_code == "form_2_2":
-                result = export_sluice_gate_summary(
-                    records=(self.filtered_records),
-                    file_path=file_path,
-                )
-
-            elif form_code == "form_2_3":
-                result = export_aqueduct_summary(
-                    records=(self.filtered_records),
+            if exporter is not None:
+                result = exporter(
+                    records=self.filtered_records,
                     file_path=file_path,
                 )
 
             else:
                 result = export_common_query_summary(
-                    records=(self.filtered_records),
+                    records=self.filtered_records,
                     file_path=file_path,
                 )
 
