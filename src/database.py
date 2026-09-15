@@ -3009,6 +3009,422 @@ def update_lined_channel_section_draft(
         business_code=(business_code),
     )
 
+def complete_engineering_survey_record(
+    survey_record_id,
+    form_code,
+    position_kind,
+    expected_item_codes,
+    grade_options,
+):
+    """
+    通用工程调查完成事务。
+
+    本函数只负责已经保存到数据库中的
+    公共业务完整性和状态转换。
+
+    表单专属字段完整性由
+    forms.engineering.validation
+    基于 EngineeringFormDefinition
+    在进入本函数前完成。
+
+    当前检查：
+    - 记录存在且属于指定表单；
+    - 当前状态必须为 draft；
+    - 工程公共身份完整；
+    - point / range 位置完整；
+    - 调查日期有效；
+    - 工程状况类别有效；
+    - 调查意见存在；
+    - definition 声明的评价项全部存在；
+    - 评价等级属于允许等级；
+    - 最后原子更新为 completed。
+    """
+
+    form_code = str(
+        form_code or ""
+    ).strip()
+
+    position_kind = str(
+        position_kind or ""
+    ).strip()
+
+    expected_item_codes = tuple(
+        str(code).strip()
+        for code in (
+            expected_item_codes or ()
+        )
+        if str(code).strip()
+    )
+
+    grade_options = tuple(
+        str(grade).strip()
+        for grade in (
+            grade_options or ()
+        )
+        if str(grade).strip()
+    )
+
+    if not form_code:
+        raise ValueError(
+            "调查表代码不能为空。"
+        )
+
+    if position_kind not in (
+        "point",
+        "range",
+    ):
+        raise ValueError(
+            "不支持的工程位置类型："
+            f"{position_kind}"
+        )
+
+    if not expected_item_codes:
+        raise ValueError(
+            "当前调查表没有配置"
+            "有效的评价项目。"
+        )
+
+    if (
+        len(set(expected_item_codes))
+        != len(expected_item_codes)
+    ):
+        raise ValueError(
+            "当前调查表评价项目代码"
+            "存在重复。"
+        )
+
+    if not grade_options:
+        raise ValueError(
+            "当前调查表没有配置"
+            "有效的评价等级。"
+        )
+
+    with get_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT
+                sr.id,
+                sr.record_status,
+                sr.organization_unit_id,
+                sr.canal_unit_id,
+                sr.business_code,
+                sr.survey_date,
+                sr.overall_grade,
+                sr.survey_comment,
+
+                ea.asset_name,
+
+                ea.single_stake_text,
+                ea.single_stake_value,
+
+                ea.start_stake_text,
+                ea.start_stake_value,
+                ea.end_stake_text,
+                ea.end_stake_value,
+
+                fd.form_code
+
+            FROM survey_records AS sr
+
+            JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id
+                    = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id
+                    = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id
+                    = fd.id
+
+            WHERE sr.id = ?
+              AND fd.form_code = ?
+            """,
+            (
+                survey_record_id,
+                form_code,
+            ),
+        ).fetchone()
+
+        if record is None:
+            raise ValueError(
+                "没有找到该调查记录，"
+                "或调查表类型不匹配。"
+            )
+
+        if (
+            record["record_status"]
+            != "draft"
+        ):
+            raise ValueError(
+                "只有草稿记录可以"
+                "执行完成调查。"
+            )
+
+        # =====================================================
+        # 公共工程身份
+        # =====================================================
+
+        missing_fields = []
+
+        asset_name = str(
+            record["asset_name"] or ""
+        ).strip()
+
+        business_code = str(
+            record["business_code"] or ""
+        ).strip()
+
+        survey_date = str(
+            record["survey_date"] or ""
+        ).strip()
+
+        survey_comment = str(
+            record["survey_comment"] or ""
+        ).strip()
+
+        if not asset_name:
+            missing_fields.append(
+                "工程名称"
+            )
+
+        if (
+            record["organization_unit_id"]
+            is None
+        ):
+            missing_fields.append(
+                "所属水管所"
+            )
+
+        if (
+            record["canal_unit_id"]
+            is None
+        ):
+            missing_fields.append(
+                "所属渠系"
+            )
+
+        if not business_code:
+            missing_fields.append(
+                "业务编号"
+            )
+
+        # =====================================================
+        # 工程位置
+        # =====================================================
+
+        if position_kind == "point":
+            if not str(
+                record[
+                    "single_stake_text"
+                ]
+                or ""
+            ).strip():
+                missing_fields.append(
+                    "工程桩号"
+                )
+
+            if (
+                record[
+                    "single_stake_value"
+                ]
+                is None
+            ):
+                missing_fields.append(
+                    "工程桩号数值"
+                )
+
+        else:
+            if not str(
+                record[
+                    "start_stake_text"
+                ]
+                or ""
+            ).strip():
+                missing_fields.append(
+                    "起始桩号"
+                )
+
+            if (
+                record[
+                    "start_stake_value"
+                ]
+                is None
+            ):
+                missing_fields.append(
+                    "起始桩号数值"
+                )
+
+            if not str(
+                record[
+                    "end_stake_text"
+                ]
+                or ""
+            ).strip():
+                missing_fields.append(
+                    "终止桩号"
+                )
+
+            if (
+                record[
+                    "end_stake_value"
+                ]
+                is None
+            ):
+                missing_fields.append(
+                    "终止桩号数值"
+                )
+
+            start_value = (
+                record[
+                    "start_stake_value"
+                ]
+            )
+
+            end_value = (
+                record[
+                    "end_stake_value"
+                ]
+            )
+
+            if (
+                start_value is not None
+                and end_value is not None
+                and end_value < start_value
+            ):
+                raise ValueError(
+                    "终止桩号不能小于"
+                    "起始桩号。"
+                )
+
+        # =====================================================
+        # 调查结论
+        # =====================================================
+
+        if not survey_date:
+            missing_fields.append(
+                "调查时间"
+            )
+
+        if (
+            record["overall_grade"]
+            not in grade_options
+        ):
+            missing_fields.append(
+                "工程状况类别"
+            )
+
+        if not survey_comment:
+            missing_fields.append(
+                "调查意见与建议"
+            )
+
+        if missing_fields:
+            field_text = "、".join(
+                missing_fields
+            )
+
+            raise ValueError(
+                "完成调查前仍有公共"
+                "必填内容未填写："
+                f"{field_text}。"
+            )
+
+        try:
+            datetime.strptime(
+                survey_date,
+                "%Y-%m-%d",
+            )
+
+        except ValueError as error:
+            raise ValueError(
+                "调查时间不是有效的 "
+                "YYYY-MM-DD 日期。"
+            ) from error
+
+        # =====================================================
+        # 分项评价
+        # =====================================================
+
+        result_rows = connection.execute(
+            """
+            SELECT
+                item_code,
+                grade
+            FROM inspection_results
+            WHERE survey_record_id = ?
+            """,
+            (
+                survey_record_id,
+            ),
+        ).fetchall()
+
+        result_map = {
+            row["item_code"]:
+            row["grade"]
+            for row in result_rows
+        }
+
+        missing_item_codes = [
+            item_code
+            for item_code
+            in expected_item_codes
+            if item_code
+            not in result_map
+        ]
+
+        if missing_item_codes:
+            raise ValueError(
+                "完成调查前必须完成"
+                "全部分项评价。"
+                f"当前还缺 "
+                f"{len(missing_item_codes)} 项。"
+            )
+
+        invalid_item_codes = [
+            item_code
+            for item_code
+            in expected_item_codes
+            if result_map.get(
+                item_code
+            )
+            not in grade_options
+        ]
+
+        if invalid_item_codes:
+            raise ValueError(
+                "存在无效的分项评价等级。"
+            )
+
+        # =====================================================
+        # 正式完成
+        # =====================================================
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                record_status = 'completed',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (
+                survey_record_id,
+            ),
+        )
+
+        return {
+            "survey_record_id":
+                survey_record_id,
+            "inspection_count":
+                len(
+                    expected_item_codes
+                ),
+        }
 
 def complete_lined_channel_section_record(
     survey_record_id,

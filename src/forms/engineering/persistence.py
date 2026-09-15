@@ -6,10 +6,15 @@ from database import (
     get_range_engineering_record,
     update_point_engineering_survey,
     update_range_engineering_survey,
+    complete_engineering_survey_record,
 )
 
 from forms.engineering.models import (
     EngineeringFormDefinition,
+)
+
+from forms.engineering.validation import (
+    validate_completion,
 )
 
 
@@ -202,3 +207,71 @@ def load_engineering_record_bundle(
         "record": record,
         "inspection_results": inspection_results,
     }
+
+
+def complete_engineering_record(
+    definition: EngineeringFormDefinition,
+    *,
+    survey_record_id: int,
+    payload: dict,
+) -> dict:
+    """
+    保存当前最新页面内容，
+    再将工程调查正式推进为 completed。
+
+    流程：
+    1. 确认记录存在且仍为 draft；
+    2. 使用 definition 做表单级完整性校验；
+    3. 将最新 payload 保存到数据库；
+    4. 调用数据库公共完成事务；
+    5. 返回完成结果。
+
+    completed记录不会再次进入此流程。
+    """
+
+    current_record = get_engineering_record(
+        definition,
+        survey_record_id=(survey_record_id),
+    )
+
+    if current_record is None:
+        raise ValueError("没有找到该调查记录。")
+
+    if current_record["record_status"] != "draft":
+        raise ValueError("只有草稿记录可以" "执行完成调查。")
+
+    errors = validate_completion(
+        definition,
+        payload,
+    )
+
+    if errors:
+        error_text = "\n".join(f"• {error}" for error in errors)
+
+        raise ValueError("完成调查前请修正" "以下内容：\n\n" f"{error_text}")
+
+    # =========================================================
+    # 先保存最新页面状态
+    # =========================================================
+
+    update_engineering_record(
+        definition,
+        survey_record_id=(survey_record_id),
+        payload=payload,
+    )
+
+    # =========================================================
+    # 再由数据库执行正式状态转换
+    # =========================================================
+
+    expected_item_codes = tuple(
+        item["item_code"] for item in definition.evaluation_items
+    )
+
+    return complete_engineering_survey_record(
+        survey_record_id=(survey_record_id),
+        form_code=(definition.form_code),
+        position_kind=(definition.position.kind),
+        expected_item_codes=(expected_item_codes),
+        grade_options=(definition.grade_options),
+    )

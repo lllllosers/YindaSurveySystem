@@ -22,7 +22,7 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
-from workflow_test_support import (
+from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
 )
 

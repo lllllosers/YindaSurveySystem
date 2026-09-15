@@ -15,7 +15,7 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
-from workflow_test_support import (
+from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
 )
 
@@ -401,6 +401,52 @@ class CulvertWorkflowTestCase(
             "completed",
         )
 
+    def test_generic_completion_core_for_culvert(
+        self,
+    ):
+        result = self.create_culvert_draft(
+            business_code=("1-01-01-06-013"),
+            record_data=(self.make_complete_record_data()),
+            inspection_results=(self.make_complete_inspection_results()),
+            survey_date=("2026-09-15"),
+            overall_grade="B",
+            survey_comment=("通用完成事务测试。"),
+        )
+
+        survey_record_id = int(result["survey_record_id"])
+
+        complete_result = database.complete_engineering_survey_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_6",
+            position_kind="point",
+            expected_item_codes=tuple(
+                item["item_code"] for item in CULVERT_EVALUATION_ITEMS
+            ),
+            grade_options=(
+                "A",
+                "B",
+                "C",
+                "D",
+            ),
+        )
+
+        self.assertEqual(
+            complete_result["inspection_count"],
+            11,
+        )
+
+        record = database.get_point_engineering_record(
+            survey_record_id=(survey_record_id),
+            form_code="form_2_6",
+        )
+
+        self.assertIsNotNone(record)
+
+        self.assertEqual(
+            record["record_status"],
+            "completed",
+        )
+
     # =========================================================
     # 6. 11项评价必须全部完成
     # =========================================================
@@ -616,70 +662,36 @@ class CulvertWorkflowTestCase(
         正式基本信息、11项评价和调查结论。
         """
 
-        result = (
-            self.create_culvert_draft(
-                business_code=(
-                    "1-01-01-06-030"
-                ),
-                asset_name=(
-                    "详细汇总测试涵洞"
-                ),
-                stake="K35+600",
-                stake_value=35600.0,
-                record_data=(
-                    self.make_complete_record_data(
-                        asset_name=(
-                            "详细汇总测试涵洞"
-                        ),
-                        stake="K35+600",
-                        stake_value=35600.0,
-                    )
-                ),
-                inspection_results=(
-                    self.make_complete_inspection_results(
-                        grade="C"
-                    )
-                ),
-                survey_date=(
-                    "2026-09-15"
-                ),
-                overall_grade="B",
-                survey_comment=(
-                    "涵洞详细汇总测试。"
-                ),
-            )
+        result = self.create_culvert_draft(
+            business_code=("1-01-01-06-030"),
+            asset_name=("详细汇总测试涵洞"),
+            stake="K35+600",
+            stake_value=35600.0,
+            record_data=(
+                self.make_complete_record_data(
+                    asset_name=("详细汇总测试涵洞"),
+                    stake="K35+600",
+                    stake_value=35600.0,
+                )
+            ),
+            inspection_results=(self.make_complete_inspection_results(grade="C")),
+            survey_date=("2026-09-15"),
+            overall_grade="B",
+            survey_comment=("涵洞详细汇总测试。"),
         )
 
-        survey_record_id = int(
-            result[
-                "survey_record_id"
-            ]
-        )
+        survey_record_id = int(result["survey_record_id"])
 
-        records = (
-            database
-            .get_engineering_survey_query_records(
-                project_id=(
-                    self.project_id
-                ),
-                survey_batch_id=(
-                    self.batch_id
-                ),
-                form_code=(
-                    "form_2_6"
-                ),
-            )
+        records = database.get_engineering_survey_query_records(
+            project_id=(self.project_id),
+            survey_batch_id=(self.batch_id),
+            form_code=("form_2_6"),
         )
 
         target_records = [
             record
             for record in records
-            if (
-                record[
-                    "survey_record_id"
-                ]
-                == survey_record_id
-            )
+            if (record["survey_record_id"] == survey_record_id)
         ]
 
         self.assertEqual(
@@ -687,38 +699,23 @@ class CulvertWorkflowTestCase(
             1,
         )
 
-        output_path = (
-            Path(
-                self.temp_directory.name
-            )
-            / "culvert_summary.xlsx"
-        )
+        output_path = Path(self.temp_directory.name) / "culvert_summary.xlsx"
 
-        export_result = (
-            export_culvert_summary(
-                records=target_records,
-                file_path=output_path,
-            )
+        export_result = export_culvert_summary(
+            records=target_records,
+            file_path=output_path,
         )
 
         self.assertEqual(
-            export_result[
-                "exported_count"
-            ],
+            export_result["exported_count"],
             1,
         )
 
-        self.assertTrue(
-            output_path.exists()
-        )
+        self.assertTrue(output_path.exists())
 
-        workbook = load_workbook(
-            output_path
-        )
+        workbook = load_workbook(output_path)
 
-        worksheet = workbook[
-            "涵洞（暗涵）调查汇总"
-        ]
+        worksheet = workbook["涵洞（暗涵）调查汇总"]
 
         # =========================
         # 表头
@@ -851,6 +848,7 @@ class CulvertWorkflowTestCase(
         )
 
         workbook.close()
+
 
 if __name__ == "__main__":
     unittest.main()

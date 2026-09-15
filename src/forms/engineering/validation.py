@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import datetime
 from typing import Any
 
 from forms.engineering.models import (
@@ -55,6 +56,16 @@ def validate_completion(
 
         if _is_blank(value):
             errors.append(f"{field.label}不能为空。")
+            continue
+
+        if field.input_type == "month" and not _is_blank(value):
+            try:
+                datetime.strptime(
+                    str(value),
+                    "%Y-%m",
+                )
+            except ValueError:
+                errors.append(f"{field.label}" "不是有效的 YYYY-MM 日期。")
 
     # =========================================================
     # 2. 工程位置
@@ -164,8 +175,20 @@ def validate_completion(
     # 5. 调查时间
     # =========================================================
 
-    if _is_blank(payload.get("survey_date")):
+    survey_date = payload.get("survey_date")
+
+    if _is_blank(survey_date):
         errors.append("请填写调查时间。")
+
+    else:
+        try:
+            datetime.strptime(
+                str(survey_date),
+                "%Y-%m-%d",
+            )
+
+        except ValueError:
+            errors.append("调查时间不是有效的 " "YYYY-MM-DD 日期。")
 
     # =========================================================
     # 6. 调查意见与建议

@@ -288,6 +288,55 @@ class EngineeringCompletionValidationTestCase(unittest.TestCase):
             errors,
         )
 
+    def test_invalid_month_is_rejected(
+        self,
+    ):
+        payload = (
+            build_valid_form_2_6_payload()
+        )
+
+        payload[
+            "record_data"
+        ][
+            "build_date"
+        ] = "2026-13"
+
+        errors = validate_completion(
+            FORM_2_6,
+            payload,
+        )
+
+        self.assertIn(
+            (
+                "建成年月不是有效的 "
+                "YYYY-MM 日期。"
+            ),
+            errors,
+        )
+
+    def test_invalid_survey_date_is_rejected(
+        self,
+    ):
+        payload = (
+            build_valid_form_2_6_payload()
+        )
+
+        payload[
+            "survey_date"
+        ] = "2026-02-30"
+
+        errors = validate_completion(
+            FORM_2_6,
+            payload,
+        )
+
+        self.assertIn(
+            (
+                "调查时间不是有效的 "
+                "YYYY-MM-DD 日期。"
+            ),
+            errors,
+        )
 
 if __name__ == "__main__":
     unittest.main()

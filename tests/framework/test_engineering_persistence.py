@@ -27,6 +27,7 @@ from forms.engineering.models import (
 )
 
 from forms.engineering.persistence import (
+    complete_engineering_record,
     create_engineering_record,
     get_engineering_record,
     load_engineering_record_bundle,
@@ -35,13 +36,43 @@ from forms.engineering.persistence import (
 
 
 def build_point_payload():
+    record_data = {}
+
+    for field in FORM_2_6.fields:
+        if field.key == "asset_name":
+            value = "测试涵洞"
+
+        elif field.key == "stake":
+            value = "CH1+100"
+
+        elif field.key == "renovation_date":
+            value = None
+
+        elif field.input_type == "text":
+            value = "测试"
+
+        elif field.input_type in (
+            "decimal",
+            "signed_decimal",
+        ):
+            value = 1.0
+
+        elif field.input_type == "integer":
+            value = 1
+
+        elif field.input_type == "month":
+            value = "2026-01"
+
+        else:
+            raise AssertionError("测试未覆盖字段类型：" f"{field.input_type}")
+
+        record_data[field.key] = value
+
+    record_data["stake_value"] = 1100.0
+
     return {
         "asset_name": "测试涵洞",
-        "record_data": {
-            "asset_name": "测试涵洞",
-            "stake": "CH1+100",
-            "stake_value": 1100.0,
-        },
+        "record_data": record_data,
         "position": {
             "kind": "point",
             "single_stake_text": "CH1+100",
@@ -49,11 +80,14 @@ def build_point_payload():
         },
         "inspection_results": [
             {
-                "item_code": "test_item",
-                "category": "测试",
-                "item_name": "测试项",
+                "item_code": item["item_code"],
+                "category": item["category"],
+                "item_name": item["item_name"],
                 "grade": "A",
+                "description": None,
+                "remark": None,
             }
+            for item in FORM_2_6.evaluation_items
         ],
         "survey_date": "2026-09-15",
         "overall_grade": "A",
@@ -391,6 +425,115 @@ class EngineeringPersistenceTestCase(unittest.TestCase):
         self.assertIsNone(bundle)
 
         mock_get_results.assert_not_called()
+
+    @patch("forms.engineering.persistence." "complete_engineering_survey_record")
+    @patch("forms.engineering.persistence." "update_engineering_record")
+    @patch("forms.engineering.persistence." "get_engineering_record")
+    def test_complete_valid_point_record(
+        self,
+        mock_get_record,
+        mock_update,
+        mock_complete,
+    ):
+        mock_get_record.return_value = {
+            "survey_record_id": 80,
+            "record_status": "draft",
+        }
+
+        mock_complete.return_value = {
+            "survey_record_id": 80,
+            "inspection_count": 11,
+        }
+
+        result = complete_engineering_record(
+            FORM_2_6,
+            survey_record_id=80,
+            payload=(build_point_payload()),
+        )
+
+        self.assertEqual(
+            result["inspection_count"],
+            11,
+        )
+
+        mock_update.assert_called_once()
+
+        kwargs = mock_complete.call_args.kwargs
+
+        self.assertEqual(
+            kwargs["form_code"],
+            "form_2_6",
+        )
+
+        self.assertEqual(
+            kwargs["position_kind"],
+            "point",
+        )
+
+        self.assertEqual(
+            len(kwargs["expected_item_codes"]),
+            11,
+        )
+
+    @patch("forms.engineering.persistence." "complete_engineering_survey_record")
+    @patch("forms.engineering.persistence." "update_engineering_record")
+    @patch("forms.engineering.persistence." "get_engineering_record")
+    def test_completed_record_cannot_complete_again(
+        self,
+        mock_get_record,
+        mock_update,
+        mock_complete,
+    ):
+        mock_get_record.return_value = {
+            "survey_record_id": 81,
+            "record_status": "completed",
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "只有草稿记录",
+        ):
+            complete_engineering_record(
+                FORM_2_6,
+                survey_record_id=81,
+                payload=(build_point_payload()),
+            )
+
+        mock_update.assert_not_called()
+
+        mock_complete.assert_not_called()
+
+    @patch("forms.engineering.persistence." "complete_engineering_survey_record")
+    @patch("forms.engineering.persistence." "update_engineering_record")
+    @patch("forms.engineering.persistence." "get_engineering_record")
+    def test_invalid_payload_is_not_saved_on_completion(
+        self,
+        mock_get_record,
+        mock_update,
+        mock_complete,
+    ):
+        mock_get_record.return_value = {
+            "survey_record_id": 82,
+            "record_status": "draft",
+        }
+
+        payload = build_point_payload()
+
+        payload["record_data"]["design_flow"] = None
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "设计流量",
+        ):
+            complete_engineering_record(
+                FORM_2_6,
+                survey_record_id=82,
+                payload=payload,
+            )
+
+        mock_update.assert_not_called()
+
+        mock_complete.assert_not_called()
 
 
 if __name__ == "__main__":
