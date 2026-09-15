@@ -59,6 +59,7 @@ from forms.engineering.validation import (
 )
 
 from forms.engineering.persistence import (
+    complete_engineering_record,
     create_engineering_record,
     load_engineering_record_bundle,
     update_engineering_record,
@@ -562,12 +563,16 @@ class GenericEngineeringSurveyPage(QWidget):
     # 页面模式
     # =========================================================
 
+    # =========================================================
+    # 页面模式
+    # =========================================================
+
     def _apply_record_mode(
         self,
     ):
         """
-        根据当前调查记录状态，
-        统一更新标题、按钮和状态提示。
+        根据当前记录生命周期，
+        统一控制标题、按钮和状态提示。
         """
 
         base_title = self.definition.display_name
@@ -582,6 +587,8 @@ class GenericEngineeringSurveyPage(QWidget):
             self.save_button.setText("保存草稿")
 
             self.save_button.setEnabled(True)
+
+            self.complete_button.setEnabled(True)
 
             self.runtime_status_label.setText("正在新增工程调查。")
 
@@ -598,23 +605,28 @@ class GenericEngineeringSurveyPage(QWidget):
 
             self.save_button.setEnabled(True)
 
+            self.complete_button.setEnabled(True)
+
             self.runtime_status_label.setText("正在编辑已保存草稿。")
 
             return
 
         # =====================================================
-        # 已完成
+        # 已完成记录
         # =====================================================
 
         if self.editing_record_status == "completed":
-            self.title_label.setText(f"{base_title} - 已完成记录")
+            self.title_label.setText(f"{base_title} - 编辑已完成记录")
 
-            # completed 修改在 R1-8C3 接入。
             self.save_button.setText("保存修改")
 
-            self.save_button.setEnabled(False)
+            self.save_button.setEnabled(True)
 
-            self.runtime_status_label.setText("已完成记录的修改将在" "下一阶段接入。")
+            # completed 不允许再次执行
+            # draft -> completed。
+            self.complete_button.setEnabled(False)
+
+            self.runtime_status_label.setText("正在编辑已完成调查记录。")
 
             return
 
@@ -643,14 +655,31 @@ class GenericEngineeringSurveyPage(QWidget):
         """
 
         try:
-            if self.editing_record_status == "completed":
-                raise ValueError("已完成记录的修改" "将在下一阶段接入。")
-
             self._refresh_runtime_context()
 
             ownership = self.collect_ownership_data()
 
             payload = self.collect_form_data()
+
+            # =================================================
+            # completed记录必须始终保持完整
+            # =================================================
+
+            if self.editing_record_status == "completed":
+                errors = validate_completion(
+                    self.definition,
+                    payload,
+                )
+
+                if errors:
+                    error_text = "\n".join(f"• {error}" for error in errors)
+
+                    raise ValueError(
+                        "已完成调查的修改"
+                        "必须继续满足全部"
+                        "完成条件：\n\n"
+                        f"{error_text}"
+                    )
 
             asset_name = str(payload.get("asset_name") or "").strip()
 
@@ -714,14 +743,25 @@ class GenericEngineeringSurveyPage(QWidget):
             self.survey_saved.emit()
 
             if show_message:
-                QMessageBox.information(
-                    self,
-                    "保存成功",
-                    (
+                if self.editing_record_status == "completed":
+                    message = (
+                        "当前已完成调查的修改"
+                        "已保存。\n\n"
+                        f"业务编号："
+                        f"{ownership['business_code']}"
+                    )
+
+                else:
+                    message = (
                         "当前调查草稿已保存。\n\n"
                         f"业务编号："
                         f"{ownership['business_code']}"
-                    ),
+                    )
+
+                QMessageBox.information(
+                    self,
+                    "保存成功",
+                    message,
                 )
 
             return result
@@ -742,6 +782,138 @@ class GenericEngineeringSurveyPage(QWidget):
         self,
     ):
         self._save_current_record(show_message=True)
+
+    # =========================================================
+    # 完成调查
+    # =========================================================
+
+    def complete_survey(
+        self,
+    ):
+        """
+        将当前工程调查正式推进为 completed。
+
+        页面层负责：
+        1. 收集最新页面数据；
+        2. 完整性校验；
+        3. 用户确认；
+        4. 必要时先创建草稿；
+        5. 调用通用完成事务；
+        6. 更新页面生命周期状态。
+
+        数据库 completed 转换仍由
+        persistence/database 层负责。
+        """
+
+        try:
+            if self.editing_record_status == "completed":
+                raise ValueError("当前调查已经完成，" "无需再次执行完成调查。")
+
+            # =================================================
+            # 1. 收集并校验最新页面
+            # =================================================
+
+            payload = self.collect_form_data()
+
+            errors = validate_completion(
+                self.definition,
+                payload,
+            )
+
+            if errors:
+                error_text = "\n".join(f"• {error}" for error in errors)
+
+                raise ValueError("完成调查前请修正" "以下内容：\n\n" f"{error_text}")
+
+            # 归属也属于完成调查前
+            # 必须存在的业务上下文。
+            self._refresh_runtime_context()
+
+            self.collect_ownership_data()
+
+            # =================================================
+            # 2. 用户确认
+            # =================================================
+
+            reply = QMessageBox.question(
+                self,
+                "确认完成调查",
+                (
+                    "系统将保存当前页面的"
+                    "全部修改，随后把本次"
+                    "调查标记为“已完成”。\n\n"
+                    "是否确认完成本次调查？"
+                ),
+                (QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return None
+
+            # =================================================
+            # 3. 新记录先建立草稿身份
+            # =================================================
+
+            if self.editing_record_id is None:
+                saved = self._save_current_record(show_message=False)
+
+                if saved is None:
+                    raise ValueError("当前页面保存失败，" "因此没有执行完成调查。")
+
+            if self.editing_record_id is None:
+                raise ValueError("没有有效的调查记录ID。")
+
+            # _save_current_record() 对新记录
+            # 建立draft后，页面内容没有变化；
+            # 重新收集可以确保使用规范化后的
+            # 当前页面状态。
+            payload = self.collect_form_data()
+
+            # =================================================
+            # 4. 通用完成事务
+            # =================================================
+
+            result = complete_engineering_record(
+                self.definition,
+                survey_record_id=(self.editing_record_id),
+                payload=payload,
+            )
+
+            self.editing_record_status = "completed"
+
+            self.is_dirty = False
+
+            self._apply_record_mode()
+
+            self.survey_saved.emit()
+
+            # C3A暂时只报告完成结果。
+            # “继续下一条 / 返回列表”
+            # 放在C3B统一接入。
+            QMessageBox.information(
+                self,
+                "完成成功",
+                (
+                    "当前工程调查"
+                    "已标记为已完成。\n\n"
+                    f"调查记录ID："
+                    f"{result['survey_record_id']}\n"
+                    f"已填写分项评价："
+                    f"{result['inspection_count']} 项"
+                ),
+            )
+
+            return result
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "完成失败",
+                str(error),
+            )
+
+            return None
 
     # =========================================================
     # 数据库记录 -> 表单数据
@@ -1178,6 +1350,12 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.save_button.setMinimumWidth(120)
 
+        self.complete_button = QPushButton("完成调查")
+
+        self.complete_button.setMinimumWidth(120)
+
+        self.complete_button.clicked.connect(self.complete_survey)
+
         self.save_button.clicked.connect(self.save_draft)
 
         footer_layout.addWidget(self.back_button)
@@ -1189,6 +1367,8 @@ class GenericEngineeringSurveyPage(QWidget):
         footer_layout.addSpacing(12)
 
         footer_layout.addWidget(self.save_button)
+
+        footer_layout.addWidget(self.complete_button)
 
         root_layout.addLayout(footer_layout)
 

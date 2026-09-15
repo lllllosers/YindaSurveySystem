@@ -35,6 +35,7 @@ if str(SRC_DIR) not in sys.path:
 from PySide6.QtWidgets import (
     QApplication,
     QLineEdit,
+    QMessageBox,
 )
 
 from forms.engineering.form_2_6 import (
@@ -1008,6 +1009,323 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertFalse(self.page.is_dirty)
 
+    def _fill_complete_form(
+        self,
+    ):
+        """
+        按FORM_2_6定义生成一份
+        可以通过完成校验的页面数据。
+        """
+
+        for field in FORM_2_6.fields:
+            widget = (
+                self.page.get_field_widget(
+                    field.key
+                )
+            )
+
+            if field.key == "asset_name":
+                value = "完整测试涵洞"
+
+            elif field.key == "stake":
+                value = "CH10+500"
+
+            elif (
+                field.key
+                == "renovation_date"
+            ):
+                value = ""
+
+            elif field.input_type == "text":
+                value = "测试"
+
+            elif field.input_type in (
+                "decimal",
+                "signed_decimal",
+            ):
+                value = "1"
+
+            elif field.input_type == "integer":
+                value = "1"
+
+            elif field.input_type == "month":
+                value = "2026-01"
+
+            else:
+                raise AssertionError(
+                    "测试未覆盖字段类型："
+                    f"{field.input_type}"
+                )
+
+            widget.setText(
+                value
+            )
+
+        for item in (
+            FORM_2_6.evaluation_items
+        ):
+            item_code = item[
+                "item_code"
+            ]
+
+            controls = (
+                self.page
+                .evaluation_section
+                .grade_buttons[
+                    item_code
+                ]
+            )
+
+            controls["A"].setChecked(
+                True
+            )
+
+        self.page.set_overall_grade(
+            "A"
+        )
+
+        self.page.survey_date_edit.setText(
+            "2026-09-15"
+        )
+
+        self.page.survey_comment_edit.setPlainText(
+            "完整测试调查意见。"
+        )
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "update_engineering_record"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_context"
+    )
+    def test_completed_record_can_save_valid_modification(
+        self,
+        mock_context,
+        mock_form_version,
+        mock_update,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        self._seed_ownership()
+        self._fill_complete_form()
+
+        self.page.editing_record_id = 201
+        self.page.editing_record_status = (
+            "completed"
+        )
+
+        self.page._apply_record_mode()
+
+        result = (
+            self.page
+            ._save_current_record(
+                show_message=False
+            )
+        )
+
+        self.assertEqual(
+            result[
+                "survey_record_id"
+            ],
+            201,
+        )
+
+        mock_update.assert_called_once()
+
+        self.assertEqual(
+            self.page
+            .editing_record_status,
+            "completed",
+        )
+
+        self.assertTrue(
+            self.page.save_button.isEnabled()
+        )
+
+        self.assertFalse(
+            self.page
+            .complete_button.isEnabled()
+        )
+
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "update_engineering_record"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_context"
+    )
+    def test_completed_record_rejects_incomplete_modification(
+        self,
+        mock_context,
+        mock_form_version,
+        mock_update,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        self._seed_ownership()
+        self._fill_complete_form()
+
+        self.page.editing_record_id = 202
+        self.page.editing_record_status = (
+            "completed"
+        )
+
+        self.page.get_field_widget(
+            "design_flow"
+        ).clear()
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "设计流量",
+        ):
+            self.page._save_current_record(
+                show_message=False
+            )
+
+        mock_update.assert_not_called()
+
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "complete_engineering_record"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_context"
+    )
+    @patch(
+        "PySide6.QtWidgets."
+        "QMessageBox.question",
+        return_value=(
+            QMessageBox.StandardButton.Yes
+        ),
+    )
+    @patch(
+        "PySide6.QtWidgets."
+        "QMessageBox.information"
+    )
+    def test_existing_draft_can_complete(
+        self,
+        mock_information,
+        mock_question,
+        mock_context,
+        mock_form_version,
+        mock_complete,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        mock_complete.return_value = {
+            "survey_record_id": 203,
+            "inspection_count": 11,
+        }
+
+        self._seed_ownership()
+        self._fill_complete_form()
+
+        self.page.editing_record_id = 203
+        self.page.editing_record_status = (
+            "draft"
+        )
+
+        result = (
+            self.page.complete_survey()
+        )
+
+        self.assertIsNotNone(
+            result
+        )
+
+        self.assertEqual(
+            self.page
+            .editing_record_status,
+            "completed",
+        )
+
+        self.assertFalse(
+            self.page
+            .complete_button
+            .isEnabled()
+        )
+
+        mock_complete.assert_called_once()
+
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "complete_engineering_record"
+    )
+    @patch(
+        "PySide6.QtWidgets."
+        "QMessageBox.warning"
+    )
+    def test_invalid_form_does_not_complete(
+        self,
+        mock_warning,
+        mock_complete,
+    ):
+        self.page.editing_record_id = 204
+        self.page.editing_record_status = (
+            "draft"
+        )
+
+        result = (
+            self.page.complete_survey()
+        )
+
+        self.assertIsNone(
+            result
+        )
+
+        mock_complete.assert_not_called()
+
+        mock_warning.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
