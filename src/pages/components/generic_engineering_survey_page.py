@@ -1,7 +1,13 @@
 from datetime import date
 from PySide6.QtCore import (
+    QTimer,
     Qt,
     Signal,
+)
+
+from PySide6.QtGui import (
+    QKeySequence,
+    QShortcut,
 )
 
 from PySide6.QtWidgets import (
@@ -134,6 +140,7 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self._connect_ownership_signals()
         self._connect_dirty_tracking()
+        self._setup_keyboard_shortcuts()
 
         # 构造页面本身不主动读取数据库。
         # 正式进入新增调查时，
@@ -880,6 +887,8 @@ class GenericEngineeringSurveyPage(QWidget):
                 payload=payload,
             )
 
+            previous_survey_date = self.survey_date_edit.text().strip()
+
             self.editing_record_status = "completed"
 
             self.is_dirty = False
@@ -888,20 +897,9 @@ class GenericEngineeringSurveyPage(QWidget):
 
             self.survey_saved.emit()
 
-            # C3A暂时只报告完成结果。
-            # “继续下一条 / 返回列表”
-            # 放在C3B统一接入。
-            QMessageBox.information(
-                self,
-                "完成成功",
-                (
-                    "当前工程调查"
-                    "已标记为已完成。\n\n"
-                    f"调查记录ID："
-                    f"{result['survey_record_id']}\n"
-                    f"已填写分项评价："
-                    f"{result['inspection_count']} 项"
-                ),
+            self._handle_completion_success(
+                result,
+                previous_survey_date=(previous_survey_date),
             )
 
             return result
@@ -1090,6 +1088,60 @@ class GenericEngineeringSurveyPage(QWidget):
         return False
 
     # =========================================================
+    # 快捷键
+    # =========================================================
+
+    def _setup_keyboard_shortcuts(
+        self,
+    ):
+        """
+        工程调查高频录入快捷键。
+
+        Ctrl+S：
+            保存当前记录。
+
+        Ctrl+Enter / Ctrl+Return：
+            完成调查。
+        """
+
+        self.save_shortcut = QShortcut(
+            QKeySequence("Ctrl+S"),
+            self,
+        )
+
+        self.save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+
+        self.save_shortcut.activated.connect(self.save_draft)
+
+        self.complete_shortcut = QShortcut(
+            QKeySequence("Ctrl+Return"),
+            self,
+        )
+
+        self.complete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+
+        self.complete_shortcut.activated.connect(self._complete_from_shortcut)
+
+        self.complete_enter_shortcut = QShortcut(
+            QKeySequence("Ctrl+Enter"),
+            self,
+        )
+
+        self.complete_enter_shortcut.setContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut
+        )
+
+        self.complete_enter_shortcut.activated.connect(self._complete_from_shortcut)
+
+    def _complete_from_shortcut(
+        self,
+    ):
+        if not self.complete_button.isEnabled():
+            return
+
+        self.complete_survey()
+
+    # =========================================================
     # Dirty tracking
     # =========================================================
 
@@ -1126,6 +1178,156 @@ class GenericEngineeringSurveyPage(QWidget):
         *args,
     ):
         self.is_dirty = True
+
+    # =========================================================
+    # 返回拦截
+    # =========================================================
+
+    def confirm_leave_changes(
+        self,
+    ) -> bool:
+        """
+        存在未保存修改时，
+        询问用户如何处理。
+
+        True：
+            可以离开页面。
+
+        False：
+            留在当前页面。
+        """
+
+        if not self.is_dirty:
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            "存在未保存修改",
+            (
+                "当前调查表存在尚未保存的修改。\n\n"
+                "选择“保存”将先保存当前内容再离开；\n"
+                "选择“不保存”将放弃本次修改；\n"
+                "选择“取消”将继续留在当前页面。"
+            ),
+            (
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel
+            ),
+            QMessageBox.StandardButton.Cancel,
+        )
+
+        if reply == QMessageBox.StandardButton.Save:
+            result = self._save_current_record(show_message=True)
+
+            return result is not None
+
+        if reply == QMessageBox.StandardButton.Discard:
+            self.is_dirty = False
+            return True
+
+        return False
+
+    def request_back(
+        self,
+    ):
+        if not self.confirm_leave_changes():
+            return
+
+        self.back_requested.emit()
+
+    # =========================================================
+    # 连续录入
+    # =========================================================
+
+    def _focus_new_entry_start(
+        self,
+    ):
+        """
+        连续录入下一条时：
+        - 回到表单顶部；
+        - 聚焦工程名称字段。
+        """
+
+        vertical_bar = self.scroll_area.verticalScrollBar()
+
+        vertical_bar.setValue(vertical_bar.minimum())
+
+        self.get_field_widget(self.definition.asset_name_field).setFocus()
+
+    def _ask_after_completion(
+        self,
+        result,
+    ) -> str:
+        """
+        完成调查后询问下一步。
+
+        返回：
+            "continue"
+            "back"
+        """
+
+        success_box = QMessageBox(self)
+
+        success_box.setIcon(QMessageBox.Icon.Information)
+
+        success_box.setWindowTitle("完成成功")
+
+        success_box.setText(
+            (
+                "当前工程调查已标记为已完成。\n\n"
+                f"调查记录ID："
+                f"{result['survey_record_id']}\n"
+                f"已填写分项评价："
+                f"{result['inspection_count']} 项\n\n"
+                "请选择下一步操作。"
+            )
+        )
+
+        continue_button = success_box.addButton(
+            "继续录入下一条",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+
+        return_button = success_box.addButton(
+            "返回列表",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+
+        success_box.setDefaultButton(continue_button)
+
+        success_box.setEscapeButton(return_button)
+
+        success_box.exec()
+
+        if success_box.clickedButton() is continue_button:
+            return "continue"
+
+        return "back"
+
+    def _handle_completion_success(
+        self,
+        result,
+        *,
+        previous_survey_date=None,
+    ):
+        action = self._ask_after_completion(result)
+
+        if action == "continue":
+            self.prepare_new(survey_date=(previous_survey_date or None))
+
+            self.is_dirty = False
+
+            QTimer.singleShot(
+                0,
+                self._focus_new_entry_start,
+            )
+
+            return "continue"
+
+        self.back_requested.emit()
+
+        return "back"
 
     # =========================================================
     # Definition sections
@@ -1334,13 +1536,19 @@ class GenericEngineeringSurveyPage(QWidget):
         self.back_button = QPushButton("返回")
 
         # 未保存修改拦截在 R1-8C3 接入。
-        self.back_button.clicked.connect(self.back_requested.emit)
+        self.back_button.clicked.connect(self.request_back)
 
         self.runtime_status_label = QLabel(
             "当前已接入草稿保存与重新打开；" "完成调查将在下一阶段接入。"
         )
 
         self.runtime_status_label.setStyleSheet("color: #607080;")
+
+        self.shortcut_hint_label = QLabel(
+            "快捷键：Ctrl+S 保存　|　" "Ctrl+Enter 完成调查"
+        )
+
+        self.shortcut_hint_label.setStyleSheet("color: #607080;")
 
         # 暂时保留旧属性名，
         # 避免已有测试或开发代码突然失效。
@@ -1363,6 +1571,10 @@ class GenericEngineeringSurveyPage(QWidget):
         footer_layout.addStretch()
 
         footer_layout.addWidget(self.runtime_status_label)
+
+        footer_layout.addSpacing(12)
+
+        footer_layout.addWidget(self.shortcut_hint_label)
 
         footer_layout.addSpacing(12)
 

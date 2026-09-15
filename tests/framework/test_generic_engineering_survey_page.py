@@ -1018,11 +1018,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         """
 
         for field in FORM_2_6.fields:
-            widget = (
-                self.page.get_field_widget(
-                    field.key
-                )
-            )
+            widget = self.page.get_field_widget(field.key)
 
             if field.key == "asset_name":
                 value = "完整测试涵洞"
@@ -1030,10 +1026,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             elif field.key == "stake":
                 value = "CH10+500"
 
-            elif (
-                field.key
-                == "renovation_date"
-            ):
+            elif field.key == "renovation_date":
                 value = ""
 
             elif field.input_type == "text":
@@ -1052,45 +1045,22 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
                 value = "2026-01"
 
             else:
-                raise AssertionError(
-                    "测试未覆盖字段类型："
-                    f"{field.input_type}"
-                )
+                raise AssertionError("测试未覆盖字段类型：" f"{field.input_type}")
 
-            widget.setText(
-                value
-            )
+            widget.setText(value)
 
-        for item in (
-            FORM_2_6.evaluation_items
-        ):
-            item_code = item[
-                "item_code"
-            ]
+        for item in FORM_2_6.evaluation_items:
+            item_code = item["item_code"]
 
-            controls = (
-                self.page
-                .evaluation_section
-                .grade_buttons[
-                    item_code
-                ]
-            )
+            controls = self.page.evaluation_section.grade_buttons[item_code]
 
-            controls["A"].setChecked(
-                True
-            )
+            controls["A"].setChecked(True)
 
-        self.page.set_overall_grade(
-            "A"
-        )
+        self.page.set_overall_grade("A")
 
-        self.page.survey_date_edit.setText(
-            "2026-09-15"
-        )
+        self.page.survey_date_edit.setText("2026-09-15")
 
-        self.page.survey_comment_edit.setPlainText(
-            "完整测试调查意见。"
-        )
+        self.page.survey_comment_edit.setPlainText("完整测试调查意见。")
 
     @patch(
         "pages.components."
@@ -1102,11 +1072,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         "generic_engineering_survey_page."
         "get_current_form_version"
     )
-    @patch(
-        "pages.components."
-        "generic_engineering_survey_page."
-        "get_current_context"
-    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
     def test_completed_record_can_save_valid_modification(
         self,
         mock_context,
@@ -1126,43 +1092,27 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self._fill_complete_form()
 
         self.page.editing_record_id = 201
-        self.page.editing_record_status = (
-            "completed"
-        )
+        self.page.editing_record_status = "completed"
 
         self.page._apply_record_mode()
 
-        result = (
-            self.page
-            ._save_current_record(
-                show_message=False
-            )
-        )
+        result = self.page._save_current_record(show_message=False)
 
         self.assertEqual(
-            result[
-                "survey_record_id"
-            ],
+            result["survey_record_id"],
             201,
         )
 
         mock_update.assert_called_once()
 
         self.assertEqual(
-            self.page
-            .editing_record_status,
+            self.page.editing_record_status,
             "completed",
         )
 
-        self.assertTrue(
-            self.page.save_button.isEnabled()
-        )
+        self.assertTrue(self.page.save_button.isEnabled())
 
-        self.assertFalse(
-            self.page
-            .complete_button.isEnabled()
-        )
-
+        self.assertFalse(self.page.complete_button.isEnabled())
 
     @patch(
         "pages.components."
@@ -1174,11 +1124,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         "generic_engineering_survey_page."
         "get_current_form_version"
     )
-    @patch(
-        "pages.components."
-        "generic_engineering_survey_page."
-        "get_current_context"
-    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
     def test_completed_record_rejects_incomplete_modification(
         self,
         mock_context,
@@ -1198,25 +1144,23 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self._fill_complete_form()
 
         self.page.editing_record_id = 202
-        self.page.editing_record_status = (
-            "completed"
-        )
+        self.page.editing_record_status = "completed"
 
-        self.page.get_field_widget(
-            "design_flow"
-        ).clear()
+        self.page.get_field_widget("design_flow").clear()
 
         with self.assertRaisesRegex(
             ValueError,
             "设计流量",
         ):
-            self.page._save_current_record(
-                show_message=False
-            )
+            self.page._save_current_record(show_message=False)
 
         mock_update.assert_not_called()
 
-
+    @patch.object(
+        GenericEngineeringSurveyPage,
+        "_handle_completion_success",
+        return_value="back",
+    )
     @patch(
         "pages.components."
         "generic_engineering_survey_page."
@@ -1239,17 +1183,13 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             QMessageBox.StandardButton.Yes
         ),
     )
-    @patch(
-        "PySide6.QtWidgets."
-        "QMessageBox.information"
-    )
     def test_existing_draft_can_complete(
         self,
-        mock_information,
         mock_question,
         mock_context,
         mock_form_version,
         mock_complete,
+        mock_after_completion,
     ):
         mock_context.return_value = {
             "project_id": 1,
@@ -1269,32 +1209,30 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self._fill_complete_form()
 
         self.page.editing_record_id = 203
-        self.page.editing_record_status = (
-            "draft"
-        )
+        self.page.editing_record_status = "draft"
 
-        result = (
-            self.page.complete_survey()
-        )
+        result = self.page.complete_survey()
 
-        self.assertIsNotNone(
-            result
-        )
+        self.assertIsNotNone(result)
 
         self.assertEqual(
-            self.page
-            .editing_record_status,
+            self.page.editing_record_status,
             "completed",
         )
 
         self.assertFalse(
-            self.page
-            .complete_button
-            .isEnabled()
+            self.page.complete_button.isEnabled()
         )
 
         mock_complete.assert_called_once()
 
+        mock_after_completion.assert_called_once_with(
+            {
+                "survey_record_id": 203,
+                "inspection_count": 11,
+            },
+            previous_survey_date="2026-09-15",
+        )
 
     @patch(
         "pages.components."
@@ -1311,21 +1249,132 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         mock_complete,
     ):
         self.page.editing_record_id = 204
-        self.page.editing_record_status = (
-            "draft"
-        )
+        self.page.editing_record_status = "draft"
 
-        result = (
-            self.page.complete_survey()
-        )
+        result = self.page.complete_survey()
 
-        self.assertIsNone(
-            result
-        )
+        self.assertIsNone(result)
 
         mock_complete.assert_not_called()
 
         mock_warning.assert_called_once()
+
+    # =========================================================
+    # 返回拦截与连续录入
+    # =========================================================
+
+    def test_clean_page_can_leave_without_prompt(
+        self,
+    ):
+        self.page.is_dirty = False
+
+        self.assertTrue(self.page.confirm_leave_changes())
+
+    @patch(
+        "PySide6.QtWidgets." "QMessageBox.question",
+        return_value=(QMessageBox.StandardButton.Cancel),
+    )
+    def test_dirty_page_cancel_stays(
+        self,
+        mock_question,
+    ):
+        self.page.is_dirty = True
+
+        self.assertFalse(self.page.confirm_leave_changes())
+
+        self.assertTrue(self.page.is_dirty)
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "GenericEngineeringSurveyPage."
+        "_save_current_record"
+    )
+    @patch(
+        "PySide6.QtWidgets." "QMessageBox.question",
+        return_value=(QMessageBox.StandardButton.Save),
+    )
+    def test_dirty_page_save_before_leave(
+        self,
+        mock_question,
+        mock_save,
+    ):
+        mock_save.return_value = {
+            "survey_record_id": 301,
+        }
+
+        self.page.is_dirty = True
+
+        self.assertTrue(self.page.confirm_leave_changes())
+
+        mock_save.assert_called_once_with(show_message=True)
+
+    @patch("PySide6.QtCore.QTimer.singleShot")
+    @patch.object(
+        GenericEngineeringSurveyPage,
+        "_ask_after_completion",
+        return_value="continue",
+    )
+    @patch.object(
+        GenericEngineeringSurveyPage,
+        "prepare_new",
+    )
+    def test_completion_continue_preserves_date(
+        self,
+        mock_prepare_new,
+        mock_ask,
+        mock_timer,
+    ):
+        result = {
+            "survey_record_id": 302,
+            "inspection_count": 11,
+        }
+
+        action = self.page._handle_completion_success(
+            result,
+            previous_survey_date=("2026-09-15"),
+        )
+
+        self.assertEqual(
+            action,
+            "continue",
+        )
+
+        mock_prepare_new.assert_called_once_with(survey_date="2026-09-15")
+
+        mock_timer.assert_called_once()
+
+    @patch.object(
+        GenericEngineeringSurveyPage,
+        "_ask_after_completion",
+        return_value="back",
+    )
+    def test_completion_back_emits_back_signal(
+        self,
+        mock_ask,
+    ):
+        emitted = []
+
+        self.page.back_requested.connect(lambda: emitted.append(True))
+
+        action = self.page._handle_completion_success(
+            {
+                "survey_record_id": 303,
+                "inspection_count": 11,
+            },
+            previous_survey_date=("2026-09-15"),
+        )
+
+        self.assertEqual(
+            action,
+            "back",
+        )
+
+        self.assertEqual(
+            emitted,
+            [True],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
