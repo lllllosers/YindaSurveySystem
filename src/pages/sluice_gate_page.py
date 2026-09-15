@@ -1278,6 +1278,21 @@ class SluiceGatePage(QWidget):
         将调查记录标记为 completed。
         """
         try:
+            # 已完成记录不应再次执行
+            # draft -> completed。
+            #
+            # 正常UI中已完成记录的
+            # “完成调查”按钮本身会禁用；
+            # 这里保留数据库操作前的
+            # 防御性检查。
+            if (
+                self.editing_record_status
+                == "completed"
+            ):
+                raise ValueError(
+                    "当前调查已经完成，"
+                    "无需再次执行完成调查。"
+                )
             # =========================
             # 完成调查前先检查完整性
             # =========================
@@ -1386,8 +1401,6 @@ class SluiceGatePage(QWidget):
 
                 return
 
-            self.back_requested.emit()
-
         except Exception as error:
             QMessageBox.warning(
                 self,
@@ -1395,6 +1408,14 @@ class SluiceGatePage(QWidget):
                 str(error),
             )
 
+            # =================================================
+            # 返回列表
+            # =================================================
+
+            self.back_requested.emit()
+            return
+
+        
     def prepare_new(self):
         """
         切换到新增模式。

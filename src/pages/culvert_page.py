@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from database import (
-    complete_aqueduct_record,
+    complete_culvert_record,
     create_engineering_survey,
     get_canal_units_for_organization,
     get_current_context,
@@ -43,11 +43,9 @@ from pages.components.survey_input_fields import (
     create_date_edit,
     create_month_edit,
     create_nonnegative_decimal_edit,
-    create_nonnegative_integer_edit,
     create_signed_decimal_edit,
     get_optional_date,
     get_optional_float,
-    get_optional_int,
     get_optional_month,
     get_optional_text,
 )
@@ -56,8 +54,8 @@ from pages.components.evaluation_section import (
     EvaluationSection,
 )
 
-from services.aqueduct_evaluation import (
-    AQUEDUCT_EVALUATION_ITEMS,
+from services.culvert_evaluation import (
+    CULVERT_EVALUATION_ITEMS,
 )
 
 from services.business_code import (
@@ -69,9 +67,9 @@ from services.business_code import (
 from services.stake import parse_stake
 
 
-class AqueductPage(QWidget):
+class CulvertPage(QWidget):
     """
-    附表2.3 渡槽（座槽）工程状况调查页面。
+    附表2.6 涵洞（暗涵）工程状况调查页面。
 
     B1阶段先负责：
     - 工程归属；
@@ -96,7 +94,7 @@ class AqueductPage(QWidget):
 
         self.current_context = get_current_context()
 
-        self.form_version = get_current_form_version("form_2_3")
+        self.form_version = get_current_form_version("form_2_6")
 
         self.evaluation_section: EvaluationSection
 
@@ -122,14 +120,14 @@ class AqueductPage(QWidget):
 
         root_layout.setSpacing(18)
 
-        self.title_label = QLabel("附表2.3 渡槽（座槽）工程状况调查")
+        self.title_label = QLabel("附表2.6 涵洞（暗涵）工程状况调查")
 
         self.title_label.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
         root_layout.addWidget(self.title_label)
 
         description = QLabel(
-            "填写附表2.3基本信息、分项评价及调查结论。"
+            "填写附表2.6基本信息、分项评价及调查结论。"
             "草稿允许暂时不完整；"
             "完成调查前系统将检查全部必填内容。"
         )
@@ -219,7 +217,7 @@ class AqueductPage(QWidget):
 
         self.name_edit = QLineEdit()
 
-        self.name_edit.setPlaceholderText("填写渡槽（座槽）名称")
+        self.name_edit.setPlaceholderText("填写涵洞（暗涵）名称")
 
         self.stake_edit = QLineEdit()
 
@@ -284,10 +282,10 @@ class AqueductPage(QWidget):
         form_layout.addWidget(basic_group)
 
         # =====================================================
-        # 三、结构参数
+        # 三、结构与断面参数
         # =====================================================
 
-        structure_group = QGroupBox("三、结构参数")
+        structure_group = QGroupBox("三、结构与断面参数")
 
         structure_layout = QFormLayout(structure_group)
 
@@ -295,96 +293,69 @@ class AqueductPage(QWidget):
 
         self.structure_form_edit = QLineEdit()
 
-        self.section_width_edit = create_nonnegative_decimal_edit()
+        self.main_structure_material_edit = QLineEdit()
 
-        self.section_height_edit = create_nonnegative_decimal_edit()
+        self.concrete_strength_edit = QLineEdit()
 
-        self.trough_body_structure_edit = QLineEdit()
+        self.cover_thickness_edit = create_nonnegative_decimal_edit()
 
-        self.trough_wall_thickness_edit = create_nonnegative_decimal_edit()
+        self.soil_cover_thickness_edit = create_nonnegative_decimal_edit()
 
-        self.waterstop_form_edit = QLineEdit()
+        self.channel_width_edit = create_nonnegative_decimal_edit()
+
+        self.channel_depth_edit = create_nonnegative_decimal_edit()
 
         # 高程允许负值。
-        self.trough_bottom_elevation_edit = create_signed_decimal_edit()
-
-        self.span_count_edit = create_nonnegative_integer_edit()
-
-        self.lower_support_structure_form_edit = QLineEdit()
+        self.channel_bottom_elevation_edit = create_signed_decimal_edit()
 
         self.structure_form_edit.setPlaceholderText("按原始资料填写")
 
-        self.section_width_edit.setPlaceholderText("断面宽")
+        self.main_structure_material_edit.setPlaceholderText("按原始资料填写")
 
-        self.section_height_edit.setPlaceholderText("断面高")
-
-        self.trough_body_structure_edit.setPlaceholderText("按原始资料填写")
-
-        self.waterstop_form_edit.setPlaceholderText("按原始资料填写")
-
-        self.lower_support_structure_form_edit.setPlaceholderText("按原始资料填写")
+        self.concrete_strength_edit.setPlaceholderText("例如：C30")
 
         structure_layout.addRow(
             "结构形式：",
             self.structure_form_edit,
         )
 
-        # 正式表为一个“宽*高”字段，
-        # 程序内部拆成两个数值字段。
-        section_size_widget = QWidget()
-
-        section_size_layout = QHBoxLayout(section_size_widget)
-
-        section_size_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        section_size_layout.setSpacing(8)
-
-        section_size_layout.addWidget(self.section_width_edit)
-
-        section_separator = QLabel("×")
-
-        section_size_layout.addWidget(section_separator)
-
-        section_size_layout.addWidget(self.section_height_edit)
-
+        # 正式原表文字为“主构建筑材料”，
+        # 不自行改为“主要构件材料”。
         structure_layout.addRow(
-            "断面尺寸（宽×高）：",
-            section_size_widget,
+            "主构建筑材料：",
+            self.main_structure_material_edit,
         )
 
         structure_layout.addRow(
-            "槽身结构：",
-            self.trough_body_structure_edit,
+            "混凝土强度：",
+            self.concrete_strength_edit,
+        )
+
+        # 正式原表未明确给出该字段单位，
+        # UI 不自行补充。
+        structure_layout.addRow(
+            "钢筋保护层厚度：",
+            self.cover_thickness_edit,
         )
 
         structure_layout.addRow(
-            "槽壁厚度：",
-            self.trough_wall_thickness_edit,
+            "覆土厚度（m）：",
+            self.soil_cover_thickness_edit,
         )
 
         structure_layout.addRow(
-            "止水形式：",
-            self.waterstop_form_edit,
+            "渠宽（m）：",
+            self.channel_width_edit,
         )
 
         structure_layout.addRow(
-            "槽底高程：",
-            self.trough_bottom_elevation_edit,
+            "渠深（m）：",
+            self.channel_depth_edit,
         )
 
         structure_layout.addRow(
-            "跨数：",
-            self.span_count_edit,
-        )
-
-        structure_layout.addRow(
-            "下部支撑结构型式：",
-            self.lower_support_structure_form_edit,
+            "渠底高程（m）：",
+            self.channel_bottom_elevation_edit,
         )
 
         form_layout.addWidget(structure_group)
@@ -402,7 +373,7 @@ class AqueductPage(QWidget):
 
         self.evaluation_section = EvaluationSection(
             title="四、分项评价",
-            evaluation_items=(AQUEDUCT_EVALUATION_ITEMS),
+            evaluation_items=(CULVERT_EVALUATION_ITEMS),
             description=(
                 "各项目始终显示 "
                 "A、B、C、D 四级评价标准，"
@@ -412,14 +383,6 @@ class AqueductPage(QWidget):
         )
 
         form_layout.addWidget(self.evaluation_section)
-
-        evaluation_note = QLabel("注：渡槽其它部位指进、出口" "渐变段、护栏等。")
-
-        evaluation_note.setWordWrap(True)
-
-        evaluation_note.setStyleSheet("color: #607080;")
-
-        form_layout.addWidget(evaluation_note)
 
         # =====================================================
         # 五、调查结论
@@ -618,14 +581,13 @@ class AqueductPage(QWidget):
             self.length_edit,
             self.increased_flow_edit,
             self.structure_form_edit,
-            self.section_width_edit,
-            self.section_height_edit,
-            self.trough_body_structure_edit,
-            self.trough_wall_thickness_edit,
-            self.waterstop_form_edit,
-            self.trough_bottom_elevation_edit,
-            self.span_count_edit,
-            self.lower_support_structure_form_edit,
+            self.main_structure_material_edit,
+            self.concrete_strength_edit,
+            self.cover_thickness_edit,
+            self.soil_cover_thickness_edit,
+            self.channel_width_edit,
+            self.channel_depth_edit,
+            self.channel_bottom_elevation_edit,
             self.overall_grade_buttons["A"],
             self.overall_grade_buttons["B"],
             self.overall_grade_buttons["C"],
@@ -713,14 +675,13 @@ class AqueductPage(QWidget):
             self.length_edit,
             self.increased_flow_edit,
             self.structure_form_edit,
-            self.section_width_edit,
-            self.section_height_edit,
-            self.trough_body_structure_edit,
-            self.trough_wall_thickness_edit,
-            self.waterstop_form_edit,
-            self.trough_bottom_elevation_edit,
-            self.span_count_edit,
-            self.lower_support_structure_form_edit,
+            self.main_structure_material_edit,
+            self.concrete_strength_edit,
+            self.cover_thickness_edit,
+            self.soil_cover_thickness_edit,
+            self.channel_width_edit,
+            self.channel_depth_edit,
+            self.channel_bottom_elevation_edit,
             self.survey_date_edit,
         ]
 
@@ -914,7 +875,7 @@ class AqueductPage(QWidget):
             if not office_code:
                 raise ValueError("当前水管所没有业务代码。")
 
-            engineering_type_code = get_engineering_type_code("form_2_3")
+            engineering_type_code = get_engineering_type_code("form_2_6")
 
             existing_codes = get_engineering_business_codes(
                 self.current_context["project_id"]
@@ -953,7 +914,7 @@ class AqueductPage(QWidget):
 
     def collect_basic_data(self):
         """
-        收集附表2.3正式基本信息。
+        收集附表2.6正式基本信息。
         """
 
         asset_name = self.name_edit.text().strip()
@@ -981,21 +942,18 @@ class AqueductPage(QWidget):
             "length": (get_optional_float(self.length_edit)),
             "increased_flow": (get_optional_float(self.increased_flow_edit)),
             "structure_form": (get_optional_text(self.structure_form_edit)),
-            "section_width": (get_optional_float(self.section_width_edit)),
-            "section_height": (get_optional_float(self.section_height_edit)),
-            "trough_body_structure": (
-                get_optional_text(self.trough_body_structure_edit)
+            "main_structure_material": (
+                get_optional_text(self.main_structure_material_edit)
             ),
-            "trough_wall_thickness": (
-                get_optional_float(self.trough_wall_thickness_edit)
+            "concrete_strength": (get_optional_text(self.concrete_strength_edit)),
+            "cover_thickness": (get_optional_float(self.cover_thickness_edit)),
+            "soil_cover_thickness": (
+                get_optional_float(self.soil_cover_thickness_edit)
             ),
-            "waterstop_form": (get_optional_text(self.waterstop_form_edit)),
-            "trough_bottom_elevation": (
-                get_optional_float(self.trough_bottom_elevation_edit)
-            ),
-            "span_count": (get_optional_int(self.span_count_edit)),
-            "lower_support_structure_form": (
-                get_optional_text(self.lower_support_structure_form_edit)
+            "channel_width": (get_optional_float(self.channel_width_edit)),
+            "channel_depth": (get_optional_float(self.channel_depth_edit)),
+            "channel_bottom_elevation": (
+                get_optional_float(self.channel_bottom_elevation_edit)
             ),
         }
 
@@ -1029,10 +987,10 @@ class AqueductPage(QWidget):
             if self.current_context["batch_id"] is None:
                 raise ValueError("当前没有启用的调查批次。")
 
-            self.form_version = get_current_form_version("form_2_3")
+            self.form_version = get_current_form_version("form_2_6")
 
             if self.form_version is None:
-                raise ValueError("未找到附表2.3当前版本。")
+                raise ValueError("未找到附表2.6当前版本。")
 
             # =============================================
             # 工程归属
@@ -1120,7 +1078,7 @@ class AqueductPage(QWidget):
             else:
                 update_point_engineering_survey(
                     survey_record_id=(self.editing_record_id),
-                    form_code="form_2_3",
+                    form_code="form_2_6",
                     asset_name=(asset_name),
                     record_data=(record_data),
                     single_stake_text=(stake_text),
@@ -1143,7 +1101,7 @@ class AqueductPage(QWidget):
 
             if self.editing_record_status == "completed":
                 self.title_label.setText(
-                    "附表2.3 渡槽（座槽）" "工程状况调查 - " "编辑已完成记录"
+                    "附表2.6 涵洞（暗涵）" "工程状况调查 - " "编辑已完成记录"
                 )
 
                 self.save_button.setText("保存修改")
@@ -1152,7 +1110,7 @@ class AqueductPage(QWidget):
 
             else:
                 self.title_label.setText(
-                    "附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿"
+                    "附表2.6 涵洞（暗涵）" "工程状况调查 - 编辑草稿"
                 )
 
                 self.save_button.setText("保存草稿")
@@ -1203,14 +1161,14 @@ class AqueductPage(QWidget):
 
     def save_draft(self):
         """
-        保存当前附表2.3草稿。
+        保存当前附表2.6草稿。
         """
 
         self._save_current_draft(show_message=True)
 
     def _validate_completion_fields(self):
         """
-        校验附表2.3完成调查所需内容。
+        校验附表2.6完成调查所需内容。
 
         草稿保存不调用本方法，
         因此草稿仍然允许不完整。
@@ -1272,36 +1230,32 @@ class AqueductPage(QWidget):
                 "结构形式",
             ),
             (
-                self.section_width_edit,
-                "断面尺寸（宽）",
+                self.main_structure_material_edit,
+                "主构建筑材料",
             ),
             (
-                self.section_height_edit,
-                "断面尺寸（高）",
+                self.concrete_strength_edit,
+                "混凝土强度",
             ),
             (
-                self.trough_body_structure_edit,
-                "槽身结构",
+                self.cover_thickness_edit,
+                "钢筋保护层厚度",
             ),
             (
-                self.trough_wall_thickness_edit,
-                "槽壁厚度",
+                self.soil_cover_thickness_edit,
+                "覆土厚度",
             ),
             (
-                self.waterstop_form_edit,
-                "止水形式",
+                self.channel_width_edit,
+                "渠宽",
             ),
             (
-                self.trough_bottom_elevation_edit,
-                "槽底高程",
+                self.channel_depth_edit,
+                "渠深",
             ),
             (
-                self.span_count_edit,
-                "跨数",
-            ),
-            (
-                self.lower_support_structure_form_edit,
-                "下部支撑结构型式",
+                self.channel_bottom_elevation_edit,
+                "渠底高程",
             ),
             (
                 self.survey_date_edit,
@@ -1336,7 +1290,7 @@ class AqueductPage(QWidget):
 
         evaluation_results = self._collect_evaluation_results()
 
-        evaluation_total = len(AQUEDUCT_EVALUATION_ITEMS)
+        evaluation_total = len(CULVERT_EVALUATION_ITEMS)
 
         if len(evaluation_results) != evaluation_total:
             missing_count = evaluation_total - len(evaluation_results)
@@ -1403,7 +1357,7 @@ class AqueductPage(QWidget):
     def complete_survey(self):
         """
         保存页面最新内容，
-        再将附表2.3调查推进为 completed。
+        再将附表2.6调查推进为 completed。
         """
 
         try:
@@ -1463,7 +1417,7 @@ class AqueductPage(QWidget):
             # 4. 数据库正式完成
             # =================================================
 
-            result = complete_aqueduct_record(self.editing_record_id)
+            result = complete_culvert_record(self.editing_record_id)
 
             self.editing_record_status = "completed"
 
@@ -1484,14 +1438,14 @@ class AqueductPage(QWidget):
 
             success_box.setText(
                 (
-                    "当前渡槽（座槽）调查"
+                    "当前涵洞（暗涵）调查"
                     "已标记为已完成。\n\n"
                     f"调查记录ID："
                     f"{result['survey_record_id']}\n"
                     f"已填写分项评价："
                     f"{result['inspection_count']} 项\n\n"
                     "是否继续录入下一条"
-                    "渡槽（座槽）调查？"
+                    "涵洞（暗涵）调查？"
                 )
             )
 
@@ -1588,20 +1542,22 @@ class AqueductPage(QWidget):
         survey_record_id,
     ):
         """
-        打开已有附表2.3草稿。
+        打开已有附表2.6涵洞（暗涵）调查记录。
 
-        B1阶段暂时只开放 draft。
-        completed 将在后续完整接入
-        评价和调查结论后再开放编辑。
+        支持：
+        - draft 草稿继续编辑；
+        - completed 已完成记录继续修改。
         """
 
         record = get_point_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code="form_2_3",
+            survey_record_id=survey_record_id,
+            form_code="form_2_6",
         )
 
         if record is None:
-            raise ValueError("没有找到该附表2.3调查记录。")
+            raise ValueError("没有找到该附表2.6调查记录。")
+
+        assert record is not None
 
         record_status = record["record_status"]
 
@@ -1613,7 +1569,7 @@ class AqueductPage(QWidget):
 
         self.current_context = get_current_context()
 
-        self.form_version = get_current_form_version("form_2_3")
+        self.form_version = get_current_form_version("form_2_6")
 
         self.editing_record_id = int(record["survey_record_id"])
 
@@ -1633,7 +1589,7 @@ class AqueductPage(QWidget):
         if not department_found:
             raise ValueError("该调查记录所属基层处" "已不存在或不可用。")
 
-        # 根据基层处重新加载水管所。
+        # 基层处确定后重新加载水管所。
         self.department_changed()
 
         office_found = self._set_combo_by_id(
@@ -1644,7 +1600,7 @@ class AqueductPage(QWidget):
         if not office_found:
             raise ValueError("该调查记录所属水管所" "已不存在或不可用。")
 
-        # 根据水管所重新加载渠系。
+        # 水管所确定后重新加载渠系。
         self.office_changed()
 
         canal_found = self._set_combo_by_id(
@@ -1655,14 +1611,14 @@ class AqueductPage(QWidget):
         if not canal_found:
             raise ValueError("该调查记录所属渠系" "已不存在或不可用。")
 
-        # 重新加载过程中会自动计算一个
-        # “下一业务编号”，这里必须用
-        # 数据库中原记录自己的业务编号覆盖回来。
+        # 加载机构过程中会自动计算
+        # “下一业务编号”，
+        # 这里必须恢复原记录业务编号。
         self.business_code_edit.setText(record["business_code"] or "")
 
-        # EngineeringAsset 建立后，
-        # 工程归属属于工程身份的一部分，
-        # 调查页面不允许直接修改。
+        # 工程建立以后，
+        # 归属属于 EngineeringAsset 身份，
+        # 不允许在调查页面直接修改。
         self.department_combo.setEnabled(False)
 
         self.office_combo.setEnabled(False)
@@ -1670,14 +1626,14 @@ class AqueductPage(QWidget):
         self.canal_combo.setEnabled(False)
 
         # =====================================================
-        # 2. 回填正式基本信息
+        # 2. 回填基本信息
         # =====================================================
 
         data = record["record_data"] or {}
 
         self.name_edit.setText(record["asset_name"] or "")
 
-        # 点状工程的位置身份以
+        # 点工程位置以
         # EngineeringAsset.single_stake_text
         # 为准。
         self.stake_edit.setText(record["single_stake_text"] or "")
@@ -1711,46 +1667,40 @@ class AqueductPage(QWidget):
 
         self.structure_form_edit.setText(data.get("structure_form") or "")
 
-        set_optional(
-            self.section_width_edit,
-            data.get("section_width"),
+        self.main_structure_material_edit.setText(
+            data.get("main_structure_material") or ""
         )
 
-        set_optional(
-            self.section_height_edit,
-            data.get("section_height"),
-        )
-
-        self.trough_body_structure_edit.setText(data.get("trough_body_structure") or "")
+        self.concrete_strength_edit.setText(data.get("concrete_strength") or "")
 
         set_optional(
-            self.trough_wall_thickness_edit,
-            data.get("trough_wall_thickness"),
-        )
-
-        self.waterstop_form_edit.setText(data.get("waterstop_form") or "")
-
-        set_optional(
-            self.trough_bottom_elevation_edit,
-            data.get("trough_bottom_elevation"),
+            self.cover_thickness_edit,
+            data.get("cover_thickness"),
         )
 
         set_optional(
-            self.span_count_edit,
-            data.get("span_count"),
+            self.soil_cover_thickness_edit,
+            data.get("soil_cover_thickness"),
         )
 
-        (
-            self.lower_support_structure_form_edit.setText(
-                data.get("lower_support_structure_form") or ""
-            )
+        set_optional(
+            self.channel_width_edit,
+            data.get("channel_width"),
         )
 
-        self.save_button.setEnabled(True)
+        set_optional(
+            self.channel_depth_edit,
+            data.get("channel_depth"),
+        )
 
-        # =============================================
-        # 分项评价
-        # =============================================
+        set_optional(
+            self.channel_bottom_elevation_edit,
+            data.get("channel_bottom_elevation"),
+        )
+
+        # =====================================================
+        # 3. 分项评价
+        # =====================================================
 
         self._clear_evaluation_controls()
 
@@ -1758,9 +1708,9 @@ class AqueductPage(QWidget):
 
         self._load_evaluation_results(inspection_results)
 
-        # =============================================
-        # 调查结论
-        # =============================================
+        # =====================================================
+        # 4. 调查结论
+        # =====================================================
 
         self._set_overall_grade(record.get("overall_grade"))
 
@@ -1768,12 +1718,12 @@ class AqueductPage(QWidget):
 
         self.survey_comment_edit.setPlainText(record.get("survey_comment") or "")
 
-        # =============================================
-        # 根据记录状态设置页面模式
-        # =============================================
+        # =====================================================
+        # 5. 根据状态设置页面模式
+        # =====================================================
 
         if record_status == "draft":
-            self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 编辑草稿")
+            self.title_label.setText("附表2.6 涵洞（暗涵）" "工程状况调查 - 编辑草稿")
 
             self.save_button.setText("保存草稿")
 
@@ -1783,28 +1733,27 @@ class AqueductPage(QWidget):
 
         elif record_status == "completed":
             self.title_label.setText(
-                "附表2.3 渡槽（座槽）" "工程状况调查 - " "编辑已完成记录"
+                "附表2.6 涵洞（暗涵）" "工程状况调查 - " "编辑已完成记录"
             )
 
-            # 已完成记录仍允许修改调查内容。
             self.save_button.setText("保存修改")
 
             self.save_button.setEnabled(True)
 
-            # 已经完成，不允许再次执行
+            # 已经完成，
+            # 不允许再次执行
             # draft -> completed。
             self.complete_button.setEnabled(False)
 
-        # 工程归属无论 draft/completed
-        # 都属于既有 EngineeringAsset 身份，
-        # 不允许直接修改。
+        # 无论 draft / completed，
+        # 已有工程对象的归属均锁定。
         self.department_combo.setEnabled(False)
 
         self.office_combo.setEnabled(False)
 
         self.canal_combo.setEnabled(False)
 
-        # 数据库回填不是用户修改。
+        # 数据库回填不属于用户修改。
         self.is_dirty = False
 
     # =========================================================
@@ -1824,7 +1773,7 @@ class AqueductPage(QWidget):
 
     def prepare_new(self):
         """
-        切换到新增模式。
+        切换到附表2.6新增模式。
 
         如果页面此前已有归属选择，
         优先保留基层处、水管所和渠系。
@@ -1834,7 +1783,7 @@ class AqueductPage(QWidget):
         """
 
         # =====================================================
-        # 记录上一条归属
+        # 1. 记录上一条归属
         # =====================================================
 
         previous_department_data = self.department_combo.currentData()
@@ -1871,21 +1820,21 @@ class AqueductPage(QWidget):
         )
 
         # =====================================================
-        # 刷新当前上下文
+        # 2. 刷新当前上下文
         # =====================================================
 
         self.current_context = get_current_context()
 
-        self.form_version = get_current_form_version("form_2_3")
+        self.form_version = get_current_form_version("form_2_6")
 
         # =====================================================
-        # 新增状态
+        # 3. 新增状态
         # =====================================================
 
         self.editing_record_id = None
         self.editing_record_status = None
 
-        self.title_label.setText("附表2.3 渡槽（座槽）" "工程状况调查 - 新增")
+        self.title_label.setText("附表2.6 涵洞（暗涵）" "工程状况调查 - 新增")
 
         self.save_button.setText("保存草稿")
 
@@ -1900,40 +1849,47 @@ class AqueductPage(QWidget):
         self.canal_combo.setEnabled(True)
 
         # =====================================================
-        # 清空工程基本信息
+        # 4. 清空工程基本信息
         # =====================================================
 
         self.name_edit.clear()
+
         self.stake_edit.clear()
 
         self.design_flow_edit.clear()
+
         self.structure_grade_edit.clear()
 
         self.build_date_edit.clear()
+
         self.renovation_date_edit.clear()
 
         self.length_edit.clear()
+
         self.increased_flow_edit.clear()
+
+        # =====================================================
+        # 5. 清空结构与断面参数
+        # =====================================================
 
         self.structure_form_edit.clear()
 
-        self.section_width_edit.clear()
-        self.section_height_edit.clear()
+        self.main_structure_material_edit.clear()
 
-        self.trough_body_structure_edit.clear()
+        self.concrete_strength_edit.clear()
 
-        self.trough_wall_thickness_edit.clear()
+        self.cover_thickness_edit.clear()
 
-        self.waterstop_form_edit.clear()
+        self.soil_cover_thickness_edit.clear()
 
-        self.trough_bottom_elevation_edit.clear()
+        self.channel_width_edit.clear()
 
-        self.span_count_edit.clear()
+        self.channel_depth_edit.clear()
 
-        self.lower_support_structure_form_edit.clear()
+        self.channel_bottom_elevation_edit.clear()
 
         # =====================================================
-        # 清空评价与调查结论
+        # 6. 清空评价与调查结论
         # =====================================================
 
         self._clear_evaluation_controls()
@@ -1946,7 +1902,7 @@ class AqueductPage(QWidget):
         self.survey_date_edit.setText(datetime.now().strftime("%Y-%m-%d"))
 
         # =====================================================
-        # 重新加载组织机构
+        # 7. 重新加载组织机构
         # =====================================================
 
         self.load_departments()
@@ -1991,7 +1947,7 @@ class AqueductPage(QWidget):
                 )
 
         # =====================================================
-        # 新记录必须重新生成业务编号
+        # 8. 新记录重新生成业务编号
         # =====================================================
 
         self.update_business_code()

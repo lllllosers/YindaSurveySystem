@@ -40,6 +40,12 @@ from pages.tunnel_list_page import (
 from pages.tunnel_page import (
     TunnelPage,
 )
+from pages.culvert_list_page import (
+    CulvertListPage,
+)
+from pages.culvert_page import (
+    CulvertPage,
+)
 
 # =============================================================
 # 附表2工程现状调查页面注册
@@ -79,6 +85,12 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "list_page_class": (TunnelListPage),
         "edit_page_class": (TunnelPage),
     },
+    {
+        "form_code": "form_2_6",
+        "button_text": ("附表2.6 涵洞（暗涵）" "工程状况调查"),
+        "list_page_class": (CulvertListPage),
+        "edit_page_class": (CulvertPage),
+    },
 )
 
 
@@ -92,7 +104,7 @@ class SurveyPage(QWidget):
        - 附表2系列；
        - 基于 EngineeringAsset /
          SurveyRecord / InspectionResult；
-       - 当前已接入附表2.1～2.5。
+       - 当前已接入附表2.1～2.6。
 
     2. 灌区综合与水土资源调查
        - 附表1系列；
@@ -271,7 +283,7 @@ class SurveyPage(QWidget):
 
             layout.addWidget(button)
 
-        placeholder = QLabel("附表2.6～2.14将在后续" "逐步接入。")
+        placeholder = QLabel("附表2.7～2.14将在后续" "逐步接入。")
 
         placeholder.setStyleSheet("color: #7a8793;")
 

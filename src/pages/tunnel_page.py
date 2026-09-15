@@ -1349,6 +1349,24 @@ class TunnelPage(QWidget):
         """
 
         try:
+            # 已完成记录不应再次执行
+            # draft -> completed。
+            #
+            # 正常UI中已完成记录的
+            # “完成调查”按钮本身会禁用；
+            # 这里保留数据库操作前的
+            # 防御性检查。
+            if (
+                self.editing_record_status
+                == "completed"
+            ):
+                raise ValueError(
+                    "当前调查已经完成，"
+                    "无需再次执行完成调查。"
+                )
+
+            self._validate_completion_fields()
+
             # =================================================
             # 1. 页面端完整性校验
             # =================================================
@@ -1470,9 +1488,7 @@ class TunnelPage(QWidget):
             # =================================================
 
             self.back_requested.emit()
-
-            if self.editing_record_status == "completed":
-                raise ValueError("当前调查已经完成，" "无需再次执行完成调查。")
+            return
 
         except Exception as error:
             QMessageBox.warning(

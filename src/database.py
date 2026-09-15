@@ -963,6 +963,7 @@ def create_initial_forms():
     - 附表2.3 渡槽（座槽）
     - 附表2.4 倒虹吸
     - 附表2.5 隧洞
+    - 附表2.6 涵洞（暗涵）
     """
 
     forms = [
@@ -1010,6 +1011,15 @@ def create_initial_forms():
             "record_type": "engineering",
             "asset_type": "tunnel",
             "sort_order": 205,
+        },
+        {
+            "form_code": "form_2_6",
+            "form_number": "2.6",
+            "form_name": "涵洞（暗涵）工程状况调查表",
+            "series": "series_2",
+            "record_type": "engineering",
+            "asset_type": "culvert",
+            "sort_order": 206,
         },
     ]
 
@@ -2781,6 +2791,7 @@ def create_range_engineering_survey(
             "survey_record_id": (survey_record_id),
             "business_code": business_code,
         }
+
 
 def create_lined_channel_section_survey(
     project_id,
@@ -5011,6 +5022,228 @@ def complete_tunnel_record(
                 f"当前已完成 "
                 f"{inspection_count} 项。"
             )
+
+        connection.execute(
+            """
+            UPDATE survey_records
+            SET
+                record_status = 'completed',
+                updated_at = datetime(
+                    'now',
+                    'localtime'
+                )
+            WHERE id = ?
+            """,
+            (survey_record_id,),
+        )
+
+        return {
+            "survey_record_id": (survey_record_id),
+            "inspection_count": (inspection_count),
+        }
+
+
+def complete_culvert_record(
+    survey_record_id,
+):
+    """
+    将附表2.6涵洞（暗涵）调查草稿
+    正式标记为 completed。
+
+    完成条件：
+    1. 必须属于附表2.6；
+    2. 当前必须为 draft；
+    3. 工程身份信息完整；
+    4. 正式基本信息完整；
+    5. 11项分项评价全部完成；
+    6. 工程状况类别已确定；
+    7. 调查时间有效；
+    8. 调查意见与建议已填写。
+
+    加固改造年月允许为空。
+    """
+
+    with get_connection() as connection:
+        record = connection.execute(
+            """
+            SELECT
+                sr.id,
+                sr.record_status,
+                sr.organization_unit_id,
+                sr.canal_unit_id,
+                sr.business_code,
+                sr.survey_date,
+                sr.overall_grade,
+                sr.survey_comment,
+                sr.record_data_json,
+
+                ea.asset_name,
+
+                fd.form_code
+
+            FROM survey_records AS sr
+
+            LEFT JOIN engineering_assets AS ea
+                ON sr.engineering_asset_id = ea.id
+
+            JOIN form_versions AS fv
+                ON sr.form_version_id = fv.id
+
+            JOIN form_definitions AS fd
+                ON fv.form_definition_id = fd.id
+
+            WHERE sr.id = ?
+              AND fd.form_code = 'form_2_6'
+            """,
+            (survey_record_id,),
+        ).fetchone()
+
+        if record is None:
+            raise ValueError("没有找到该附表2.6调查记录。")
+
+        if record["record_status"] != "draft":
+            raise ValueError("只有草稿记录可以执行完成调查。")
+
+        try:
+            record_data = json.loads(record["record_data_json"] or "{}")
+        except json.JSONDecodeError as error:
+            raise ValueError("当前调查记录数据异常，" "无法执行完成调查。") from error
+
+        missing_fields = []
+
+        def is_missing(value):
+            if value is None:
+                return True
+
+            if isinstance(value, str):
+                return not value.strip()
+
+            return False
+
+        # =====================================================
+        # 工程身份
+        # =====================================================
+
+        if is_missing(record["asset_name"]):
+            missing_fields.append("名称")
+
+        if record["organization_unit_id"] is None:
+            missing_fields.append("所属水管所")
+
+        if record["canal_unit_id"] is None:
+            missing_fields.append("所属渠系")
+
+        if is_missing(record["business_code"]):
+            missing_fields.append("业务编号")
+
+        # =====================================================
+        # 正式基本信息
+        # =====================================================
+
+        required_record_fields = {
+            "stake": "桩号",
+            "design_flow": "设计流量",
+            "structure_grade": "建筑物等级",
+            "build_date": "建成年月",
+            "length": "长度",
+            "increased_flow": "加大流量",
+            "structure_form": "结构形式",
+            "main_structure_material": ("主构建筑材料"),
+            "concrete_strength": ("混凝土强度"),
+            "cover_thickness": ("钢筋保护层厚度"),
+            "soil_cover_thickness": ("覆土厚度"),
+            "channel_width": "渠宽",
+            "channel_depth": "渠深",
+            "channel_bottom_elevation": ("渠底高程"),
+        }
+
+        for field_key, field_name in required_record_fields.items():
+            if is_missing(record_data.get(field_key)):
+                missing_fields.append(field_name)
+
+        if is_missing(record["survey_date"]):
+            missing_fields.append("调查时间")
+
+        if record["overall_grade"] not in (
+            "A",
+            "B",
+            "C",
+            "D",
+        ):
+            missing_fields.append("工程状况类别")
+
+        if is_missing(record["survey_comment"]):
+            missing_fields.append("调查意见与建议")
+
+        if missing_fields:
+            raise ValueError(
+                "完成调查前仍有必填内容未填写：" + "、".join(missing_fields) + "。"
+            )
+
+        # =====================================================
+        # 日期有效性
+        # =====================================================
+
+        try:
+            datetime.strptime(
+                record_data["build_date"],
+                "%Y-%m",
+            )
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ValueError("建成年月不是有效的 " "YYYY-MM 日期。") from error
+
+        renovation_date = record_data.get("renovation_date")
+
+        if renovation_date:
+            try:
+                datetime.strptime(
+                    renovation_date,
+                    "%Y-%m",
+                )
+            except (
+                TypeError,
+                ValueError,
+            ) as error:
+                raise ValueError("加固改造年月不是有效的 " "YYYY-MM 日期。") from error
+
+        try:
+            datetime.strptime(
+                record["survey_date"],
+                "%Y-%m-%d",
+            )
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ValueError("调查时间不是有效的 " "YYYY-MM-DD 日期。") from error
+
+        # =====================================================
+        # 11项分项评价
+        # =====================================================
+
+        inspection_count = connection.execute(
+            """
+                SELECT COUNT(*) AS count
+                FROM inspection_results
+                WHERE survey_record_id = ?
+                """,
+            (survey_record_id,),
+        ).fetchone()["count"]
+
+        if inspection_count != 11:
+            raise ValueError(
+                "完成调查前必须完成全部11项"
+                "分项评价。"
+                f"当前已完成 "
+                f"{inspection_count} 项。"
+            )
+
+        # =====================================================
+        # 正式完成
+        # =====================================================
 
         connection.execute(
             """

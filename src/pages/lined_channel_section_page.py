@@ -1387,7 +1387,23 @@ class LinedChannelSectionPage(QWidget):
             raise ValueError("调查时间不是有效日期，" "应填写为 YYYY-MM-DD。")
 
     def complete_survey(self):
+
         try:
+            # 已完成记录不应再次执行
+            # draft -> completed。
+            #
+            # 正常UI中已完成记录的
+            # “完成调查”按钮本身会禁用；
+            # 这里保留数据库操作前的
+            # 防御性检查。
+            if (
+                self.editing_record_status
+                == "completed"
+            ):
+                raise ValueError(
+                    "当前调查已经完成，"
+                    "无需再次执行完成调查。"
+                )
             self._validate_completion_fields()
 
             reply = QMessageBox.question(
@@ -1482,7 +1498,12 @@ class LinedChannelSectionPage(QWidget):
 
                 return
 
+            # =================================================
+            # 返回列表
+            # =================================================
+
             self.back_requested.emit()
+            return
 
         except Exception as error:
             QMessageBox.warning(
