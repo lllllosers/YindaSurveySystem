@@ -478,6 +478,39 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             "2026-09-01",
         )
 
+    # =========================================================
+    # 完成调查校验
+    # =========================================================
+
+    def test_empty_page_fails_completion_validation(
+        self,
+    ):
+        errors = self.page.validate_for_completion()
+
+        self.assertIn(
+            "名称不能为空。",
+            errors,
+        )
+
+        self.assertIn(
+            "请选择工程状况类别。",
+            errors,
+        )
+
+        self.assertIn(
+            "请填写调查意见与建议。",
+            errors,
+        )
+
+    def test_invalid_month_is_reported_by_completion_validation(
+        self,
+    ):
+        self.page.get_field_widget("build_date").setText("2026-13")
+
+        errors = self.page.validate_for_completion()
+
+        self.assertTrue(any("YYYY-MM" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

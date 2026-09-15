@@ -39,6 +39,10 @@ from pages.components.survey_input_fields import (
     get_optional_date,
 )
 
+from forms.engineering.validation import (
+    validate_completion,
+)
+
 
 class GenericEngineeringSurveyPage(QWidget):
     """
@@ -759,18 +763,13 @@ class GenericEngineeringSurveyPage(QWidget):
     def collect_evaluation_results(
         self,
     ):
-        return (
-            self.evaluation_section
-            .collect_results()
-        )
+        return self.evaluation_section.collect_results()
 
     def load_evaluation_results(
         self,
         results,
     ):
-        self.evaluation_section.load_results(
-            results or []
-        )
+        self.evaluation_section.load_results(results or [])
 
     # =========================================================
     # 完整页面数据
@@ -792,30 +791,17 @@ class GenericEngineeringSurveyPage(QWidget):
         后续持久化阶段统一接入。
         """
 
-        record_data = (
-            self.collect_record_data()
-        )
+        record_data = self.collect_record_data()
 
-        conclusion = (
-            self.collect_conclusion_data()
-        )
+        conclusion = self.collect_conclusion_data()
 
-        asset_name = (
-            record_data.get(
-                self.definition
-                .asset_name_field
-            )
-        )
+        asset_name = record_data.get(self.definition.asset_name_field)
 
         return {
             "asset_name": asset_name,
             "record_data": record_data,
-            "position": (
-                self.collect_position_data()
-            ),
-            "inspection_results": (
-                self.collect_evaluation_results()
-            ),
+            "position": (self.collect_position_data()),
+            "inspection_results": (self.collect_evaluation_results()),
             **conclusion,
         }
 
@@ -838,10 +824,7 @@ class GenericEngineeringSurveyPage(QWidget):
         可以保留当前工程归属。
         """
 
-        for runtime in (
-            self.field_runtimes
-            .values()
-        ):
+        for runtime in self.field_runtimes.values():
             runtime.clear()
 
         self.evaluation_section.clear()
@@ -871,14 +854,9 @@ class GenericEngineeringSurveyPage(QWidget):
         self.clear_form_data()
 
         if survey_date is None:
-            survey_date = (
-                date.today()
-                .isoformat()
-            )
+            survey_date = date.today().isoformat()
 
-        self.survey_date_edit.setText(
-            survey_date
-        )
+        self.survey_date_edit.setText(survey_date)
 
     # =========================================================
     # 完整记录回填
@@ -893,16 +871,38 @@ class GenericEngineeringSurveyPage(QWidget):
         overall_grade=None,
         survey_comment=None,
     ):
-        self.load_record_data(
-            record_data
-        )
+        self.load_record_data(record_data)
 
-        self.load_evaluation_results(
-            inspection_results
-        )
+        self.load_evaluation_results(inspection_results)
 
         self.load_conclusion_data(
             survey_date=survey_date,
             overall_grade=overall_grade,
             survey_comment=survey_comment,
+        )
+
+    # =========================================================
+    # 完成调查校验
+    # =========================================================
+
+    def validate_for_completion(
+        self,
+    ) -> list[str]:
+        """
+        校验当前页面是否满足完成调查条件。
+
+        字段格式错误由 Runtime / 输入辅助函数
+        抛出 ValueError；
+        本方法将其转换为统一错误列表。
+        """
+
+        try:
+            payload = self.collect_form_data()
+
+        except ValueError as error:
+            return [str(error)]
+
+        return validate_completion(
+            self.definition,
+            payload,
         )
