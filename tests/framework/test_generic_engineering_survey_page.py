@@ -4,6 +4,8 @@ import unittest
 from datetime import date
 from pathlib import Path
 
+from unittest.mock import patch
+
 os.environ.setdefault(
     "QT_QPA_PLATFORM",
     "offscreen",
@@ -510,6 +512,212 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         errors = self.page.validate_for_completion()
 
         self.assertTrue(any("YYYY-MM" in error for error in errors))
+
+    # =========================================================
+    # 运行时上下文 / 业务编号
+    # =========================================================
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_engineering_business_codes",
+        return_value=[],
+    )
+    def test_business_code_uses_definition_type_code(
+        self,
+        mock_codes,
+    ):
+        self.page.current_context = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        self.page.department_combo.addItem(
+            "测试处",
+            {
+                "id": 10,
+                "business_code": "1",
+            },
+        )
+
+        self.page.office_combo.addItem(
+            "测试所",
+            {
+                "id": 20,
+                "business_code": "01",
+            },
+        )
+
+        self.page.canal_combo.addItem(
+            "测试干渠",
+            {
+                "id": 30,
+                "canal_level": "01",
+            },
+        )
+
+        self.page.update_business_code()
+
+        self.assertEqual(
+            self.page.business_code_edit.text(),
+            "1-01-01-06-001",
+        )
+
+        mock_codes.assert_called()
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_engineering_business_codes",
+        return_value=[],
+    )
+    def test_prepare_new_preserves_ownership(
+        self,
+        mock_codes,
+    ):
+        self.page.current_context = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        self.page.department_combo.addItem(
+            "测试处",
+            {
+                "id": 10,
+                "business_code": "1",
+            },
+        )
+
+        self.page.office_combo.addItem(
+            "测试所",
+            {
+                "id": 20,
+                "business_code": "01",
+            },
+        )
+
+        self.page.canal_combo.addItem(
+            "测试干渠",
+            {
+                "id": 30,
+                "canal_level": "01",
+            },
+        )
+
+        self.page.editing_record_id = 99
+        self.page.editing_record_status = "completed"
+
+        self.page.prepare_new(survey_date="2026-09-15")
+
+        self.assertIsNone(self.page.editing_record_id)
+
+        self.assertIsNone(self.page.editing_record_status)
+
+        self.assertEqual(
+            self.page.department_combo.currentData()["id"],
+            10,
+        )
+
+        self.assertEqual(
+            self.page.office_combo.currentData()["id"],
+            20,
+        )
+
+        self.assertEqual(
+            self.page.canal_combo.currentData()["id"],
+            30,
+        )
+
+        self.assertEqual(
+            self.page.business_code_edit.text(),
+            "1-01-01-06-001",
+        )
+
+        self.assertFalse(self.page.is_dirty)
+
+    def test_user_field_edit_marks_page_dirty(
+        self,
+    ):
+        self.assertFalse(self.page.is_dirty)
+
+        runtime = self.page.get_field_runtime("asset_name")
+
+        runtime.widget.textEdited.emit("用户修改")
+
+        self.assertTrue(self.page.is_dirty)
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_engineering_business_codes",
+        return_value=[],
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_canal_units_for_organization"
+    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_water_offices")
+    @patch("pages.components." "generic_engineering_survey_page." "get_departments")
+    def test_ownership_cascade_loads_business_code(
+        self,
+        mock_departments,
+        mock_offices,
+        mock_canals,
+        mock_codes,
+    ):
+        mock_departments.return_value = [
+            {
+                "id": 1,
+                "name": "测试基层处",
+                "business_code": "1",
+                "status": "active",
+            }
+        ]
+
+        mock_offices.return_value = [
+            {
+                "id": 2,
+                "name": "测试水管所",
+                "business_code": "01",
+                "status": "active",
+            }
+        ]
+
+        mock_canals.return_value = [
+            {
+                "id": 3,
+                "name": "测试干渠",
+                "canal_level": "01",
+            }
+        ]
+
+        self.page.current_context = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        self.page.load_departments()
+
+        self.assertEqual(
+            self.page.department_combo.count(),
+            1,
+        )
+
+        self.assertEqual(
+            self.page.office_combo.count(),
+            1,
+        )
+
+        self.assertEqual(
+            self.page.canal_combo.count(),
+            1,
+        )
+
+        self.assertEqual(
+            self.page.business_code_edit.text(),
+            "1-01-01-06-001",
+        )
 
 
 if __name__ == "__main__":

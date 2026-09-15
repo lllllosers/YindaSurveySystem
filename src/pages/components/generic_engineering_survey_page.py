@@ -20,6 +20,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database import (
+    get_canal_units_for_organization,
+    get_current_context,
+    get_current_form_version,
+    get_departments,
+    get_engineering_business_codes,
+    get_water_offices,
+)
+
+from services.business_code import (
+    build_business_code,
+    suggest_next_sequence,
+)
+
 from forms.engineering.models import (
     EngineeringFormDefinition,
     FieldRowDefinition,
@@ -78,6 +92,18 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.definition = definition
 
+        # =====================================================
+        # 调查生命周期状态
+        # =====================================================
+
+        self.current_context = None
+        self.form_version = None
+
+        self.editing_record_id = None
+        self.editing_record_status = None
+
+        self.is_dirty = False
+
         # key -> EngineeringFieldRuntime
         self.field_runtimes: dict[
             str,
@@ -98,6 +124,13 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self._init_ui()
 
+        self._connect_ownership_signals()
+        self._connect_dirty_tracking()
+
+        # 构造页面本身不主动读取数据库。
+        # 正式进入新增调查时，
+        # 由 initialize_new_record()
+        # 显式加载当前业务上下文。
         self.prepare_new()
 
     # =========================================================
@@ -269,6 +302,257 @@ class GenericEngineeringSurveyPage(QWidget):
         self.form_layout.addWidget(group)
 
         self.ownership_group = group
+
+    # =========================================================
+    # 归属与编号运行时
+    # =========================================================
+
+    def _connect_ownership_signals(
+        self,
+    ):
+        self.department_combo.currentIndexChanged.connect(self.department_changed)
+
+        self.office_combo.currentIndexChanged.connect(self.office_changed)
+
+        self.canal_combo.currentIndexChanged.connect(self.update_business_code)
+
+    def load_departments(
+        self,
+    ):
+        """
+        加载启用基层处，
+        并级联刷新水管所、渠系和业务编号。
+        """
+
+        self.department_combo.blockSignals(True)
+
+        self.department_combo.clear()
+
+        for department in get_departments():
+            if department["status"] != "active":
+                continue
+
+            self.department_combo.addItem(
+                department["name"],
+                {
+                    "id": department["id"],
+                    "business_code": (department["business_code"]),
+                },
+            )
+
+        self.department_combo.blockSignals(False)
+
+        self.department_changed()
+
+    def department_changed(
+        self,
+    ):
+        self.office_combo.blockSignals(True)
+
+        self.office_combo.clear()
+
+        department_data = self.department_combo.currentData()
+
+        if not department_data:
+            self.office_combo.blockSignals(False)
+
+            self.canal_combo.clear()
+            self.business_code_edit.clear()
+
+            return
+
+        offices = get_water_offices(department_data["id"])
+
+        for office in offices:
+            if office["status"] != "active":
+                continue
+
+            self.office_combo.addItem(
+                office["name"],
+                {
+                    "id": office["id"],
+                    "business_code": (office["business_code"]),
+                },
+            )
+
+        self.office_combo.blockSignals(False)
+
+        self.office_changed()
+
+    def office_changed(
+        self,
+    ):
+        self.canal_combo.blockSignals(True)
+
+        self.canal_combo.clear()
+
+        office_data = self.office_combo.currentData()
+
+        if not office_data:
+            self.canal_combo.blockSignals(False)
+
+            self.business_code_edit.clear()
+
+            return
+
+        canals = get_canal_units_for_organization(office_data["id"])
+
+        for canal in canals:
+            self.canal_combo.addItem(
+                canal["name"],
+                {
+                    "id": canal["id"],
+                    "canal_level": (canal["canal_level"]),
+                },
+            )
+
+        self.canal_combo.blockSignals(False)
+
+        self.update_business_code()
+
+    def update_business_code(
+        self,
+    ):
+        """
+        根据当前归属自动生成业务编号。
+
+        新框架直接使用
+        definition.business_type_code，
+        不再从旧 ENGINEERING_TYPE_CODES
+        读取第二份工程类型代码。
+        """
+
+        # 已经建立的 EngineeringAsset
+        # 不重新生成身份编号。
+        if self.editing_record_id is not None:
+            return
+
+        department_data = self.department_combo.currentData()
+
+        office_data = self.office_combo.currentData()
+
+        canal_data = self.canal_combo.currentData()
+
+        if (
+            not department_data
+            or not office_data
+            or not canal_data
+            or not self.current_context
+        ):
+            self.business_code_edit.clear()
+            return
+
+        try:
+            department_code = department_data["business_code"]
+
+            office_code = office_data["business_code"]
+
+            canal_level_code = canal_data["canal_level"]
+
+            engineering_type_code = self.definition.business_type_code
+
+            if not department_code:
+                raise ValueError("当前基层处没有业务代码。")
+
+            if not office_code:
+                raise ValueError("当前水管所没有业务代码。")
+
+            existing_codes = get_engineering_business_codes(
+                self.current_context["project_id"]
+            )
+
+            sequence = suggest_next_sequence(
+                existing_codes=(existing_codes),
+                department_code=(str(department_code)),
+                water_office_code=(str(office_code)),
+                canal_level_code=(str(canal_level_code)),
+                engineering_type_code=(engineering_type_code),
+            )
+
+            business_code = build_business_code(
+                department_code=(str(department_code)),
+                water_office_code=(str(office_code)),
+                canal_level_code=(str(canal_level_code)),
+                engineering_type_code=(engineering_type_code),
+                sequence=sequence,
+            )
+
+            self.business_code_edit.setText(business_code)
+
+            self.business_code_edit.setToolTip("")
+
+            return business_code
+
+        except Exception as error:
+            self.business_code_edit.clear()
+
+            # 当前阶段不在自动级联过程中
+            # 弹出 QMessageBox，
+            # 防止切换下拉框时连续弹窗。
+            # 真正保存时仍会正式校验。
+            self.business_code_edit.setToolTip(str(error))
+
+            return None
+
+    # =========================================================
+    # Combo辅助
+    # =========================================================
+
+    @staticmethod
+    def _set_combo_by_id(
+        combo,
+        target_id,
+    ) -> bool:
+        if target_id is None:
+            return False
+
+        for index in range(combo.count()):
+            data = combo.itemData(index)
+
+            if isinstance(data, dict) and data.get("id") == target_id:
+                combo.setCurrentIndex(index)
+
+                return True
+
+        return False
+
+    # =========================================================
+    # Dirty tracking
+    # =========================================================
+
+    def _connect_dirty_tracking(
+        self,
+    ):
+        """
+        只把用户实际编辑标记为 dirty。
+
+        程序执行 setText() / 回填时，
+        不应自动变成未保存状态。
+        """
+
+        for runtime in self.field_runtimes.values():
+            runtime.connect_dirty(self._mark_dirty)
+
+        self.survey_date_edit.textEdited.connect(self._mark_dirty)
+
+        self.survey_comment_edit.textChanged.connect(self._mark_dirty)
+
+        for button in self.overall_grade_buttons.values():
+            button.clicked.connect(self._mark_dirty)
+
+        self.evaluation_section.grade_changed.connect(self._mark_dirty)
+
+        self.department_combo.activated.connect(self._mark_dirty)
+
+        self.office_combo.activated.connect(self._mark_dirty)
+
+        self.canal_combo.activated.connect(self._mark_dirty)
+
+    def _mark_dirty(
+        self,
+        *args,
+    ):
+        self.is_dirty = True
 
     # =========================================================
     # Definition sections
@@ -837,19 +1121,60 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.business_code_edit.clear()
 
+    def initialize_new_record(
+        self,
+        *,
+        survey_date=None,
+    ):
+        """
+        正式进入一条新的调查记录。
+
+        与单纯构造 QWidget 不同，
+        本方法开始读取实际业务上下文。
+        """
+
+        self.current_context = get_current_context()
+
+        if not self.current_context:
+            raise ValueError("当前没有可用项目。")
+
+        if self.current_context["batch_id"] is None:
+            raise ValueError("当前没有启用的调查批次。")
+
+        self.form_version = get_current_form_version(self.definition.form_code)
+
+        if self.form_version is None:
+            raise ValueError(
+                f"未找到附表" f"{self.definition.form_number}" "当前版本。"
+            )
+
+        # 先加载归属，
+        # 再进入新增状态。
+        self.load_departments()
+
+        self.prepare_new(survey_date=survey_date)
+
     def prepare_new(
         self,
         *,
         survey_date=None,
     ):
         """
-        准备录入一条新的工程调查。
+        切换到新增调查状态。
 
-        默认调查日期为系统当天。
-
-        连续录入时也可以显式传入
-        上一条记录的调查日期。
+        保留当前基层处、水管所、渠系，
+        清空具体工程内容，
+        并重新生成下一业务编号。
         """
+
+        self.editing_record_id = None
+        self.editing_record_status = None
+
+        self.department_combo.setEnabled(True)
+
+        self.office_combo.setEnabled(True)
+
+        self.canal_combo.setEnabled(True)
 
         self.clear_form_data()
 
@@ -857,6 +1182,12 @@ class GenericEngineeringSurveyPage(QWidget):
             survey_date = date.today().isoformat()
 
         self.survey_date_edit.setText(survey_date)
+
+        self.update_business_code()
+
+        # 上述均属于程序初始化，
+        # 不属于用户实际修改。
+        self.is_dirty = False
 
     # =========================================================
     # 完整记录回填
