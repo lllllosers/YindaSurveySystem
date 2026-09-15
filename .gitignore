@@ -23,6 +23,7 @@ build/
 dist/
 release/
 *.spec
+!YindaSurveySystem.spec
 
 # =========================
 # Local databases
