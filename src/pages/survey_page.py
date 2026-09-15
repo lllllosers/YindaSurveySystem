@@ -43,8 +43,12 @@ from pages.tunnel_page import (
 from pages.culvert_list_page import (
     CulvertListPage,
 )
-from pages.culvert_page import (
-    CulvertPage,
+from forms.engineering.form_2_6 import (
+    FORM_2_6,
+)
+
+from pages.components.generic_engineering_survey_page import (
+    GenericEngineeringSurveyPage,
 )
 
 # =============================================================
@@ -59,39 +63,72 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "form_code": "form_2_1",
         "button_text": ("附表2.1 " "防渗衬砌渠道渠段工程状况调查"),
         "list_page_class": (LinedChannelSectionListPage),
-        "edit_page_class": (LinedChannelSectionPage),
+        "edit_page_factory": (LinedChannelSectionPage),
     },
     {
         "form_code": "form_2_2",
         "button_text": ("附表2.2 水闸工程状况调查"),
         "list_page_class": (SluiceGateListPage),
-        "edit_page_class": (SluiceGatePage),
+        "edit_page_factory": (SluiceGatePage),
     },
     {
         "form_code": "form_2_3",
         "button_text": ("附表2.3 " "渡槽（座槽）工程状况调查"),
         "list_page_class": (AqueductListPage),
-        "edit_page_class": (AqueductPage),
+        "edit_page_factory": (AqueductPage),
     },
     {
         "form_code": "form_2_4",
         "button_text": ("附表2.4 倒虹吸工程状况调查"),
         "list_page_class": (InvertedSiphonListPage),
-        "edit_page_class": (InvertedSiphonPage),
+        "edit_page_factory": (InvertedSiphonPage),
     },
     {
         "form_code": "form_2_5",
         "button_text": ("附表2.5 隧洞工程状况调查"),
         "list_page_class": (TunnelListPage),
-        "edit_page_class": (TunnelPage),
+        "edit_page_factory": (TunnelPage),
     },
     {
         "form_code": "form_2_6",
         "button_text": ("附表2.6 涵洞（暗涵）" "工程状况调查"),
-        "list_page_class": (CulvertListPage),
-        "edit_page_class": (CulvertPage),
+        "list_page_class": CulvertListPage,
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_6,
+        ),
     },
 )
+
+
+def prepare_engineering_new_page(
+    edit_page,
+):
+    """
+    进入工程调查新增页面。
+
+    新通用框架：
+        使用 initialize_new_record()
+        初始化实际业务上下文。
+
+    尚未迁移的旧页面：
+        继续使用 prepare_new()。
+
+    等全部附表迁移完成后，
+    可以统一收敛为前一种接口。
+    """
+
+    initialize_new_record = getattr(
+        edit_page,
+        "initialize_new_record",
+        None,
+    )
+
+    if callable(initialize_new_record):
+        initialize_new_record()
+        return
+
+    edit_page.prepare_new()
 
 
 class SurveyPage(QWidget):
@@ -349,7 +386,7 @@ class SurveyPage(QWidget):
 
             list_page = definition["list_page_class"]()
 
-            edit_page = definition["edit_page_class"]()
+            edit_page = definition["edit_page_factory"]()
 
             self.engineering_pages[form_code] = {
                 "list_page": list_page,
@@ -450,7 +487,7 @@ class SurveyPage(QWidget):
 
         edit_page = pages["edit_page"]
 
-        edit_page.prepare_new()
+        prepare_engineering_new_page(edit_page)
 
         self.stack.setCurrentWidget(edit_page)
 
