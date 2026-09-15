@@ -29,6 +29,12 @@ from services.aqueduct_export import (
 from services.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
+from pages.data_query_page import (
+    ENGINEERING_SUMMARY_EXPORTERS,
+)
+from services.culvert_export import (
+    export_culvert_summary,
+)
 
 
 class DataQueryTestCase(unittest.TestCase):
@@ -690,6 +696,25 @@ class DataQueryTestCase(unittest.TestCase):
 
         workbook.close()
 
+    def test_form_2_6_uses_detailed_summary_exporter(
+        self,
+    ):
+        """
+        DataQuery单独选择附表2.6时，
+        应使用2.6详细汇总导出器。
+        """
+
+        self.assertIn(
+            "form_2_6",
+            ENGINEERING_SUMMARY_EXPORTERS,
+        )
+
+        self.assertIs(
+            ENGINEERING_SUMMARY_EXPORTERS[
+                "form_2_6"
+            ],
+            export_culvert_summary,
+        )
 
 if __name__ == "__main__":
     unittest.main()

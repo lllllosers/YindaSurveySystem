@@ -29,6 +29,7 @@ from openpyxl import (
 
 from services.culvert_export import (
     export_culvert_original_form,
+    export_culvert_summary,
 )
 
 
@@ -474,72 +475,41 @@ class CulvertWorkflowTestCase(
         应按模板坐标准确写入。
         """
 
-        result = (
-            self.create_culvert_draft(
-                business_code=(
-                    "1-01-01-06-020"
-                ),
-                asset_name=(
-                    "正式导出测试涵洞"
-                ),
-                stake="K33+500",
-                stake_value=33500.0,
-                record_data=(
-                    self.make_complete_record_data(
-                        asset_name=(
-                            "正式导出测试涵洞"
-                        ),
-                        stake="K33+500",
-                        stake_value=33500.0,
-                    )
-                ),
-                inspection_results=(
-                    self.make_complete_inspection_results(
-                        grade="B"
-                    )
-                ),
-                survey_date=(
-                    "2026-09-15"
-                ),
-                overall_grade="C",
-                survey_comment=(
-                    "涵洞正式导出测试。"
-                ),
-            )
+        result = self.create_culvert_draft(
+            business_code=("1-01-01-06-020"),
+            asset_name=("正式导出测试涵洞"),
+            stake="K33+500",
+            stake_value=33500.0,
+            record_data=(
+                self.make_complete_record_data(
+                    asset_name=("正式导出测试涵洞"),
+                    stake="K33+500",
+                    stake_value=33500.0,
+                )
+            ),
+            inspection_results=(self.make_complete_inspection_results(grade="B")),
+            survey_date=("2026-09-15"),
+            overall_grade="C",
+            survey_comment=("涵洞正式导出测试。"),
         )
 
-        survey_record_id = int(
-            result[
-                "survey_record_id"
-            ]
-        )
+        survey_record_id = int(result["survey_record_id"])
 
-        output_path = (
-            Path(
-                self.temp_directory.name
-            )
-            / "form_2_6_export.xlsx"
-        )
+        output_path = Path(self.temp_directory.name) / "form_2_6_export.xlsx"
 
         export_culvert_original_form(
-            survey_record_id=(
-                survey_record_id
-            ),
+            survey_record_id=(survey_record_id),
             file_path=output_path,
         )
 
-        self.assertTrue(
-            output_path.exists()
-        )
+        self.assertTrue(output_path.exists())
 
         workbook = load_workbook(
             output_path,
             data_only=False,
         )
 
-        worksheet = workbook[
-            "附表2.6"
-        ]
+        worksheet = workbook["附表2.6"]
 
         # =========================
         # 基本信息
@@ -604,9 +574,7 @@ class CulvertWorkflowTestCase(
             21,
         ):
             self.assertEqual(
-                worksheet[
-                    f"E{row_number}"
-                ].value,
+                worksheet[f"E{row_number}"].value,
                 "B",
             )
 
@@ -630,17 +598,256 @@ class CulvertWorkflowTestCase(
         )
 
         # 签字栏保持空白。
-        self.assertIsNone(
-            worksheet["B22"].value
-        )
+        self.assertIsNone(worksheet["B22"].value)
 
         # 正式原表注释。
         self.assertEqual(
             worksheet["A23"].value,
-            (
-                "注：涵洞（暗涵）其它结构指"
-                "进出口渐变段、洞脸、洞顶、止水等。"
-            ),
+            ("注：涵洞（暗涵）其它结构指" "进出口渐变段、洞脸、洞顶、止水等。"),
+        )
+
+        workbook.close()
+
+    def test_export_culvert_summary(
+        self,
+    ):
+        """
+        附表2.6详细汇总应包含
+        正式基本信息、11项评价和调查结论。
+        """
+
+        result = (
+            self.create_culvert_draft(
+                business_code=(
+                    "1-01-01-06-030"
+                ),
+                asset_name=(
+                    "详细汇总测试涵洞"
+                ),
+                stake="K35+600",
+                stake_value=35600.0,
+                record_data=(
+                    self.make_complete_record_data(
+                        asset_name=(
+                            "详细汇总测试涵洞"
+                        ),
+                        stake="K35+600",
+                        stake_value=35600.0,
+                    )
+                ),
+                inspection_results=(
+                    self.make_complete_inspection_results(
+                        grade="C"
+                    )
+                ),
+                survey_date=(
+                    "2026-09-15"
+                ),
+                overall_grade="B",
+                survey_comment=(
+                    "涵洞详细汇总测试。"
+                ),
+            )
+        )
+
+        survey_record_id = int(
+            result[
+                "survey_record_id"
+            ]
+        )
+
+        records = (
+            database
+            .get_engineering_survey_query_records(
+                project_id=(
+                    self.project_id
+                ),
+                survey_batch_id=(
+                    self.batch_id
+                ),
+                form_code=(
+                    "form_2_6"
+                ),
+            )
+        )
+
+        target_records = [
+            record
+            for record in records
+            if (
+                record[
+                    "survey_record_id"
+                ]
+                == survey_record_id
+            )
+        ]
+
+        self.assertEqual(
+            len(target_records),
+            1,
+        )
+
+        output_path = (
+            Path(
+                self.temp_directory.name
+            )
+            / "culvert_summary.xlsx"
+        )
+
+        export_result = (
+            export_culvert_summary(
+                records=target_records,
+                file_path=output_path,
+            )
+        )
+
+        self.assertEqual(
+            export_result[
+                "exported_count"
+            ],
+            1,
+        )
+
+        self.assertTrue(
+            output_path.exists()
+        )
+
+        workbook = load_workbook(
+            output_path
+        )
+
+        worksheet = workbook[
+            "涵洞（暗涵）调查汇总"
+        ]
+
+        # =========================
+        # 表头
+        # =========================
+
+        self.assertEqual(
+            worksheet["A1"].value,
+            "序号",
+        )
+
+        self.assertEqual(
+            worksheet["G1"].value,
+            "桩号",
+        )
+
+        self.assertEqual(
+            worksheet["O1"].value,
+            "主构建筑材料",
+        )
+
+        self.assertEqual(
+            worksheet["Q1"].value,
+            "钢筋保护层厚度",
+        )
+
+        self.assertEqual(
+            worksheet["U1"].value,
+            "渠底高程（m）",
+        )
+
+        # =========================
+        # 基本信息
+        # =========================
+
+        self.assertEqual(
+            worksheet["B2"].value,
+            "1-01-01-06-030",
+        )
+
+        self.assertEqual(
+            worksheet["C2"].value,
+            "详细汇总测试涵洞",
+        )
+
+        self.assertEqual(
+            worksheet["G2"].value,
+            "K35+600",
+        )
+
+        self.assertEqual(
+            worksheet["H2"].value,
+            6.5,
+        )
+
+        self.assertEqual(
+            worksheet["O2"].value,
+            "钢筋混凝土",
+        )
+
+        self.assertEqual(
+            worksheet["P2"].value,
+            "C30",
+        )
+
+        self.assertEqual(
+            worksheet["Q2"].value,
+            40.0,
+        )
+
+        self.assertEqual(
+            worksheet["R2"].value,
+            2.5,
+        )
+
+        self.assertEqual(
+            worksheet["S2"].value,
+            3.2,
+        )
+
+        self.assertEqual(
+            worksheet["T2"].value,
+            2.8,
+        )
+
+        self.assertEqual(
+            worksheet["U2"].value,
+            1685.35,
+        )
+
+        # =========================
+        # 11项评价
+        # V ～ AF
+        # =========================
+
+        for column in range(
+            22,
+            33,
+        ):
+            self.assertEqual(
+                worksheet.cell(
+                    row=2,
+                    column=column,
+                ).value,
+                "C",
+            )
+
+        # =========================
+        # 调查结论
+        # AG ～ AK
+        # =========================
+
+        self.assertEqual(
+            worksheet["AG2"].value,
+            "B",
+        )
+
+        self.assertEqual(
+            worksheet["AH2"].value,
+            "2026-09-15",
+        )
+
+        self.assertEqual(
+            worksheet["AI2"].value,
+            "涵洞详细汇总测试。",
+        )
+
+        self.assertEqual(
+            worksheet["AJ2"].value,
+            "草稿",
         )
 
         workbook.close()
