@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 
 from database import (
@@ -55,6 +56,12 @@ from pages.components.survey_input_fields import (
 
 from forms.engineering.validation import (
     validate_completion,
+)
+
+from forms.engineering.persistence import (
+    create_engineering_record,
+    load_engineering_record_bundle,
+    update_engineering_record,
 )
 
 
@@ -236,7 +243,7 @@ class GenericEngineeringSurveyPage(QWidget):
         # R1-5底部仅做预览状态
         # =====================================================
 
-        self._build_preview_footer(root_layout)
+        self._build_runtime_footer(root_layout)
 
     # =========================================================
     # 公共布局
@@ -495,6 +502,400 @@ class GenericEngineeringSurveyPage(QWidget):
             return None
 
     # =========================================================
+    # 当前业务上下文
+    # =========================================================
+
+    def _refresh_runtime_context(
+        self,
+    ):
+        self.current_context = get_current_context()
+
+        if not self.current_context:
+            raise ValueError("当前没有可用项目。")
+
+        if self.current_context["batch_id"] is None:
+            raise ValueError("当前没有启用的调查批次。")
+
+        self.form_version = get_current_form_version(self.definition.form_code)
+
+        if self.form_version is None:
+            raise ValueError(
+                f"未找到附表" f"{self.definition.form_number}" "当前版本。"
+            )
+
+    def collect_ownership_data(
+        self,
+    ) -> dict:
+        """
+        收集 EngineeringAsset / SurveyRecord
+        所需的公共归属信息。
+        """
+
+        department_data = self.department_combo.currentData()
+
+        office_data = self.office_combo.currentData()
+
+        canal_data = self.canal_combo.currentData()
+
+        if not department_data:
+            raise ValueError("请选择基层处。")
+
+        if not office_data:
+            raise ValueError("请选择水管所。")
+
+        if not canal_data:
+            raise ValueError("请选择所属渠系。")
+
+        business_code = self.business_code_edit.text().strip()
+
+        if not business_code:
+            raise ValueError("业务编号尚未生成。")
+
+        return {
+            "department_id": department_data["id"],
+            "office_id": office_data["id"],
+            "canal_id": canal_data["id"],
+            "business_code": business_code,
+        }
+
+    # =========================================================
+    # 页面模式
+    # =========================================================
+
+    def _apply_record_mode(
+        self,
+    ):
+        """
+        根据当前调查记录状态，
+        统一更新标题、按钮和状态提示。
+        """
+
+        base_title = self.definition.display_name
+
+        # =====================================================
+        # 新增
+        # =====================================================
+
+        if self.editing_record_id is None:
+            self.title_label.setText(f"{base_title} - 新增")
+
+            self.save_button.setText("保存草稿")
+
+            self.save_button.setEnabled(True)
+
+            self.runtime_status_label.setText("正在新增工程调查。")
+
+            return
+
+        # =====================================================
+        # 草稿
+        # =====================================================
+
+        if self.editing_record_status == "draft":
+            self.title_label.setText(f"{base_title} - 编辑草稿")
+
+            self.save_button.setText("保存草稿")
+
+            self.save_button.setEnabled(True)
+
+            self.runtime_status_label.setText("正在编辑已保存草稿。")
+
+            return
+
+        # =====================================================
+        # 已完成
+        # =====================================================
+
+        if self.editing_record_status == "completed":
+            self.title_label.setText(f"{base_title} - 已完成记录")
+
+            # completed 修改在 R1-8C3 接入。
+            self.save_button.setText("保存修改")
+
+            self.save_button.setEnabled(False)
+
+            self.runtime_status_label.setText("已完成记录的修改将在" "下一阶段接入。")
+
+            return
+
+        raise ValueError("不支持的调查记录状态：" f"{self.editing_record_status}")
+
+    # =========================================================
+    # 保存草稿
+    # =========================================================
+
+    def _save_current_record(
+        self,
+        *,
+        show_message=True,
+    ):
+        """
+        保存当前通用工程调查。
+
+        新记录：
+            创建 EngineeringAsset
+            + SurveyRecord。
+
+        已有 draft：
+            修改原记录。
+
+        completed 修改留到 R1-8C3。
+        """
+
+        try:
+            if self.editing_record_status == "completed":
+                raise ValueError("已完成记录的修改" "将在下一阶段接入。")
+
+            self._refresh_runtime_context()
+
+            ownership = self.collect_ownership_data()
+
+            payload = self.collect_form_data()
+
+            asset_name = str(payload.get("asset_name") or "").strip()
+
+            asset_name_definition = self.definition.field_map[
+                self.definition.asset_name_field
+            ]
+
+            if not asset_name:
+                raise ValueError(f"{asset_name_definition.label}" "不能为空。")
+
+            # =================================================
+            # 第一次保存
+            # =================================================
+
+            if self.editing_record_id is None:
+                result = create_engineering_record(
+                    self.definition,
+                    project_id=(self.current_context["project_id"]),
+                    survey_batch_id=(self.current_context["batch_id"]),
+                    form_version_id=(self.form_version["id"]),
+                    organization_unit_id=(ownership["office_id"]),
+                    canal_unit_id=(ownership["canal_id"]),
+                    business_code=(ownership["business_code"]),
+                    payload=payload,
+                )
+
+                self.editing_record_id = int(result["survey_record_id"])
+
+                self.editing_record_status = "draft"
+
+            # =================================================
+            # 已有草稿修改
+            # =================================================
+
+            else:
+                update_engineering_record(
+                    self.definition,
+                    survey_record_id=(self.editing_record_id),
+                    payload=payload,
+                )
+
+                result = {
+                    "survey_record_id": self.editing_record_id,
+                    "record_status": self.editing_record_status,
+                }
+
+            # =================================================
+            # 工程身份建立后锁定归属
+            # =================================================
+
+            self.department_combo.setEnabled(False)
+
+            self.office_combo.setEnabled(False)
+
+            self.canal_combo.setEnabled(False)
+
+            self._apply_record_mode()
+
+            self.is_dirty = False
+
+            self.survey_saved.emit()
+
+            if show_message:
+                QMessageBox.information(
+                    self,
+                    "保存成功",
+                    (
+                        "当前调查草稿已保存。\n\n"
+                        f"业务编号："
+                        f"{ownership['business_code']}"
+                    ),
+                )
+
+            return result
+
+        except Exception as error:
+            if show_message:
+                QMessageBox.warning(
+                    self,
+                    "保存失败",
+                    str(error),
+                )
+
+                return None
+
+            raise
+
+    def save_draft(
+        self,
+    ):
+        self._save_current_record(show_message=True)
+
+    # =========================================================
+    # 数据库记录 -> 表单数据
+    # =========================================================
+
+    def _build_loaded_record_data(
+        self,
+        record,
+    ) -> dict:
+        """
+        将数据库记录转换成
+        GenericEngineeringSurveyPage
+        可以直接回填的 record_data。
+
+        EngineeringAsset 中的：
+        - asset_name
+        - point/range 桩号
+
+        优先级高于 JSON 中可能存在的旧副本。
+        """
+
+        data = dict(record.get("record_data") or {})
+
+        data[self.definition.asset_name_field] = record.get("asset_name")
+
+        position = self.definition.position
+
+        if position.kind == "point":
+            data[position.single_stake_field] = record.get("single_stake_text")
+
+            data[position.single_stake_value_key] = record.get("single_stake_value")
+
+        elif position.kind == "range":
+            data[position.start_stake_field] = record.get("start_stake_text")
+
+            data[position.start_stake_value_key] = record.get("start_stake_value")
+
+            data[position.end_stake_field] = record.get("end_stake_text")
+
+            data[position.end_stake_value_key] = record.get("end_stake_value")
+
+        else:
+            raise ValueError("暂不支持的工程位置类型：" f"{position.kind}")
+
+        return data
+
+    # =========================================================
+    # 打开已有记录
+    # =========================================================
+
+    def load_record(
+        self,
+        survey_record_id,
+    ):
+        """
+        打开已有工程调查。
+
+        当前阶段：
+        - draft 可继续编辑；
+        - completed 可以正确读取，
+          但暂不允许保存修改。
+        """
+
+        bundle = load_engineering_record_bundle(
+            self.definition,
+            survey_record_id=(survey_record_id),
+        )
+
+        if bundle is None:
+            raise ValueError(
+                f"没有找到该附表" f"{self.definition.form_number}" "调查记录。"
+            )
+
+        record = bundle["record"]
+
+        record_status = record["record_status"]
+
+        if record_status not in (
+            "draft",
+            "completed",
+        ):
+            raise ValueError("当前记录状态暂不支持打开。")
+
+        self._refresh_runtime_context()
+
+        # 先设置记录ID。
+        # 这样加载机构过程中不会重新生成
+        # 新业务编号。
+        self.editing_record_id = int(record["survey_record_id"])
+
+        self.editing_record_status = record_status
+
+        # =====================================================
+        # 1. 回填工程归属
+        # =====================================================
+
+        self.load_departments()
+
+        if not self._set_combo_by_id(
+            self.department_combo,
+            record.get("department_id"),
+        ):
+            raise ValueError("该调查记录所属基层处" "已不存在或不可用。")
+
+        self.department_changed()
+
+        if not self._set_combo_by_id(
+            self.office_combo,
+            record.get("office_id"),
+        ):
+            raise ValueError("该调查记录所属水管所" "已不存在或不可用。")
+
+        self.office_changed()
+
+        if not self._set_combo_by_id(
+            self.canal_combo,
+            record.get("canal_id"),
+        ):
+            raise ValueError("该调查记录所属渠系" "已不存在或不可用。")
+
+        # 加载机构时可能清空了编号，
+        # 最终恢复数据库原编号。
+        self.business_code_edit.setText(record.get("business_code") or "")
+
+        # =====================================================
+        # 2. 回填表单数据
+        # =====================================================
+
+        self.load_form_data(
+            record_data=(self._build_loaded_record_data(record)),
+            inspection_results=(bundle["inspection_results"]),
+            survey_date=(record.get("survey_date")),
+            overall_grade=(record.get("overall_grade")),
+            survey_comment=(record.get("survey_comment")),
+        )
+
+        # =====================================================
+        # 3. 已建立工程锁定归属
+        # =====================================================
+
+        self.department_combo.setEnabled(False)
+
+        self.office_combo.setEnabled(False)
+
+        self.canal_combo.setEnabled(False)
+
+        self._apply_record_mode()
+
+        # 数据库回填不属于用户修改。
+        self.is_dirty = False
+
+        return record
+
+    # =========================================================
     # Combo辅助
     # =========================================================
 
@@ -749,30 +1150,45 @@ class GenericEngineeringSurveyPage(QWidget):
         self.conclusion_group = group
 
     # =========================================================
-    # R1-5预览底部
+    # 底部操作区
     # =========================================================
 
-    def _build_preview_footer(
+    def _build_runtime_footer(
         self,
         root_layout,
     ):
         footer_layout = QHBoxLayout()
 
-        self.preview_status_label = QLabel(
-            ("当前为通用表单框架结构预览，" "尚未接入保存与完成调查流程。")
+        self.back_button = QPushButton("返回")
+
+        # 未保存修改拦截在 R1-8C3 接入。
+        self.back_button.clicked.connect(self.back_requested.emit)
+
+        self.runtime_status_label = QLabel(
+            "当前已接入草稿保存与重新打开；" "完成调查将在下一阶段接入。"
         )
 
-        self.preview_status_label.setStyleSheet("color: #607080;")
+        self.runtime_status_label.setStyleSheet("color: #607080;")
 
-        self.back_button = QPushButton("关闭预览")
+        # 暂时保留旧属性名，
+        # 避免已有测试或开发代码突然失效。
+        self.preview_status_label = self.runtime_status_label
 
-        self.back_button.clicked.connect(self.back_requested.emit)
+        self.save_button = QPushButton("保存草稿")
+
+        self.save_button.setMinimumWidth(120)
+
+        self.save_button.clicked.connect(self.save_draft)
 
         footer_layout.addWidget(self.back_button)
 
         footer_layout.addStretch()
 
-        footer_layout.addWidget(self.preview_status_label)
+        footer_layout.addWidget(self.runtime_status_label)
+
+        footer_layout.addSpacing(12)
+
+        footer_layout.addWidget(self.save_button)
 
         root_layout.addLayout(footer_layout)
 
@@ -1185,8 +1601,8 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.update_business_code()
 
-        # 上述均属于程序初始化，
-        # 不属于用户实际修改。
+        self._apply_record_mode()
+
         self.is_dirty = False
 
     # =========================================================

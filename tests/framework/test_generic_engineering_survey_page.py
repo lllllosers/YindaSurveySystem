@@ -72,7 +72,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.assertEqual(
             self.page.title_label.text(),
-            ("附表2.6 " "涵洞（暗涵）" "工程状况调查表"),
+            (f"{FORM_2_6.display_name}" " - 新增"),
         )
 
     # =========================================================
@@ -718,6 +718,295 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             self.page.business_code_edit.text(),
             "1-01-01-06-001",
         )
+
+    def _seed_ownership(
+        self,
+    ):
+        combos = [
+            (
+                self.page.department_combo,
+                "测试基层处",
+                {
+                    "id": 10,
+                    "business_code": "1",
+                },
+            ),
+            (
+                self.page.office_combo,
+                "测试水管所",
+                {
+                    "id": 20,
+                    "business_code": "01",
+                },
+            ),
+            (
+                self.page.canal_combo,
+                "测试干渠",
+                {
+                    "id": 30,
+                    "canal_level": "01",
+                },
+            ),
+        ]
+
+        for combo, text, data in combos:
+            combo.blockSignals(True)
+
+            combo.clear()
+
+            combo.addItem(
+                text,
+                data,
+            )
+
+            combo.blockSignals(False)
+
+        self.page.business_code_edit.setText("1-01-01-06-001")
+
+    # =========================================================
+    # 草稿生命周期
+    # =========================================================
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "create_engineering_record"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
+    def test_first_save_creates_draft_and_locks_ownership(
+        self,
+        mock_context,
+        mock_form_version,
+        mock_create,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        mock_create.return_value = {
+            "survey_record_id": 101,
+            "engineering_asset_id": 201,
+            "business_code": "1-01-01-06-001",
+        }
+
+        self._seed_ownership()
+
+        self.page.get_field_widget("asset_name").setText("测试涵洞")
+
+        result = self.page._save_current_record(show_message=False)
+
+        self.assertEqual(
+            result["survey_record_id"],
+            101,
+        )
+
+        self.assertEqual(
+            self.page.editing_record_id,
+            101,
+        )
+
+        self.assertEqual(
+            self.page.editing_record_status,
+            "draft",
+        )
+
+        self.assertFalse(self.page.department_combo.isEnabled())
+
+        self.assertFalse(self.page.is_dirty)
+
+        kwargs = mock_create.call_args.kwargs
+
+        self.assertEqual(
+            kwargs["organization_unit_id"],
+            20,
+        )
+
+        self.assertEqual(
+            kwargs["canal_unit_id"],
+            30,
+        )
+
+        self.assertEqual(
+            kwargs["payload"]["asset_name"],
+            "测试涵洞",
+        )
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "update_engineering_record"
+    )
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
+    def test_second_save_updates_same_draft(
+        self,
+        mock_context,
+        mock_form_version,
+        mock_update,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        self._seed_ownership()
+
+        self.page.editing_record_id = 102
+        self.page.editing_record_status = "draft"
+
+        self.page.get_field_widget("asset_name").setText("修改后的涵洞")
+
+        self.page._save_current_record(show_message=False)
+
+        mock_update.assert_called_once()
+
+        kwargs = mock_update.call_args.kwargs
+
+        self.assertEqual(
+            kwargs["survey_record_id"],
+            102,
+        )
+
+        self.assertEqual(
+            kwargs["payload"]["asset_name"],
+            "修改后的涵洞",
+        )
+
+        self.assertEqual(
+            self.page.editing_record_id,
+            102,
+        )
+
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_canal_units_for_organization"
+    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_water_offices")
+    @patch("pages.components." "generic_engineering_survey_page." "get_departments")
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "get_current_form_version"
+    )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
+    @patch(
+        "pages.components."
+        "generic_engineering_survey_page."
+        "load_engineering_record_bundle"
+    )
+    def test_load_record_restores_asset_identity_and_locks_ownership(
+        self,
+        mock_bundle,
+        mock_context,
+        mock_form_version,
+        mock_departments,
+        mock_offices,
+        mock_canals,
+    ):
+        mock_context.return_value = {
+            "project_id": 1,
+            "batch_id": 2,
+        }
+
+        mock_form_version.return_value = {
+            "id": 3,
+        }
+
+        mock_departments.return_value = [
+            {
+                "id": 10,
+                "name": "测试基层处",
+                "business_code": "1",
+                "status": "active",
+            }
+        ]
+
+        mock_offices.return_value = [
+            {
+                "id": 20,
+                "name": "测试水管所",
+                "business_code": "01",
+                "status": "active",
+            }
+        ]
+
+        mock_canals.return_value = [
+            {
+                "id": 30,
+                "name": "测试干渠",
+                "canal_level": "01",
+            }
+        ]
+
+        mock_bundle.return_value = {
+            "record": {
+                "survey_record_id": 103,
+                "record_status": "draft",
+                "business_code": "1-01-01-06-005",
+                "asset_name": "数据库中的涵洞",
+                "single_stake_text": "CH8+500",
+                "single_stake_value": 8500.0,
+                "department_id": 10,
+                "office_id": 20,
+                "canal_id": 30,
+                "record_data": {
+                    # 故意放旧副本，
+                    # 验证 EngineeringAsset 优先。
+                    "asset_name": "旧名称",
+                    "stake": "CH1+000",
+                    "design_flow": 6.5,
+                },
+                "survey_date": "2026-09-15",
+                "overall_grade": None,
+                "survey_comment": "",
+            },
+            "inspection_results": [],
+        }
+
+        self.page.load_record(103)
+
+        self.assertEqual(
+            self.page.get_field_widget("asset_name").text(),
+            "数据库中的涵洞",
+        )
+
+        self.assertEqual(
+            self.page.get_field_widget("stake").text(),
+            "CH8+500",
+        )
+
+        self.assertEqual(
+            self.page.business_code_edit.text(),
+            "1-01-01-06-005",
+        )
+
+        self.assertFalse(self.page.department_combo.isEnabled())
+
+        self.assertEqual(
+            self.page.editing_record_status,
+            "draft",
+        )
+
+        self.assertFalse(self.page.is_dirty)
 
 
 if __name__ == "__main__":
