@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 class EvaluationSection(QGroupBox):
     """
-    工程调查表通用 A/B/C/D 分项评价区域。
+    工程调查表通用分项评价区域。
 
     evaluation_items 中每一项应具有：
 
@@ -30,7 +30,7 @@ class EvaluationSection(QGroupBox):
 
     本组件负责：
     1. 根据配置生成评价界面；
-    2. 始终显示 A/B/C/D 四级评价标准；
+    2. 根据 grade_options 显示评价等级及标准；
     3. 通过单选按钮直接选择等级；
     4. 清空、回填和收集评价结果；
     5. 对外通知用户评价发生变化。
@@ -44,7 +44,7 @@ class EvaluationSection(QGroupBox):
 
     grade_changed = Signal()
 
-    VALID_GRADES = (
+    DEFAULT_GRADES = (
         "A",
         "B",
         "C",
@@ -57,6 +57,7 @@ class EvaluationSection(QGroupBox):
         evaluation_items,
         description=None,
         parent=None,
+        grade_options=None,
     ):
         super().__init__(
             title,
@@ -64,6 +65,22 @@ class EvaluationSection(QGroupBox):
         )
 
         self.evaluation_items = list(evaluation_items)
+
+        if grade_options is None:
+            normalized_grades = self.DEFAULT_GRADES
+        else:
+            normalized_grades = tuple(str(grade).strip() for grade in grade_options)
+
+        if not normalized_grades:
+            raise ValueError("评价等级不能为空。")
+
+        if any(not grade for grade in normalized_grades):
+            raise ValueError("评价等级不能包含空值。")
+
+        if len(normalized_grades) != len(set(normalized_grades)):
+            raise ValueError("评价等级不能重复。")
+
+        self.grade_options = normalized_grades
 
         # key = item_code
         # value = QButtonGroup
@@ -143,8 +160,8 @@ class EvaluationSection(QGroupBox):
                 item_layout.addWidget(item_label)
 
                 # ---------------------------------------------
-                # A / B / C / D
-                # 四级标准始终可见
+                # 按当前 grade_options
+                # 生成评价等级及对应标准
                 # ---------------------------------------------
 
                 item_code = item["item_code"]
@@ -160,7 +177,7 @@ class EvaluationSection(QGroupBox):
 
                 buttons = {}
 
-                for grade in self.VALID_GRADES:
+                for grade in self.grade_options:
                     row_layout = QHBoxLayout()
 
                     row_layout.setSpacing(10)
@@ -261,7 +278,7 @@ class EvaluationSection(QGroupBox):
 
             grade = result["grade"]
 
-            if grade not in (self.VALID_GRADES):
+            if grade not in (self.grade_options):
                 continue
 
             buttons = self.grade_buttons.get(item_code)
@@ -296,7 +313,7 @@ class EvaluationSection(QGroupBox):
 
             selected_grade = None
 
-            for grade in self.VALID_GRADES:
+            for grade in self.grade_options:
                 if buttons[grade].isChecked():
                     selected_grade = grade
                     break
