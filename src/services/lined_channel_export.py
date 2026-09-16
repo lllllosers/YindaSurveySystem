@@ -12,12 +12,16 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_lined_channel_section_record,
 )
 
-from services.lined_channel_evaluation import (
-    LINED_CHANNEL_EVALUATION_ITEMS,
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
 )
+
+from forms.engineering.persistence import (
+    get_engineering_record,
+)
+
 from services.original_form_export_common import (
     display_value,
     fill_original_form_ownership_header,
@@ -84,7 +88,7 @@ def export_lined_channel_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in LINED_CHANNEL_EVALUATION_ITEMS
+        for item in FORM_2_1.evaluation_items
     ]
 
     conclusion_headers = [
@@ -111,7 +115,7 @@ def export_lined_channel_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_lined_channel_section_record(survey_record_id)
+        record = get_engineering_record(FORM_2_1, survey_record_id=survey_record_id)
 
         if record is None:
             raise ValueError("导出过程中发现调查记录不存在：" f"{survey_record_id}")
@@ -165,7 +169,7 @@ def export_lined_channel_summary(
         ]
 
         # 12项评价
-        for item in LINED_CHANNEL_EVALUATION_ITEMS:
+        for item in FORM_2_1.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -265,7 +269,7 @@ def export_lined_channel_summary(
     evaluation_start_column = 30
 
     evaluation_end_column = (
-        evaluation_start_column + len(LINED_CHANNEL_EVALUATION_ITEMS) - 1
+        evaluation_start_column + len(FORM_2_1.evaluation_items) - 1
     )
 
     center_columns.update(
@@ -451,7 +455,7 @@ def export_lined_channel_original_form(
     # 数据
     # =========================================================
 
-    record = get_lined_channel_section_record(survey_record_id)
+    record = get_engineering_record(FORM_2_1, survey_record_id=survey_record_id)
 
     if record is None:
         raise ValueError("没有找到需要导出的" "渠道渠段调查记录。")
@@ -538,7 +542,7 @@ def export_lined_channel_original_form(
     # =========================================================
 
     for row_number, item in enumerate(
-        LINED_CHANNEL_EVALUATION_ITEMS,
+        FORM_2_1.evaluation_items,
         start=11,
     ):
         grade = evaluation_map.get(

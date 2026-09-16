@@ -1,3 +1,7 @@
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+
 from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
@@ -11,18 +15,19 @@ class InvertedSiphonListPage(
     EngineeringSurveyListPage,
 ):
     """
-    附表2.4倒虹吸当前批次调查列表。
+    附表2.4倒虹吸
+    当前批次调查列表。
 
     公共列表行为由
     EngineeringSurveyListPage 提供。
 
     本类只保留附表2.4自己的
-    显示和导出差异。
+    显示和正式原表导出差异。
     """
 
-    FORM_CODE = "form_2_4"
+    FORM_CODE = FORM_2_4.form_code
 
-    PAGE_TITLE = "附表2.4 倒虹吸工程状况调查记录"
+    PAGE_TITLE = f"{FORM_2_4.display_name.removesuffix('表')}" "记录"
 
     NEW_BUTTON_TEXT = "新增倒虹吸调查"
 

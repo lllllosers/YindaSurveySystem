@@ -20,6 +20,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+
 from services.query_export import (
     export_common_query_summary,
 )
@@ -35,6 +39,82 @@ from pages.data_query_page import (
 from services.culvert_export import (
     export_culvert_summary,
 )
+
+
+def create_form_2_1_query_fixture(
+    project_id,
+    survey_batch_id,
+    form_version_id,
+    asset_name,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    """
+    DataQuery 测试只负责准备
+    一条附表2.1 range 工程记录。
+
+    使用公共 range DB API，
+    不再依赖附表2.1 legacy wrapper。
+    """
+
+    return (
+        database
+        .create_range_engineering_survey(
+            project_id=project_id,
+            survey_batch_id=(
+                survey_batch_id
+            ),
+            form_version_id=(
+                form_version_id
+            ),
+            asset_name=asset_name,
+            asset_type=(
+                FORM_2_1.asset_type
+            ),
+            organization_unit_id=(
+                organization_unit_id
+            ),
+            canal_unit_id=(
+                canal_unit_id
+            ),
+            business_code=(
+                business_code
+            ),
+            record_data=record_data,
+            start_stake_text=(
+                start_stake_text
+            ),
+            start_stake_value=(
+                start_stake_value
+            ),
+            end_stake_text=(
+                end_stake_text
+            ),
+            end_stake_value=(
+                end_stake_value
+            ),
+            inspection_results=(
+                inspection_results
+            ),
+            survey_date=survey_date,
+            overall_grade=(
+                overall_grade
+            ),
+            survey_comment=(
+                survey_comment
+            ),
+        )
+    )
 
 
 class DataQueryTestCase(unittest.TestCase):
@@ -120,7 +200,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         form_2_1 = database.get_current_form_version("form_2_1")
 
-        database.create_lined_channel_section_survey(
+        create_form_2_1_query_fixture(
             project_id=self.project_id,
             survey_batch_id=(self.batch_1_id),
             form_version_id=(form_2_1["id"]),
@@ -253,7 +333,7 @@ class DataQueryTestCase(unittest.TestCase):
         # 附表2.1：2027
         # =====================================================
 
-        database.create_lined_channel_section_survey(
+        create_form_2_1_query_fixture(
             project_id=self.project_id,
             survey_batch_id=(self.batch_2_id),
             form_version_id=(form_2_1["id"]),

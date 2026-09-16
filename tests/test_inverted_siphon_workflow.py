@@ -16,8 +16,13 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
+    complete_saved_engineering_record,
 )
 
 from services.inverted_siphon_evaluation import (
@@ -53,7 +58,7 @@ class InvertedSiphonWorkflowTestCase(
     - 正式12项评价配置。
     """
 
-    FORM_CODE = "form_2_4"
+    FORM_CODE = FORM_2_4.form_code
 
     TEST_DB_FILENAME = "test_inverted_siphon.db"
 
@@ -562,7 +567,7 @@ class InvertedSiphonWorkflowTestCase(
             for item in (INVERTED_SIPHON_EVALUATION_ITEMS)
         ]
 
-    def test_complete_inverted_siphon_record(
+    def test_complete_inverted_siphon_through_framework(
         self,
     ):
         result = database.create_engineering_survey(
@@ -585,7 +590,7 @@ class InvertedSiphonWorkflowTestCase(
 
         survey_record_id = int(result["survey_record_id"])
 
-        complete_result = database.complete_inverted_siphon_record(survey_record_id)
+        complete_result = complete_saved_engineering_record(FORM_2_4, survey_record_id)
 
         self.assertEqual(
             complete_result["inspection_count"],
@@ -635,9 +640,9 @@ class InvertedSiphonWorkflowTestCase(
 
         with self.assertRaisesRegex(
             ValueError,
-            "全部12项",
+            "未完成评价",
         ):
-            database.complete_inverted_siphon_record(int(result["survey_record_id"]))
+            complete_saved_engineering_record(FORM_2_4, int(result["survey_record_id"]))
 
     def test_inverted_siphon_completion_requires_basic_fields(
         self,
@@ -671,7 +676,7 @@ class InvertedSiphonWorkflowTestCase(
             ValueError,
             "尺寸",
         ):
-            database.complete_inverted_siphon_record(int(result["survey_record_id"]))
+            complete_saved_engineering_record(FORM_2_4, int(result["survey_record_id"]))
 
     def test_inverted_siphon_business_code_uses_type_04(
         self,

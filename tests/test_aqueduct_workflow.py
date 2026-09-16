@@ -20,8 +20,13 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
+    complete_saved_engineering_record,
 )
 
 from openpyxl import (
@@ -56,7 +61,7 @@ class AqueductWorkflowTestCase(
     不接触正式 local_data/yinda_survey.db。
     """
 
-    FORM_CODE = "form_2_3"
+    FORM_CODE = FORM_2_3.form_code
 
     TEST_DB_FILENAME = "test_aqueduct.db"
 
@@ -815,7 +820,7 @@ class AqueductWorkflowTestCase(
     # 完整渡槽草稿可以正式完成
     # =========================
 
-    def test_complete_aqueduct_record(
+    def test_complete_aqueduct_through_framework(
         self,
     ):
         record_data = self.make_complete_record_data()
@@ -840,7 +845,7 @@ class AqueductWorkflowTestCase(
 
         survey_record_id = int(result["survey_record_id"])
 
-        complete_result = database.complete_aqueduct_record(survey_record_id)
+        complete_result = complete_saved_engineering_record(FORM_2_3, survey_record_id)
 
         self.assertEqual(
             complete_result["survey_record_id"],
@@ -904,9 +909,9 @@ class AqueductWorkflowTestCase(
 
         with self.assertRaisesRegex(
             ValueError,
-            "全部12项",
+            "未完成评价",
         ):
-            database.complete_aqueduct_record(survey_record_id)
+            complete_saved_engineering_record(FORM_2_3, survey_record_id)
 
         record = database.get_point_engineering_record(
             survey_record_id=(survey_record_id),
@@ -962,7 +967,7 @@ class AqueductWorkflowTestCase(
             ValueError,
             "长度",
         ):
-            database.complete_aqueduct_record(survey_record_id)
+            complete_saved_engineering_record(FORM_2_3, survey_record_id)
 
         record = database.get_point_engineering_record(
             survey_record_id=(survey_record_id),
@@ -1012,7 +1017,7 @@ class AqueductWorkflowTestCase(
 
         survey_record_id = int(result["survey_record_id"])
 
-        database.complete_aqueduct_record(survey_record_id)
+        complete_saved_engineering_record(FORM_2_3, survey_record_id)
 
         updated_data = dict(record_data)
 

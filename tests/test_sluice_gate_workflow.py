@@ -19,13 +19,118 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_2 import (
+    FORM_2_2,
+)
+
+from forms.engineering.persistence import (
+    get_engineering_record,
+    update_engineering_record,
+)
+
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
+    complete_saved_engineering_record,
 )
 
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
 )
+
+
+def get_form_2_2_record(
+    survey_record_id,
+):
+    return get_engineering_record(
+        FORM_2_2,
+        survey_record_id=(
+            survey_record_id
+        ),
+    )
+
+
+def update_form_2_2_record(
+    survey_record_id,
+    asset_name,
+    record_data,
+    single_stake_text=None,
+    single_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    if inspection_results is None:
+        inspection_results = [
+            dict(row)
+            for row
+            in database
+            .get_inspection_results(
+                survey_record_id
+            )
+        ]
+
+    payload = {
+        "asset_name": asset_name,
+        "record_data": (
+            record_data
+            or {}
+        ),
+        "position": {
+            "kind": "point",
+            "single_stake_text": (
+                single_stake_text
+            ),
+            "single_stake_value": (
+                single_stake_value
+            ),
+        },
+        "inspection_results": (
+            inspection_results
+        ),
+        "survey_date": survey_date,
+        "overall_grade": (
+            overall_grade
+        ),
+        "survey_comment": (
+            survey_comment
+        ),
+    }
+
+    return update_engineering_record(
+        FORM_2_2,
+        survey_record_id=(
+            survey_record_id
+        ),
+        payload=payload,
+    )
+
+
+def complete_form_2_2_record(
+    survey_record_id,
+):
+    return (
+        complete_saved_engineering_record(
+            FORM_2_2,
+            survey_record_id,
+        )
+    )
+
+
+def delete_form_2_2_record(
+    survey_record_id,
+):
+    return (
+        database
+        .delete_engineering_survey_record(
+            survey_record_id=(
+                survey_record_id
+            ),
+            form_code=(
+                FORM_2_2.form_code
+            ),
+        )
+    )
 
 
 class SluiceGateWorkflowTestCase(
@@ -38,7 +143,7 @@ class SluiceGateWorkflowTestCase(
     不接触正式 local_data/yinda_survey.db。
     """
 
-    FORM_CODE = "form_2_2"
+    FORM_CODE = FORM_2_2.form_code
 
     TEST_DB_FILENAME = "test_sluice_gate.db"
 
@@ -180,7 +285,7 @@ class SluiceGateWorkflowTestCase(
 
         engineering_asset_id = int(result["engineering_asset_id"])
 
-        record = database.get_sluice_gate_record(survey_record_id)
+        record = get_form_2_2_record(survey_record_id)
 
         self.assertIsNotNone(record)
 
@@ -254,9 +359,9 @@ class SluiceGateWorkflowTestCase(
         survey_record_id = int(result["survey_record_id"])
 
         with self.assertRaises(ValueError):
-            database.complete_sluice_gate_record(survey_record_id)
+            complete_form_2_2_record(survey_record_id)
 
-        record = database.get_sluice_gate_record(survey_record_id)
+        record = get_form_2_2_record(survey_record_id)
 
         self.assertIsNotNone(record)
 
@@ -280,14 +385,14 @@ class SluiceGateWorkflowTestCase(
 
         survey_record_id = int(result["survey_record_id"])
 
-        complete_result = database.complete_sluice_gate_record(survey_record_id)
+        complete_result = complete_form_2_2_record(survey_record_id)
 
         self.assertEqual(
             int(complete_result["survey_record_id"]),
             survey_record_id,
         )
 
-        record = database.get_sluice_gate_record(survey_record_id)
+        record = get_form_2_2_record(survey_record_id)
 
         self.assertIsNotNone(record)
 
@@ -307,7 +412,7 @@ class SluiceGateWorkflowTestCase(
             design_flow=8.8,
         )
 
-        database.update_sluice_gate_draft(
+        update_form_2_2_record(
             survey_record_id=(survey_record_id),
             asset_name=("修改后的测试节制闸"),
             record_data=updated_data,
@@ -319,7 +424,7 @@ class SluiceGateWorkflowTestCase(
             survey_comment=("已完成记录修改测试。"),
         )
 
-        updated_record = database.get_sluice_gate_record(survey_record_id)
+        updated_record = get_form_2_2_record(survey_record_id)
 
         self.assertIsNotNone(updated_record)
 
@@ -401,13 +506,13 @@ class SluiceGateWorkflowTestCase(
 
         engineering_asset_id = int(result["engineering_asset_id"])
 
-        database.delete_sluice_gate_record(survey_record_id)
+        delete_form_2_2_record(survey_record_id)
 
         # -------------------------
         # 调查记录已删除
         # -------------------------
 
-        record = database.get_sluice_gate_record(survey_record_id)
+        record = get_form_2_2_record(survey_record_id)
 
         self.assertIsNone(record)
 

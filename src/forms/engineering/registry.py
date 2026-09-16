@@ -1,3 +1,19 @@
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+
+from forms.engineering.form_2_2 import (
+    FORM_2_2,
+)
+
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+
 from forms.engineering.form_2_5 import (
     FORM_2_5,
 )
@@ -10,27 +26,24 @@ from forms.engineering.models import (
     EngineeringFormDefinition,
 )
 
+
 # =============================================================
 # 已迁移到 Engineering Form Framework 的正式表单定义
 # =============================================================
 #
-# 这里只注册已经完成声明式迁移
-# 并进入正式运行入口的表单。
-#
-# 当前：
-# - 附表2.5 已迁移；
-# - 附表2.6 已迁移；
-# - 附表2.1～2.4 仍属于 legacy 页面。
-#
-# 后续每完成一张表迁移，
-# 只需要把对应 FORM_2_X
-# 加入此处。
+# 附表2.1～2.6均已完成声明式迁移，
+# 并由本 Registry 作为工程调查表身份的
+# 唯一代码级事实来源。
 # =============================================================
 
 _ENGINEERING_FORM_DEFINITIONS: tuple[
     EngineeringFormDefinition,
     ...,
 ] = (
+    FORM_2_1,
+    FORM_2_2,
+    FORM_2_3,
+    FORM_2_4,
     FORM_2_5,
     FORM_2_6,
 )
@@ -43,14 +56,11 @@ def _validate_registry(
     ],
 ) -> None:
     """
-    检查业务定义 Registry 中
-    必须全局唯一的身份字段。
+    检查 Registry 中必须跨表唯一的身份字段。
 
-    EngineeringFormDefinition 自身的
-    字段、位置、评价等级和评价项目合法性
-    已由其 __post_init__ 在对象创建时完成校验。
-
-    Registry 这里只负责跨表单唯一性。
+    EngineeringFormDefinition 自身负责
+    单张表内部合同校验；
+    Registry 只负责跨表唯一性。
     """
 
     unique_attributes = (
@@ -82,7 +92,9 @@ def _validate_registry(
 
         if len(values) != len(set(values)):
             raise ValueError(
-                "EngineeringFormRegistry 中存在重复的 " f"{display_name}。"
+                "EngineeringFormRegistry "
+                "中存在重复的 "
+                f"{display_name}。"
             )
 
 
@@ -92,7 +104,9 @@ _validate_registry(
 
 
 _ENGINEERING_FORM_BY_CODE = {
-    definition.form_code: definition for definition in _ENGINEERING_FORM_DEFINITIONS
+    definition.form_code: definition
+    for definition
+    in _ENGINEERING_FORM_DEFINITIONS
 }
 
 
@@ -100,10 +114,8 @@ def get_engineering_form_definition(
     form_code: str,
 ) -> EngineeringFormDefinition | None:
     """
-    根据 form_code 获取已经迁移到新框架的
+    根据 form_code 获取正式
     EngineeringFormDefinition。
-
-    尚未迁移的 legacy 表单返回 None。
     """
 
     return _ENGINEERING_FORM_BY_CODE.get(
@@ -116,9 +128,10 @@ def get_engineering_form_definitions() -> tuple[
     ...,
 ]:
     """
-    返回所有已经迁移到新框架的正式表单定义。
+    返回所有已经迁移到工程调查框架的
+    正式表单定义。
 
-    返回不可变 tuple，
+    使用不可变 tuple，
     避免调用方修改 Registry。
     """
 

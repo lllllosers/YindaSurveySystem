@@ -5,6 +5,7 @@ from typing import (
     Mapping,
 )
 
+
 FieldType = Literal[
     "text",
     "decimal",
@@ -52,7 +53,10 @@ class FieldDefinition:
         """
 
         if self.unit:
-            return f"{self.label}" f"（{self.unit}）"
+            return (
+                f"{self.label}"
+                f"（{self.unit}）"
+            )
 
         return self.label
 
@@ -83,10 +87,18 @@ class FieldRowDefinition:
 
     def __post_init__(self):
         if not self.field_keys:
-            raise ValueError("FieldRowDefinition " "至少必须包含一个字段。")
+            raise ValueError(
+                "FieldRowDefinition "
+                "至少必须包含一个字段。"
+            )
 
-        if len(set(self.field_keys)) != len(self.field_keys):
-            raise ValueError("同一表单行不能重复引用字段。")
+        if (
+            len(set(self.field_keys))
+            != len(self.field_keys)
+        ):
+            raise ValueError(
+                "同一表单行不能重复引用字段。"
+            )
 
 
 @dataclass(frozen=True)
@@ -100,14 +112,22 @@ class FormSectionDefinition:
     """
 
     title: str
-    rows: tuple[FieldRowDefinition, ...]
+    rows: tuple[
+        FieldRowDefinition,
+        ...,
+    ]
 
     def __post_init__(self):
         if not self.title.strip():
-            raise ValueError("表单分区标题不能为空。")
+            raise ValueError(
+                "表单分区标题不能为空。"
+            )
 
         if not self.rows:
-            raise ValueError(f"{self.title} 至少需要一行字段。")
+            raise ValueError(
+                f"{self.title} "
+                "至少需要一行字段。"
+            )
 
 
 @dataclass(frozen=True)
@@ -124,14 +144,29 @@ class PositionDefinition:
 
     kind: PositionType
 
-    single_stake_field: str | None = None
-    single_stake_value_key: str | None = None
+    single_stake_field: (
+        str | None
+    ) = None
 
-    start_stake_field: str | None = None
-    start_stake_value_key: str | None = None
+    single_stake_value_key: (
+        str | None
+    ) = None
 
-    end_stake_field: str | None = None
-    end_stake_value_key: str | None = None
+    start_stake_field: (
+        str | None
+    ) = None
+
+    start_stake_value_key: (
+        str | None
+    ) = None
+
+    end_stake_field: (
+        str | None
+    ) = None
+
+    end_stake_value_key: (
+        str | None
+    ) = None
 
     @classmethod
     def point(
@@ -142,8 +177,12 @@ class PositionDefinition:
     ):
         return cls(
             kind="point",
-            single_stake_field=stake_field,
-            single_stake_value_key=(stake_value_key),
+            single_stake_field=(
+                stake_field
+            ),
+            single_stake_value_key=(
+                stake_value_key
+            ),
         )
 
     @classmethod
@@ -157,10 +196,18 @@ class PositionDefinition:
     ):
         return cls(
             kind="range",
-            start_stake_field=(start_stake_field),
-            start_stake_value_key=(start_stake_value_key),
-            end_stake_field=(end_stake_field),
-            end_stake_value_key=(end_stake_value_key),
+            start_stake_field=(
+                start_stake_field
+            ),
+            start_stake_value_key=(
+                start_stake_value_key
+            ),
+            end_stake_field=(
+                end_stake_field
+            ),
+            end_stake_value_key=(
+                end_stake_value_key
+            ),
         )
 
 
@@ -195,60 +242,130 @@ class EngineeringFormDefinition:
 
     position: PositionDefinition
 
-    fields: tuple[FieldDefinition, ...]
+    fields: tuple[
+        FieldDefinition,
+        ...,
+    ]
 
-    sections: tuple[FormSectionDefinition, ...]
+    sections: tuple[
+        FormSectionDefinition,
+        ...,
+    ]
 
-    evaluation_items: tuple[Mapping[str, Any], ...]
+    evaluation_items: tuple[
+        Mapping[str, Any],
+        ...,
+    ]
 
-    grade_options: tuple[str, ...] = (
+    grade_options: tuple[
+        str,
+        ...,
+    ] = (
         "A",
         "B",
         "C",
         "D",
     )
 
-    evaluation_title: str = "分项评价"
+    evaluation_title: str = (
+        "分项评价"
+    )
 
-    conclusion_title: str = "调查结论"
+    # 正式调查表在分项评价区域之后
+    # 可能存在补充说明。
+    #
+    # 例如：
+    # 渡槽其它部位的定义。
+    evaluation_note: (
+        str | None
+    ) = None
+
+    conclusion_title: str = (
+        "调查结论"
+    )
 
     @property
     def field_map(
         self,
-    ) -> dict[str, FieldDefinition]:
-        return {field.key: field for field in self.fields}
+    ) -> dict[
+        str,
+        FieldDefinition,
+    ]:
+        return {
+            field.key: field
+            for field in self.fields
+        }
 
     @property
     def display_name(self) -> str:
-        return f"附表{self.form_number} " f"{self.form_name}"
+        return (
+            f"附表{self.form_number} "
+            f"{self.form_name}"
+        )
 
     def __post_init__(self):
         # =====================================================
         # 1. 表单身份
         # =====================================================
 
-        if not self.form_code.startswith("form_2_"):
-            raise ValueError("工程调查表 form_code " "必须使用 form_2_x 格式。")
+        if not self.form_code.startswith(
+            "form_2_"
+        ):
+            raise ValueError(
+                "工程调查表 form_code "
+                "必须使用 form_2_x 格式。"
+            )
 
-        if len(self.business_type_code) != 2 or not self.business_type_code.isdigit():
-            raise ValueError("工程类型代码必须为" "2位数字字符串。")
+        if (
+            len(
+                self.business_type_code
+            )
+            != 2
+            or not (
+                self.business_type_code
+                .isdigit()
+            )
+        ):
+            raise ValueError(
+                "工程类型代码必须为"
+                "2位数字字符串。"
+            )
 
         if not self.asset_type.strip():
-            raise ValueError("asset_type 不能为空。")
+            raise ValueError(
+                "asset_type 不能为空。"
+            )
 
         # =====================================================
         # 2. 字段唯一性
         # =====================================================
 
-        field_keys = [field.key for field in self.fields]
+        field_keys = [
+            field.key
+            for field in self.fields
+        ]
 
-        if len(field_keys) != len(set(field_keys)):
-            raise ValueError("同一调查表中存在" "重复字段 key。")
+        if (
+            len(field_keys)
+            != len(set(field_keys))
+        ):
+            raise ValueError(
+                "同一调查表中存在"
+                "重复字段 key。"
+            )
 
-        field_key_set = set(field_keys)
+        field_key_set = set(
+            field_keys
+        )
 
-        if self.asset_name_field not in field_key_set:
-            raise ValueError("asset_name_field " "必须引用已定义字段。")
+        if (
+            self.asset_name_field
+            not in field_key_set
+        ):
+            raise ValueError(
+                "asset_name_field "
+                "必须引用已定义字段。"
+            )
 
         # =====================================================
         # 3. 页面布局引用
@@ -258,74 +375,179 @@ class EngineeringFormDefinition:
 
         for section in self.sections:
             for row in section.rows:
-                for field_key in row.field_keys:
-                    if field_key not in field_key_set:
+                for (
+                    field_key
+                ) in row.field_keys:
+                    if (
+                        field_key
+                        not in field_key_set
+                    ):
                         raise ValueError(
-                            "页面布局引用了" "不存在的字段：" f"{field_key}"
+                            "页面布局引用了"
+                            "不存在的字段："
+                            f"{field_key}"
                         )
 
-                    row_field_keys.append(field_key)
+                    row_field_keys.append(
+                        field_key
+                    )
 
-        if len(row_field_keys) != len(set(row_field_keys)):
-            raise ValueError("同一个字段不能在" "多个页面位置重复出现。")
+        if (
+            len(row_field_keys)
+            != len(
+                set(row_field_keys)
+            )
+        ):
+            raise ValueError(
+                "同一个字段不能在"
+                "多个页面位置重复出现。"
+            )
 
-        if set(row_field_keys) != (field_key_set):
-            missing = field_key_set - set(row_field_keys)
+        if (
+            set(row_field_keys)
+            != field_key_set
+        ):
+            missing = (
+                field_key_set
+                - set(row_field_keys)
+            )
 
-            raise ValueError("存在未加入页面布局的字段：" + "、".join(sorted(missing)))
+            raise ValueError(
+                "存在未加入页面布局的字段："
+                + "、".join(
+                    sorted(missing)
+                )
+            )
 
         # =====================================================
         # 4. 工程位置
         # =====================================================
 
-        if self.position.kind == "point":
-            stake_field = self.position.single_stake_field
+        if (
+            self.position.kind
+            == "point"
+        ):
+            stake_field = (
+                self.position
+                .single_stake_field
+            )
 
-            if not stake_field or stake_field not in field_key_set:
-                raise ValueError("点工程必须配置" "有效的桩号字段。")
+            if (
+                not stake_field
+                or stake_field
+                not in field_key_set
+            ):
+                raise ValueError(
+                    "点工程必须配置"
+                    "有效的桩号字段。"
+                )
 
-            if self.field_map[stake_field].input_type != "stake":
-                raise ValueError("点工程位置字段" "必须为 stake 类型。")
+            if (
+                self.field_map[
+                    stake_field
+                ].input_type
+                != "stake"
+            ):
+                raise ValueError(
+                    "点工程位置字段"
+                    "必须为 stake 类型。"
+                )
 
-            if not (self.position.single_stake_value_key):
-                raise ValueError("点工程必须配置" "桩号数值存储 key。")
+            if not (
+                self.position
+                .single_stake_value_key
+            ):
+                raise ValueError(
+                    "点工程必须配置"
+                    "桩号数值存储 key。"
+                )
 
-        elif self.position.kind == "range":
-            start_field = self.position.start_stake_field
+        elif (
+            self.position.kind
+            == "range"
+        ):
+            start_field = (
+                self.position
+                .start_stake_field
+            )
 
-            end_field = self.position.end_stake_field
+            end_field = (
+                self.position
+                .end_stake_field
+            )
 
             for field_key in (
                 start_field,
                 end_field,
             ):
-                if not field_key or field_key not in field_key_set:
-                    raise ValueError("区间工程必须配置" "有效的起止桩号字段。")
+                if (
+                    not field_key
+                    or field_key
+                    not in field_key_set
+                ):
+                    raise ValueError(
+                        "区间工程必须配置"
+                        "有效的起止桩号字段。"
+                    )
 
-                if self.field_map[field_key].input_type != "stake":
-                    raise ValueError("区间工程起止位置" "必须为 stake 类型。")
+                if (
+                    self.field_map[
+                        field_key
+                    ].input_type
+                    != "stake"
+                ):
+                    raise ValueError(
+                        "区间工程起止位置"
+                        "必须为 stake 类型。"
+                    )
 
-            if not (self.position.start_stake_value_key):
-                raise ValueError("区间工程必须配置" "起始桩号数值存储 key。")
+            if not (
+                self.position
+                .start_stake_value_key
+            ):
+                raise ValueError(
+                    "区间工程必须配置"
+                    "起始桩号数值存储 key。"
+                )
 
-            if not (self.position.end_stake_value_key):
-                raise ValueError("区间工程必须配置" "终止桩号数值存储 key。")
+            if not (
+                self.position
+                .end_stake_value_key
+            ):
+                raise ValueError(
+                    "区间工程必须配置"
+                    "终止桩号数值存储 key。"
+                )
 
         else:
-            raise ValueError("暂不支持的工程位置类型：" f"{self.position.kind}")
+            raise ValueError(
+                "暂不支持的工程位置类型："
+                f"{self.position.kind}"
+            )
 
         # =====================================================
         # 5. 评价等级
         # =====================================================
 
         if not self.grade_options:
-            raise ValueError("至少需要配置一个评价等级。")
+            raise ValueError(
+                "至少需要配置一个评价等级。"
+            )
 
-        if len(self.grade_options) != len(set(self.grade_options)):
-            raise ValueError("评价等级不能重复。")
+        if (
+            len(
+                self.grade_options
+            )
+            != len(
+                set(
+                    self.grade_options
+                )
+            )
+        ):
+            raise ValueError(
+                "评价等级不能重复。"
+            )
 
-        # 当前数据库 grade CHECK
-        # 只允许 A/B/C/D。
         database_grades = {
             "A",
             "B",
@@ -333,8 +555,28 @@ class EngineeringFormDefinition:
             "D",
         }
 
-        if not set(self.grade_options).issubset(database_grades):
-            raise ValueError("当前数据库仅支持" "A/B/C/D评价等级。")
+        if not set(
+            self.grade_options
+        ).issubset(
+            database_grades
+        ):
+            raise ValueError(
+                "当前数据库仅支持"
+                "A/B/C/D评价等级。"
+            )
+
+        if (
+            self.evaluation_note
+            is not None
+            and not (
+                self.evaluation_note
+                .strip()
+            )
+        ):
+            raise ValueError(
+                "evaluation_note "
+                "不能是空字符串。"
+            )
 
         # =====================================================
         # 6. 评价项目合同
@@ -342,27 +584,57 @@ class EngineeringFormDefinition:
 
         item_codes = []
 
-        for item in self.evaluation_items:
+        for item in (
+            self.evaluation_items
+        ):
             for required_key in (
                 "item_code",
                 "category",
                 "item_name",
                 "standards",
             ):
-                if required_key not in item:
-                    raise ValueError("评价项目缺少字段：" f"{required_key}")
-
-            item_code = str(item["item_code"])
-
-            item_codes.append(item_code)
-
-            standards = item["standards"]
-
-            for grade in self.grade_options:
-                if grade not in standards:
+                if (
+                    required_key
+                    not in item
+                ):
                     raise ValueError(
-                        f"评价项目 " f"{item_code} " f"缺少 {grade} " "级标准。"
+                        "评价项目缺少字段："
+                        f"{required_key}"
                     )
 
-        if len(item_codes) != len(set(item_codes)):
-            raise ValueError("评价项目 item_code " "不能重复。")
+            item_code = str(
+                item["item_code"]
+            )
+
+            item_codes.append(
+                item_code
+            )
+
+            standards = item[
+                "standards"
+            ]
+
+            for grade in (
+                self.grade_options
+            ):
+                if (
+                    grade
+                    not in standards
+                ):
+                    raise ValueError(
+                        f"评价项目 "
+                        f"{item_code} "
+                        f"缺少 {grade} "
+                        "级标准。"
+                    )
+
+        if (
+            len(item_codes)
+            != len(
+                set(item_codes)
+            )
+        ):
+            raise ValueError(
+                "评价项目 item_code "
+                "不能重复。"
+            )

@@ -1435,12 +1435,45 @@ class GenericEngineeringSurveyPage(QWidget):
         self,
     ):
         self.evaluation_section = EvaluationSection(
-            title=(self.definition.evaluation_title),
-            evaluation_items=(self.definition.evaluation_items),
-            grade_options=(self.definition.grade_options),
+            title=(
+                self.definition.evaluation_title
+            ),
+            evaluation_items=(
+                self.definition.evaluation_items
+            ),
+            grade_options=(
+                self.definition.grade_options
+            ),
         )
 
-        self.form_layout.addWidget(self.evaluation_section)
+        self.form_layout.addWidget(
+            self.evaluation_section
+        )
+
+        # 正式调查表如果在评价区后存在
+        # 补充说明，由 definition 统一声明。
+        #
+        # 没有注释的表单不创建额外控件。
+        self.evaluation_note_label = None
+
+        if self.definition.evaluation_note:
+            note_label = QLabel(
+                self.definition.evaluation_note
+            )
+
+            note_label.setWordWrap(True)
+
+            note_label.setStyleSheet(
+                "color: #607080;"
+            )
+
+            self.form_layout.addWidget(
+                note_label
+            )
+
+            self.evaluation_note_label = (
+                note_label
+            )
 
     # =========================================================
     # 调查结论

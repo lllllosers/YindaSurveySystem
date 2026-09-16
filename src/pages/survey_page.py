@@ -14,32 +14,16 @@ from pages.aqueduct_list_page import (
     AqueductListPage,
 )
 
-from pages.aqueduct_page import (
-    AqueductPage,
-)
-
 from pages.inverted_siphon_list_page import (
     InvertedSiphonListPage,
-)
-
-from pages.inverted_siphon_page import (
-    InvertedSiphonPage,
 )
 
 from pages.lined_channel_section_list_page import (
     LinedChannelSectionListPage,
 )
 
-from pages.lined_channel_section_page import (
-    LinedChannelSectionPage,
-)
-
 from pages.sluice_gate_list_page import (
     SluiceGateListPage,
-)
-
-from pages.sluice_gate_page import (
-    SluiceGatePage,
 )
 
 from pages.tunnel_list_page import (
@@ -48,6 +32,22 @@ from pages.tunnel_list_page import (
 
 from pages.culvert_list_page import (
     CulvertListPage,
+)
+
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+
+from forms.engineering.form_2_2 import (
+    FORM_2_2,
+)
+
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
 )
 
 from forms.engineering.form_2_5 import (
@@ -71,32 +71,72 @@ ENGINEERING_SURVEY_FORMS: tuple[
     ...,
 ] = (
     {
-        "form_code": "form_2_1",
-        "button_text": ("附表2.1 " "防渗衬砌渠道渠段工程状况调查"),
-        "list_page_class": (LinedChannelSectionListPage),
-        "edit_page_factory": (LinedChannelSectionPage),
+        "form_code": FORM_2_1.form_code,
+        "button_text": (
+            FORM_2_1.display_name.removesuffix(
+                "表"
+            )
+        ),
+        "list_page_class": (
+            LinedChannelSectionListPage
+        ),
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_1,
+        ),
     },
     {
-        "form_code": "form_2_2",
-        "button_text": ("附表2.2 水闸工程状况调查"),
-        "list_page_class": (SluiceGateListPage),
-        "edit_page_factory": (SluiceGatePage),
+        "form_code": FORM_2_2.form_code,
+        "button_text": (
+            FORM_2_2.display_name.removesuffix(
+                "表"
+            )
+        ),
+        "list_page_class": (
+            SluiceGateListPage
+        ),
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_2,
+        ),
     },
     {
-        "form_code": "form_2_3",
-        "button_text": ("附表2.3 " "渡槽（座槽）工程状况调查"),
-        "list_page_class": (AqueductListPage),
-        "edit_page_factory": (AqueductPage),
+        "form_code": FORM_2_3.form_code,
+        "button_text": (
+            FORM_2_3.display_name.removesuffix(
+                "表"
+            )
+        ),
+        "list_page_class": (
+            AqueductListPage
+        ),
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_3,
+        ),
     },
     {
-        "form_code": "form_2_4",
-        "button_text": ("附表2.4 倒虹吸工程状况调查"),
-        "list_page_class": (InvertedSiphonListPage),
-        "edit_page_factory": (InvertedSiphonPage),
+        "form_code": FORM_2_4.form_code,
+        "button_text": (
+            FORM_2_4.display_name.removesuffix(
+                "表"
+            )
+        ),
+        "list_page_class": (
+            InvertedSiphonListPage
+        ),
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_4,
+        ),
     },
     {
         "form_code": FORM_2_5.form_code,
-        "button_text": (FORM_2_5.display_name.removesuffix("表")),
+        "button_text": (
+            FORM_2_5.display_name.removesuffix(
+                "表"
+            )
+        ),
         "list_page_class": TunnelListPage,
         "edit_page_factory": partial(
             GenericEngineeringSurveyPage,
@@ -105,7 +145,11 @@ ENGINEERING_SURVEY_FORMS: tuple[
     },
     {
         "form_code": FORM_2_6.form_code,
-        "button_text": (FORM_2_6.display_name.removesuffix("表")),
+        "button_text": (
+            FORM_2_6.display_name.removesuffix(
+                "表"
+            )
+        ),
         "list_page_class": CulvertListPage,
         "edit_page_factory": partial(
             GenericEngineeringSurveyPage,

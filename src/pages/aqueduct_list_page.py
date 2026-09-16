@@ -1,6 +1,11 @@
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
 from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
+
 from services.aqueduct_export import (
     export_aqueduct_original_form,
 )
@@ -10,17 +15,19 @@ class AqueductListPage(
     EngineeringSurveyListPage,
 ):
     """
-    附表2.3渡槽（座槽）当前批次调查列表。
+    附表2.3渡槽（座槽）
+    当前批次调查列表。
 
     公共列表行为由
     EngineeringSurveyListPage 提供。
 
-    本类只保留附表2.3自己的显示和导出差异。
+    本类只保留附表2.3自己的
+    显示和正式原表导出差异。
     """
 
-    FORM_CODE = "form_2_3"
+    FORM_CODE = FORM_2_3.form_code
 
-    PAGE_TITLE = "附表2.3 渡槽（座槽）工程状况调查记录"
+    PAGE_TITLE = f"{FORM_2_3.display_name.removesuffix('表')}" "记录"
 
     NEW_BUTTON_TEXT = "新增渡槽（座槽）调查"
 

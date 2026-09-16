@@ -12,12 +12,16 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_sluice_gate_record,
 )
 
-from services.sluice_gate_evaluation import (
-    SLUICE_GATE_EVALUATION_ITEMS,
+from forms.engineering.form_2_2 import (
+    FORM_2_2,
 )
+
+from forms.engineering.persistence import (
+    get_engineering_record,
+)
+
 from services.original_form_export_common import (
     display_value,
     fill_original_form_ownership_header,
@@ -75,7 +79,7 @@ def export_sluice_gate_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in SLUICE_GATE_EVALUATION_ITEMS
+        for item in FORM_2_2.evaluation_items
     ]
 
     conclusion_headers = [
@@ -102,7 +106,7 @@ def export_sluice_gate_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_sluice_gate_record(survey_record_id)
+        record = get_engineering_record(FORM_2_2, survey_record_id=survey_record_id)
 
         if record is None:
             raise ValueError("导出过程中发现调查记录不存在：" f"{survey_record_id}")
@@ -147,7 +151,7 @@ def export_sluice_gate_summary(
         ]
 
         # 14项分项评价
-        for item in SLUICE_GATE_EVALUATION_ITEMS:
+        for item in FORM_2_2.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -238,7 +242,7 @@ def export_sluice_gate_summary(
     # 14个评价列
     evaluation_start_column = 21
     evaluation_end_column = (
-        evaluation_start_column + len(SLUICE_GATE_EVALUATION_ITEMS) - 1
+        evaluation_start_column + len(FORM_2_2.evaluation_items) - 1
     )
 
     center_columns.update(
@@ -423,7 +427,7 @@ def export_sluice_gate_original_form(
     # 2. 加载调查记录
     # =========================
 
-    record = get_sluice_gate_record(survey_record_id)
+    record = get_engineering_record(FORM_2_2, survey_record_id=survey_record_id)
 
     if record is None:
         raise ValueError("没有找到需要导出的水闸调查记录。")
@@ -527,7 +531,7 @@ def export_sluice_gate_original_form(
     # 项目类别位于 E 列。
 
     for row_number, item in enumerate(
-        SLUICE_GATE_EVALUATION_ITEMS,
+        FORM_2_2.evaluation_items,
         start=9,
     ):
         grade = evaluation_map.get(

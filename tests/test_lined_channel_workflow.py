@@ -22,8 +22,19 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+
+from forms.engineering.persistence import (
+    create_engineering_record,
+    get_engineering_record,
+    update_engineering_record,
+)
+
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
+    complete_saved_engineering_record,
 )
 
 from services.lined_channel_evaluation import (
@@ -33,6 +44,271 @@ from services.lined_channel_export import (
     export_lined_channel_original_form,
     export_lined_channel_summary,
 )
+
+
+def _form_2_1_payload(
+    *,
+    asset_name,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    return {
+        "asset_name": asset_name,
+        "record_data": (
+            record_data
+            or {}
+        ),
+        "position": {
+            "kind": "range",
+            "start_stake_text": (
+                start_stake_text
+            ),
+            "start_stake_value": (
+                start_stake_value
+            ),
+            "end_stake_text": (
+                end_stake_text
+            ),
+            "end_stake_value": (
+                end_stake_value
+            ),
+        },
+        "inspection_results": (
+            inspection_results
+            if inspection_results
+            is not None
+            else []
+        ),
+        "survey_date": survey_date,
+        "overall_grade": (
+            overall_grade
+        ),
+        "survey_comment": (
+            survey_comment
+        ),
+    }
+
+
+def create_form_2_1_record(
+    project_id,
+    survey_batch_id,
+    form_version_id,
+    asset_name,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    payload = _form_2_1_payload(
+        asset_name=asset_name,
+        record_data=record_data,
+        start_stake_text=(
+            start_stake_text
+        ),
+        start_stake_value=(
+            start_stake_value
+        ),
+        end_stake_text=(
+            end_stake_text
+        ),
+        end_stake_value=(
+            end_stake_value
+        ),
+        inspection_results=(
+            inspection_results
+        ),
+        survey_date=survey_date,
+        overall_grade=(
+            overall_grade
+        ),
+        survey_comment=(
+            survey_comment
+        ),
+    )
+
+    return create_engineering_record(
+        FORM_2_1,
+        project_id=project_id,
+        survey_batch_id=(
+            survey_batch_id
+        ),
+        form_version_id=(
+            form_version_id
+        ),
+        organization_unit_id=(
+            organization_unit_id
+        ),
+        canal_unit_id=(
+            canal_unit_id
+        ),
+        business_code=(
+            business_code
+        ),
+        payload=payload,
+    )
+
+
+def get_form_2_1_record(
+    survey_record_id,
+):
+    return get_engineering_record(
+        FORM_2_1,
+        survey_record_id=(
+            survey_record_id
+        ),
+    )
+
+
+def query_form_2_1_records(
+    project_id,
+    survey_batch_id,
+):
+    return (
+        database
+        .get_engineering_survey_query_records(
+            project_id=project_id,
+            survey_batch_id=(
+                survey_batch_id
+            ),
+            form_code=(
+                FORM_2_1.form_code
+            ),
+        )
+    )
+
+
+def update_form_2_1_record(
+    survey_record_id,
+    asset_name,
+    organization_unit_id,
+    canal_unit_id,
+    business_code,
+    record_data,
+    start_stake_text=None,
+    start_stake_value=None,
+    end_stake_text=None,
+    end_stake_value=None,
+    inspection_results=None,
+    survey_date=None,
+    overall_grade=None,
+    survey_comment=None,
+):
+    current = get_form_2_1_record(
+        survey_record_id
+    )
+
+    if current is None:
+        raise ValueError(
+            "没有找到该调查记录。"
+        )
+
+    # Generic 编辑现有记录时，
+    # 工程归属和业务编号保持不变。
+    if (
+        organization_unit_id
+        != current[
+            "organization_unit_id"
+        ]
+        or canal_unit_id
+        != current[
+            "canal_unit_id"
+        ]
+        or business_code
+        != current[
+            "business_code"
+        ]
+    ):
+        raise ValueError(
+            "统一工程调查编辑流程"
+            "不修改工程归属或业务编号。"
+        )
+
+    if inspection_results is None:
+        inspection_results = [
+            dict(row)
+            for row
+            in database
+            .get_inspection_results(
+                survey_record_id
+            )
+        ]
+
+    payload = _form_2_1_payload(
+        asset_name=asset_name,
+        record_data=record_data,
+        start_stake_text=(
+            start_stake_text
+        ),
+        start_stake_value=(
+            start_stake_value
+        ),
+        end_stake_text=(
+            end_stake_text
+        ),
+        end_stake_value=(
+            end_stake_value
+        ),
+        inspection_results=(
+            inspection_results
+        ),
+        survey_date=survey_date,
+        overall_grade=(
+            overall_grade
+        ),
+        survey_comment=(
+            survey_comment
+        ),
+    )
+
+    return update_engineering_record(
+        FORM_2_1,
+        survey_record_id=(
+            survey_record_id
+        ),
+        payload=payload,
+    )
+
+
+def complete_form_2_1_record(
+    survey_record_id,
+):
+    return (
+        complete_saved_engineering_record(
+            FORM_2_1,
+            survey_record_id,
+        )
+    )
+
+
+def delete_form_2_1_record(
+    survey_record_id,
+):
+    return (
+        database
+        .delete_engineering_survey_record(
+            survey_record_id=(
+                survey_record_id
+            ),
+            form_code=(
+                FORM_2_1.form_code
+            ),
+        )
+    )
 
 
 class LinedChannelWorkflowTestCase(
@@ -46,7 +322,7 @@ class LinedChannelWorkflowTestCase(
     不接触正式数据库。
     """
 
-    FORM_CODE = "form_2_1"
+    FORM_CODE = FORM_2_1.form_code
 
     TEST_DB_FILENAME = "test_yinda_survey.db"
 
@@ -97,7 +373,7 @@ class LinedChannelWorkflowTestCase(
     # 正确保存起止桩号
     # =========================
 
-    def test_create_lined_channel_section_survey(
+    def test_create_form_2_1_record(
         self,
     ):
         form_version = database.get_current_form_version("form_2_1")
@@ -106,7 +382,7 @@ class LinedChannelWorkflowTestCase(
 
         assert form_version is not None
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=form_version["id"],
@@ -272,7 +548,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=form_version["id"],
@@ -291,7 +567,7 @@ class LinedChannelWorkflowTestCase(
             end_stake_value=13250.0,
         )
 
-        record = database.get_lined_channel_section_record(result["survey_record_id"])
+        record = get_form_2_1_record(result["survey_record_id"])
 
         self.assertEqual(
             record["asset_name"],
@@ -328,7 +604,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=form_version["id"],
@@ -350,7 +626,7 @@ class LinedChannelWorkflowTestCase(
 
         engineering_asset_id = result["engineering_asset_id"]
 
-        database.update_lined_channel_section_draft(
+        update_form_2_1_record(
             survey_record_id=survey_record_id,
             asset_name="测试总干渠修改后",
             organization_unit_id=self.office_id,
@@ -367,7 +643,7 @@ class LinedChannelWorkflowTestCase(
             end_stake_value=13600.0,
         )
 
-        record = database.get_lined_channel_section_record(survey_record_id)
+        record = get_form_2_1_record(survey_record_id)
 
         # 仍然是原来的 EngineeringAsset
         self.assertEqual(
@@ -408,7 +684,7 @@ class LinedChannelWorkflowTestCase(
             "2010-08",
         )
 
-        records = database.get_lined_channel_section_records(
+        records = query_form_2_1_records(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
         )
@@ -467,7 +743,7 @@ class LinedChannelWorkflowTestCase(
             "channel_bottom_elevation": (1865.35),
         }
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -482,7 +758,7 @@ class LinedChannelWorkflowTestCase(
             end_stake_value=11500.0,
         )
 
-        loaded = database.get_lined_channel_section_record(result["survey_record_id"])
+        loaded = get_form_2_1_record(result["survey_record_id"])
 
         loaded_data = loaded["record_data"]
 
@@ -597,7 +873,7 @@ class LinedChannelWorkflowTestCase(
 
         inspections = (self._full_inspection_results())[:-1]
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -618,11 +894,11 @@ class LinedChannelWorkflowTestCase(
 
         with self.assertRaisesRegex(
             ValueError,
-            "全部12项",
+            "未完成评价",
         ):
-            (database.complete_lined_channel_section_record(result["survey_record_id"]))
+            (complete_form_2_1_record(result["survey_record_id"]))
 
-        record = database.get_lined_channel_section_record(result["survey_record_id"])
+        record = get_form_2_1_record(result["survey_record_id"])
 
         self.assertEqual(
             record["record_status"],
@@ -634,7 +910,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -653,7 +929,7 @@ class LinedChannelWorkflowTestCase(
             survey_comment="完成前意见",
         )
 
-        complete_result = database.complete_lined_channel_section_record(
+        complete_result = complete_form_2_1_record(
             result["survey_record_id"]
         )
 
@@ -662,7 +938,7 @@ class LinedChannelWorkflowTestCase(
             12,
         )
 
-        completed = database.get_lined_channel_section_record(
+        completed = get_form_2_1_record(
             result["survey_record_id"]
         )
 
@@ -676,7 +952,7 @@ class LinedChannelWorkflowTestCase(
         updated_data["section_length"] = 1050.0
 
         (
-            database.update_lined_channel_section_draft(
+            update_form_2_1_record(
                 survey_record_id=(result["survey_record_id"]),
                 asset_name="测试渠道修改后",
                 organization_unit_id=(self.office_id),
@@ -694,7 +970,7 @@ class LinedChannelWorkflowTestCase(
             )
         )
 
-        loaded = database.get_lined_channel_section_record(result["survey_record_id"])
+        loaded = get_form_2_1_record(result["survey_record_id"])
 
         self.assertEqual(
             loaded["record_status"],
@@ -733,7 +1009,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        database.create_lined_channel_section_survey(
+        create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -754,7 +1030,7 @@ class LinedChannelWorkflowTestCase(
             ValueError,
             "相同起止桩号",
         ):
-            database.create_lined_channel_section_survey(
+            create_form_2_1_record(
                 project_id=self.project_id,
                 survey_batch_id=self.batch_id,
                 form_version_id=(form_version["id"]),
@@ -797,7 +1073,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        database.create_lined_channel_section_survey(
+        create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -814,7 +1090,7 @@ class LinedChannelWorkflowTestCase(
             end_stake_value=11000.0,
         )
 
-        second = database.create_lined_channel_section_survey(
+        second = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -836,7 +1112,7 @@ class LinedChannelWorkflowTestCase(
             "相同起止桩号",
         ):
             (
-                database.update_lined_channel_section_draft(
+                update_form_2_1_record(
                     survey_record_id=(second["survey_record_id"]),
                     asset_name="测试渠段B",
                     organization_unit_id=(self.office_id),
@@ -852,7 +1128,7 @@ class LinedChannelWorkflowTestCase(
                 )
             )
 
-        loaded = database.get_lined_channel_section_record(second["survey_record_id"])
+        loaded = get_form_2_1_record(second["survey_record_id"])
 
         self.assertEqual(
             loaded["start_stake_text"],
@@ -869,7 +1145,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -896,7 +1172,7 @@ class LinedChannelWorkflowTestCase(
             ],
         )
 
-        delete_result = database.delete_lined_channel_section_record(
+        delete_result = delete_form_2_1_record(
             result["survey_record_id"]
         )
 
@@ -950,7 +1226,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -971,7 +1247,7 @@ class LinedChannelWorkflowTestCase(
 
         self.assertIsNotNone(result["survey_record_id"])
 
-        records = database.get_lined_channel_section_records(
+        records = query_form_2_1_records(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
         )
@@ -1044,7 +1320,7 @@ class LinedChannelWorkflowTestCase(
     ):
         form_version = database.get_current_form_version("form_2_1")
 
-        result = database.create_lined_channel_section_survey(
+        result = create_form_2_1_record(
             project_id=self.project_id,
             survey_batch_id=self.batch_id,
             form_version_id=(form_version["id"]),
@@ -1137,159 +1413,6 @@ class LinedChannelWorkflowTestCase(
         )
 
         workbook.close()
-
-
-def test_lined_channel_update_can_change_ownership(
-    self,
-):
-    form_version = database.get_current_form_version("form_2_1")
-
-    result = database.create_lined_channel_section_survey(
-        project_id=self.project_id,
-        survey_batch_id=self.batch_id,
-        form_version_id=(form_version["id"]),
-        asset_name="原渠段",
-        organization_unit_id=(self.office_id),
-        canal_unit_id=(self.canal_id),
-        business_code=("1-01-01-01-001"),
-        record_data={
-            "channel_name": "原渠段",
-        },
-        start_stake_text=("K10+000"),
-        start_stake_value=(10000.0),
-        end_stake_text=("K11+000"),
-        end_stake_value=(11000.0),
-    )
-
-    new_office_id = database.create_organization_unit(
-        name="测试第二水管所",
-        unit_type="water_office",
-        business_code="02",
-        parent_id=(self.department_id),
-    )
-
-    self.assertIsNotNone(new_office_id)
-
-    assert new_office_id is not None
-
-    new_canal_id = database.create_canal_unit(
-        name="测试第二干渠",
-        canal_level="01",
-        parent_id=None,
-        organization_unit_id=(new_office_id),
-        description=None,
-    )
-
-    self.assertIsNotNone(new_canal_id)
-
-    assert new_canal_id is not None
-
-    database.update_lined_channel_section_draft(
-        survey_record_id=(result["survey_record_id"]),
-        asset_name="修改归属后的渠段",
-        organization_unit_id=(new_office_id),
-        canal_unit_id=(new_canal_id),
-        business_code=("1-02-01-01-001"),
-        record_data={
-            "channel_name": "修改归属后的渠段",
-        },
-        start_stake_text=("K10+000"),
-        start_stake_value=(10000.0),
-        end_stake_text=("K11+000"),
-        end_stake_value=(11000.0),
-    )
-
-    loaded = database.get_lined_channel_section_record(result["survey_record_id"])
-
-    self.assertEqual(
-        loaded["organization_unit_id"],
-        new_office_id,
-    )
-
-    self.assertEqual(
-        loaded["office_id"],
-        new_office_id,
-    )
-
-    self.assertEqual(
-        loaded["canal_unit_id"],
-        new_canal_id,
-    )
-
-    self.assertEqual(
-        loaded["canal_id"],
-        new_canal_id,
-    )
-
-    self.assertEqual(
-        loaded["business_code"],
-        "1-02-01-01-001",
-    )
-
-    # EngineeringAsset 与
-    # SurveyRecord 必须同步更新。
-    with database.get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT
-                ea.organization_unit_id
-                    AS asset_office_id,
-                ea.canal_unit_id
-                    AS asset_canal_id,
-                ea.business_code
-                    AS asset_business_code,
-
-                sr.organization_unit_id
-                    AS record_office_id,
-                sr.canal_unit_id
-                    AS record_canal_id,
-                sr.business_code
-                    AS record_business_code
-
-            FROM survey_records AS sr
-
-            JOIN engineering_assets AS ea
-                ON sr.engineering_asset_id
-                    = ea.id
-
-            WHERE sr.id = ?
-            """,
-            (result["survey_record_id"],),
-        ).fetchone()
-
-    self.assertIsNotNone(rows)
-
-    assert rows is not None
-
-    self.assertEqual(
-        rows["asset_office_id"],
-        new_office_id,
-    )
-
-    self.assertEqual(
-        rows["record_office_id"],
-        new_office_id,
-    )
-
-    self.assertEqual(
-        rows["asset_canal_id"],
-        new_canal_id,
-    )
-
-    self.assertEqual(
-        rows["record_canal_id"],
-        new_canal_id,
-    )
-
-    self.assertEqual(
-        rows["asset_business_code"],
-        "1-02-01-01-001",
-    )
-
-    self.assertEqual(
-        rows["record_business_code"],
-        "1-02-01-01-001",
-    )
 
 
 if __name__ == "__main__":
