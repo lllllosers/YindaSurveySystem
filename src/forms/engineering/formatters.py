@@ -94,3 +94,116 @@ def format_dimension_pair_asterisk(
         )
 
     return width_text or height_text
+
+
+def format_stake_range_spaced(
+    start_stake,
+    end_stake,
+):
+    """
+    附表2.1正式原表的起止桩号格式：
+    K10+000 ～ K11+000
+    """
+
+    start_text = str(
+        start_stake or ""
+    ).strip()
+    end_text = str(
+        end_stake or ""
+    ).strip()
+
+    if start_text and end_text:
+        return (
+            f"{start_text} ～ {end_text}"
+        )
+
+    return start_text or end_text
+
+
+def format_stake_range_compact(
+    start_stake,
+    end_stake,
+):
+    """
+    附表2.5正式原表的起止桩号格式：
+    K20+000～K21+200
+    """
+
+    start_text = str(
+        start_stake or ""
+    ).strip()
+    end_text = str(
+        end_stake or ""
+    ).strip()
+
+    if start_text and end_text:
+        return (
+            f"{start_text}～{end_text}"
+        )
+
+    return start_text or end_text
+
+
+def format_side_slope(
+    inner_slope,
+    outer_slope,
+):
+    """
+    附表2.1正式原表“渠道边坡（内/外）”：
+    1:1.5 / 1:1.5 -> 1:1.5/1:1.5
+    """
+
+    inner_text = _format_dimension_value(
+        inner_slope
+    )
+    outer_text = _format_dimension_value(
+        outer_slope
+    )
+
+    if not inner_text and not outer_text:
+        return ""
+
+    return (
+        f"{inner_text}/{outer_text}"
+    )
+
+
+def format_opening_size(
+    opening_count,
+    opening_width,
+    opening_height,
+):
+    """
+    附表2.2正式原表“孔数/宽×高”。
+    """
+
+    count_text = _format_dimension_value(
+        opening_count
+    )
+    width_text = _format_dimension_value(
+        opening_width
+    )
+    height_text = _format_dimension_value(
+        opening_height
+    )
+
+    if (
+        not count_text
+        and not width_text
+        and not height_text
+    ):
+        return ""
+
+    if width_text or height_text:
+        size_text = (
+            f"{width_text}×{height_text}"
+        )
+    else:
+        size_text = ""
+
+    if count_text and size_text:
+        return (
+            f"{count_text}/{size_text}"
+        )
+
+    return count_text or size_text

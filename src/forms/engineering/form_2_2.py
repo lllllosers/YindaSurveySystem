@@ -7,9 +7,18 @@ from forms.engineering.models import (
 )
 
 from forms.engineering.extension_models import (
+    OriginalFormCellBinding,
+    OriginalFormConclusionBinding,
+    OriginalFormEvaluationBinding,
+    OriginalFormExportDefinition,
+    OriginalFormPrintSettings,
     SummaryColumnDefinition,
     SummaryExportDefinition,
     ValueBindingDefinition,
+)
+
+from forms.engineering.formatters import (
+    format_opening_size,
 )
 
 from forms.engineering.list_definitions import (
@@ -348,6 +357,127 @@ FORM_2_2 = EngineeringFormDefinition(
                 alignment="center",
             ),
         ),
+    ),
+    # =========================================================
+    # 正式原表导出
+    # =========================================================
+    original_form_export_definition=OriginalFormExportDefinition(
+        template_filename="form_2_2_V1.xlsx",
+        sheet_name="附表2.2",
+        field_bindings=(
+            OriginalFormCellBinding(
+                cell="B5",
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="asset_name",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H5",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="stake",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J5",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="design_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_grade",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="build_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="renovation_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H6",
+                binding=ValueBindingDefinition.composite(
+                    source="record_data",
+                    keys=(
+                        "opening_count",
+                        "opening_width",
+                        "opening_height",
+                    ),
+                    formatter=format_opening_size,
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="increased_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="main_component_material",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="concrete_strength",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="reinforced_concrete_strength",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="cover_thickness",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="crack_width_limit",
+                ),
+            ),
+        ),
+        evaluation_binding=OriginalFormEvaluationBinding(
+            column="E",
+            start_row=9,
+        ),
+        conclusion_binding=OriginalFormConclusionBinding(
+            survey_comment_cell="C23",
+            overall_grade_cell="J23",
+            survey_date_cell="J24",
+        ),
+        print_settings=OriginalFormPrintSettings(
+            print_area="A1:J27",
+        ),
+        output_filename_prefix=(
+            "附表2.2_水闸工程状况调查表"
+        ),
+        fallback_asset_name="水闸",
     ),
     evaluation_items=tuple(SLUICE_GATE_EVALUATION_ITEMS),
     grade_options=(

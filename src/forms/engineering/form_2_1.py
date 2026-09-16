@@ -7,9 +7,19 @@ from forms.engineering.models import (
 )
 
 from forms.engineering.extension_models import (
+    OriginalFormCellBinding,
+    OriginalFormConclusionBinding,
+    OriginalFormEvaluationBinding,
+    OriginalFormExportDefinition,
+    OriginalFormPrintSettings,
     SummaryColumnDefinition,
     SummaryExportDefinition,
     ValueBindingDefinition,
+)
+
+from forms.engineering.formatters import (
+    format_side_slope,
+    format_stake_range_spaced,
 )
 
 from forms.engineering.list_definitions import (
@@ -522,6 +532,193 @@ FORM_2_1 = EngineeringFormDefinition(
             ),
         ),
         header_height=38,
+    ),
+    # =========================================================
+    # 正式原表导出
+    # =========================================================
+    original_form_export_definition=OriginalFormExportDefinition(
+        template_filename="form_2_1_V1.xlsx",
+        sheet_name="附表2.1",
+        field_bindings=(
+            OriginalFormCellBinding(
+                cell="B5",
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="asset_name",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H5",
+                binding=ValueBindingDefinition.composite(
+                    source="record",
+                    keys=(
+                        "start_stake_text",
+                        "end_stake_text",
+                    ),
+                    formatter=format_stake_range_spaced,
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="section_length",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="build_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="renovation_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="longitudinal_slope",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="design_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="channel_grade",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="cross_section_form",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="embankment_top_width",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H7",
+                binding=ValueBindingDefinition.composite(
+                    source="record_data",
+                    keys=(
+                        "inner_slope",
+                        "outer_slope",
+                    ),
+                    formatter=format_side_slope,
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="increased_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="bed_soil",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="lining_structure",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="freeboard",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="bottom_width",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="water_conveyance_loss",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B9",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="lining_material",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D9",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="lining_thickness",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F9",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="concrete_strength",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H9",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="channel_depth",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J9",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="channel_bottom_elevation",
+                ),
+            ),
+        ),
+        evaluation_binding=OriginalFormEvaluationBinding(
+            column="E",
+            start_row=11,
+        ),
+        conclusion_binding=OriginalFormConclusionBinding(
+            survey_comment_cell="C23",
+            overall_grade_cell="J23",
+            survey_date_cell="J24",
+        ),
+        print_settings=OriginalFormPrintSettings(
+            print_area="A1:J24",
+        ),
+        output_filename_prefix=(
+            "附表2.1_防渗衬砌渠道渠段工程状况调查表"
+        ),
+        fallback_asset_name="渠道渠段",
     ),
     evaluation_items=tuple(LINED_CHANNEL_EVALUATION_ITEMS),
     grade_options=(

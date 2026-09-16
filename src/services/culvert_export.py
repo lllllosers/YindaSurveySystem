@@ -1,47 +1,13 @@
-from openpyxl import (
-    Workbook,
-    load_workbook,
-)
-
-from openpyxl.styles import (
-    Alignment,
-    Border,
-    Font,
-    PatternFill,
-    Side,
-)
-
-from openpyxl.utils import (
-    get_column_letter,
-)
-
-from database import (
-    get_app_root,
-    get_engineering_asset_detail,
-    get_inspection_results,
-)
-
-
 from forms.engineering.form_2_6 import (
     FORM_2_6,
 )
 
-from forms.engineering.persistence import (
-    get_engineering_record,
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
 )
-
-
 from services.engineering_summary_export import (
     export_engineering_summary,
 )
-
-from services.original_form_export_common import (
-    fill_original_form_ownership_header,
-)
-
-# =============================================================
-# 详细汇总导出
-# =============================================================
 
 
 def export_culvert_summary(
@@ -50,8 +16,6 @@ def export_culvert_summary(
 ):
     """
     详细汇总导出的兼容入口。
-
-    实际执行统一交给工程调查通用汇总导出器。
     """
 
     return export_engineering_summary(
@@ -60,177 +24,17 @@ def export_culvert_summary(
         file_path=file_path,
     )
 
-def _get_original_form_template_path():
-    """
-    获取附表2.6正式Excel模板路径。
-    """
-
-    return get_app_root() / "templates" / "excel" / "form_2_6_V1.xlsx"
-
 
 def export_culvert_original_form(
     survey_record_id,
     file_path,
 ):
     """
-    将一条附表2.6涵洞（暗涵）
-    调查记录填入正式原表模板。
+    附表2.6正式原表导出的兼容入口。
     """
 
-    # =========================================================
-    # 1. 模板
-    # =========================================================
-
-    template_path = _get_original_form_template_path()
-
-    if not template_path.exists():
-        raise FileNotFoundError(
-            "未找到附表2.6 Excel 模板。" "\n\n" f"应存在于：\n" f"{template_path}"
-        )
-
-    # =========================================================
-    # 2. 调查记录
-    # =========================================================
-
-    record = get_engineering_record(
-            FORM_2_6,
-            survey_record_id=survey_record_id,
-        )
-
-    if record is None:
-        raise ValueError("没有找到需要导出的" "涵洞（暗涵）调查记录。")
-
-    asset = get_engineering_asset_detail(record["engineering_asset_id"])
-
-    if asset is None:
-        raise ValueError("没有找到该调查记录" "对应的工程对象。")
-
-    inspection_results = get_inspection_results(survey_record_id)
-
-    evaluation_map = {
-        result["item_code"]: result["grade"] for result in inspection_results
-    }
-
-    record_data = record["record_data"] or {}
-
-    # =========================================================
-    # 3. 打开模板
-    # =========================================================
-
-    workbook = load_workbook(template_path)
-
-    if "附表2.6" not in workbook.sheetnames:
-        workbook.close()
-
-        raise ValueError("附表2.6 Excel模板中" "缺少工作表“附表2.6”。")
-
-    worksheet = workbook["附表2.6"]
-
-    # =========================================================
-    # 4. 顶部归属和业务编号
-    # =========================================================
-
-    fill_original_form_ownership_header(
-        worksheet,
-        asset=asset,
-        canal_id=record["canal_id"],
-        business_code=(record["business_code"]),
+    return export_engineering_original_form(
+        FORM_2_6,
+        survey_record_id=survey_record_id,
+        file_path=file_path,
     )
-
-    # =========================================================
-    # 5. 基本信息
-    # =========================================================
-
-    # 第一行
-    worksheet["B5"] = record["asset_name"] or ""
-
-    worksheet["H5"] = record_data.get("stake") or ""
-
-    worksheet["J5"] = record_data.get("design_flow")
-
-    # 第二行
-    worksheet["B6"] = record_data.get("structure_grade") or ""
-
-    worksheet["D6"] = record_data.get("build_date") or ""
-
-    worksheet["F6"] = record_data.get("renovation_date") or ""
-
-    worksheet["H6"] = record_data.get("length")
-
-    worksheet["J6"] = record_data.get("increased_flow")
-
-    # 第三行
-    worksheet["B7"] = record_data.get("structure_form") or ""
-
-    worksheet["D7"] = record_data.get("main_structure_material") or ""
-
-    worksheet["F7"] = record_data.get("concrete_strength") or ""
-
-    worksheet["H7"] = record_data.get("cover_thickness")
-
-    worksheet["J7"] = record_data.get("soil_cover_thickness")
-
-    # 第四行
-    worksheet["B8"] = record_data.get("channel_width")
-
-    worksheet["D8"] = record_data.get("channel_depth")
-
-    worksheet["F8"] = record_data.get("channel_bottom_elevation")
-
-    # =========================================================
-    # 6. 11项分项评价
-    # =========================================================
-
-    for (
-        row_number,
-        item,
-    ) in enumerate(
-        FORM_2_6.evaluation_items,
-        start=10,
-    ):
-        grade = evaluation_map.get(
-            item["item_code"],
-            "",
-        )
-
-        worksheet[f"E{row_number}"] = grade or ""
-
-    # =========================================================
-    # 7. 调查结论
-    # =========================================================
-
-    worksheet["C21"] = record["survey_comment"] or ""
-
-    worksheet["J21"] = record["overall_grade"] or ""
-
-    # 签字栏不由软件填写。
-    worksheet["J22"] = record["survey_date"] or ""
-
-    # =========================================================
-    # 8. 打印设置
-    # =========================================================
-
-    worksheet.print_area = "A1:J23"
-
-    worksheet.page_setup.orientation = "landscape"
-
-    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
-
-    worksheet.page_setup.fitToWidth = 1
-    worksheet.page_setup.fitToHeight = 1
-
-    page_setup_properties = worksheet.sheet_properties.pageSetUpPr
-
-    if page_setup_properties is not None:
-        page_setup_properties.fitToPage = True
-
-    worksheet.sheet_view.showGridLines = False
-
-    workbook.save(file_path)
-
-    workbook.close()
-
-    return {
-        "file_path": file_path,
-        "survey_record_id": (survey_record_id),
-    }

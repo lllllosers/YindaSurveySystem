@@ -33,8 +33,15 @@ from tests.workflow_test_support import (
     complete_saved_engineering_record,
 )
 
+from openpyxl import (
+    load_workbook,
+)
+
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
+)
+from services.sluice_gate_export import (
+    export_sluice_gate_original_form,
 )
 
 
@@ -544,6 +551,107 @@ class SluiceGateWorkflowTestCase(
             ).fetchone()
 
         self.assertIsNone(asset)
+
+    # =========================================================
+    # 正式原表导出
+    # =========================================================
+
+    def test_export_sluice_gate_original_form(
+        self,
+    ):
+        result = self.create_complete_draft(
+            business_code="TEST-SG-EXPORT",
+            asset_name="原表导出测试水闸",
+            stake="K6+500",
+            stake_value=6500.0,
+        )
+
+        survey_record_id = int(
+            result["survey_record_id"]
+        )
+
+        output_path = (
+            Path(self.temp_directory.name)
+            / "form_2_2_export.xlsx"
+        )
+
+        export_result = (
+            export_sluice_gate_original_form(
+                survey_record_id=(
+                    survey_record_id
+                ),
+                file_path=output_path,
+            )
+        )
+
+        self.assertTrue(
+            output_path.exists()
+        )
+
+        self.assertEqual(
+            export_result["business_code"],
+            "TEST-SG-EXPORT",
+        )
+
+        workbook = load_workbook(
+            output_path,
+            data_only=False,
+        )
+
+        worksheet = workbook[
+            "附表2.2"
+        ]
+
+        self.assertEqual(
+            worksheet["B5"].value,
+            "原表导出测试水闸",
+        )
+        self.assertEqual(
+            worksheet["H5"].value,
+            "K6+500",
+        )
+        self.assertEqual(
+            worksheet["J5"].value,
+            5.5,
+        )
+        self.assertEqual(
+            worksheet["H6"].value,
+            "2/3.5×2.8",
+        )
+        self.assertEqual(
+            worksheet["B7"].value,
+            "钢筋混凝土",
+        )
+
+        for row_number in range(
+            9,
+            23,
+        ):
+            self.assertEqual(
+                worksheet[
+                    f"E{row_number}"
+                ].value,
+                "B",
+            )
+
+        self.assertEqual(
+            worksheet["C23"].value,
+            "自动化测试调查意见。",
+        )
+        self.assertEqual(
+            worksheet["J23"].value,
+            "B",
+        )
+        self.assertEqual(
+            worksheet["J24"].value,
+            "2026-09-12",
+        )
+        self.assertEqual(
+            worksheet.print_area,
+            "'附表2.2'!$A$1:$J$27",
+        )
+
+        workbook.close()
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ from forms.engineering.models import (
 )
 
 from forms.engineering.extension_models import (
+    OriginalFormCellBinding,
+    OriginalFormConclusionBinding,
+    OriginalFormEvaluationBinding,
+    OriginalFormExportDefinition,
+    OriginalFormPrintSettings,
     SummaryColumnDefinition,
     SummaryExportDefinition,
     ValueBindingDefinition,
@@ -379,6 +384,147 @@ FORM_2_3 = EngineeringFormDefinition(
                 ),
             ),
         ),
+    ),
+    # =========================================================
+    # 正式原表导出
+    # =========================================================
+    original_form_export_definition=OriginalFormExportDefinition(
+        template_filename="form_2_3_V1.xlsx",
+        sheet_name="附表2.3",
+        field_bindings=(
+            OriginalFormCellBinding(
+                cell="B5",
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="asset_name",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H5",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="stake",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J5",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="design_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_grade",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="build_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="renovation_date",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="length",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J6",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="increased_flow",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_form",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D7",
+                binding=ValueBindingDefinition.composite(
+                    source="record_data",
+                    keys=(
+                        "section_width",
+                        "section_height",
+                    ),
+                    formatter=format_dimension_pair,
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_body_structure",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="H7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_wall_thickness",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="J7",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="waterstop_form",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="B8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_bottom_elevation",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="D8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="span_count",
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell="F8",
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="lower_support_structure_form",
+                ),
+            ),
+        ),
+        evaluation_binding=OriginalFormEvaluationBinding(
+            column="E",
+            start_row=10,
+        ),
+        conclusion_binding=OriginalFormConclusionBinding(
+            survey_comment_cell="C22",
+            overall_grade_cell="J22",
+            survey_date_cell="J23",
+        ),
+        print_settings=OriginalFormPrintSettings(
+            print_area="A1:J26",
+        ),
+        output_filename_prefix=(
+            "附表2.3_渡槽（座槽）工程状况调查表"
+        ),
+        fallback_asset_name="渡槽（座槽）",
     ),
     evaluation_items=tuple(AQUEDUCT_EVALUATION_ITEMS),
     grade_options=(
