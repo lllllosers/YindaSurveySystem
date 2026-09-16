@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = (
+    Path(__file__).resolve().parents[2]
+)
+
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -15,8 +18,12 @@ if str(SRC_DIR) not in sys.path:
 
 from forms.engineering.form_2_1 import FORM_2_1
 from forms.engineering.form_2_2 import FORM_2_2
+from forms.engineering.form_2_3 import FORM_2_3
+from forms.engineering.form_2_4 import FORM_2_4
 from forms.engineering.form_2_5 import FORM_2_5
+from forms.engineering.form_2_6 import FORM_2_6
 from forms.engineering.formatters import (
+    format_dimension_pair,
     format_dimension_pair_asterisk,
     format_opening_size,
     format_side_slope,
@@ -25,10 +32,10 @@ from forms.engineering.formatters import (
 )
 
 
-class RemainingOriginalFormDefinitionsTestCase(
+class AllEngineeringOriginalFormDefinitionsTestCase(
     unittest.TestCase,
 ):
-    def test_remaining_original_form_definition_contracts(
+    def test_all_forms_have_original_form_definitions(
         self,
     ):
         expectations = (
@@ -55,6 +62,28 @@ class RemainingOriginalFormDefinitionsTestCase(
                 "A1:J27",
             ),
             (
+                FORM_2_3,
+                "form_2_3_V1.xlsx",
+                "附表2.3",
+                16,
+                10,
+                "C22",
+                "J22",
+                "J23",
+                "A1:J26",
+            ),
+            (
+                FORM_2_4,
+                "form_2_4_V1.xlsx",
+                "附表2.4",
+                14,
+                10,
+                "C22",
+                "J22",
+                "J23",
+                "A1:J25",
+            ),
+            (
                 FORM_2_5,
                 "form_2_5_V1.xlsx",
                 "附表2.5",
@@ -64,6 +93,17 @@ class RemainingOriginalFormDefinitionsTestCase(
                 "J23",
                 "J24",
                 "A1:J25",
+            ),
+            (
+                FORM_2_6,
+                "form_2_6_V1.xlsx",
+                "附表2.6",
+                16,
+                10,
+                "C21",
+                "J21",
+                "J22",
+                "A1:J23",
             ),
         )
 
@@ -89,6 +129,7 @@ class RemainingOriginalFormDefinitionsTestCase(
                 self.assertIsNotNone(
                     original
                 )
+
                 assert original is not None
 
                 self.assertEqual(
@@ -112,23 +153,92 @@ class RemainingOriginalFormDefinitionsTestCase(
                     evaluation_start_row,
                 )
                 self.assertEqual(
-                    original.conclusion_binding.survey_comment_cell,
+                    original.conclusion_binding
+                    .survey_comment_cell,
                     comment_cell,
                 )
                 self.assertEqual(
-                    original.conclusion_binding.overall_grade_cell,
+                    original.conclusion_binding
+                    .overall_grade_cell,
                     grade_cell,
                 )
                 self.assertEqual(
-                    original.conclusion_binding.survey_date_cell,
+                    original.conclusion_binding
+                    .survey_date_cell,
                     date_cell,
                 )
                 self.assertEqual(
-                    original.print_settings.print_area,
+                    original.print_settings
+                    .print_area,
                     print_area,
                 )
+                self.assertTrue(
+                    original.output_filename_prefix
+                )
+                self.assertTrue(
+                    original.fallback_asset_name
+                )
 
-    def test_legacy_composite_formatters_are_preserved(
+    def test_composite_bindings_use_shared_formatters(
+        self,
+    ):
+        definitions = (
+            FORM_2_1,
+            FORM_2_2,
+            FORM_2_3,
+            FORM_2_5,
+        )
+
+        bindings = {}
+
+        for definition in definitions:
+            original = (
+                definition
+                .original_form_export_definition
+            )
+
+            assert original is not None
+
+            bindings[
+                definition.form_code
+            ] = {
+                item.cell: item.binding
+                for item
+                in original.field_bindings
+            }
+
+        self.assertIs(
+            bindings["form_2_1"]["H5"]
+            .formatter,
+            format_stake_range_spaced,
+        )
+        self.assertIs(
+            bindings["form_2_1"]["H7"]
+            .formatter,
+            format_side_slope,
+        )
+        self.assertIs(
+            bindings["form_2_2"]["H6"]
+            .formatter,
+            format_opening_size,
+        )
+        self.assertIs(
+            bindings["form_2_3"]["D7"]
+            .formatter,
+            format_dimension_pair,
+        )
+        self.assertIs(
+            bindings["form_2_5"]["F5"]
+            .formatter,
+            format_stake_range_compact,
+        )
+        self.assertIs(
+            bindings["form_2_5"]["E8"]
+            .formatter,
+            format_dimension_pair_asterisk,
+        )
+
+    def test_legacy_composite_formats_are_preserved(
         self,
     ):
         self.assertEqual(
@@ -138,7 +248,6 @@ class RemainingOriginalFormDefinitionsTestCase(
             ),
             "K10+000 ～ K11+000",
         )
-
         self.assertEqual(
             format_stake_range_compact(
                 "K20+000",
@@ -146,7 +255,6 @@ class RemainingOriginalFormDefinitionsTestCase(
             ),
             "K20+000～K21+200",
         )
-
         self.assertEqual(
             format_side_slope(
                 "1:1.5",
@@ -154,7 +262,6 @@ class RemainingOriginalFormDefinitionsTestCase(
             ),
             "1:1.5/1:1.5",
         )
-
         self.assertEqual(
             format_opening_size(
                 2,
@@ -163,67 +270,19 @@ class RemainingOriginalFormDefinitionsTestCase(
             ),
             "2/3.5×2.8",
         )
-
+        self.assertEqual(
+            format_dimension_pair(
+                3.2,
+                2.4,
+            ),
+            "3.2×2.4",
+        )
         self.assertEqual(
             format_dimension_pair_asterisk(
                 3.0,
                 3.5,
             ),
             "3.0*3.5",
-        )
-
-    def test_composite_bindings_use_expected_formatters(
-        self,
-    ):
-        original_21 = (
-            FORM_2_1
-            .original_form_export_definition
-        )
-        original_22 = (
-            FORM_2_2
-            .original_form_export_definition
-        )
-        original_25 = (
-            FORM_2_5
-            .original_form_export_definition
-        )
-
-        assert original_21 is not None
-        assert original_22 is not None
-        assert original_25 is not None
-
-        bindings_21 = {
-            item.cell: item.binding
-            for item in original_21.field_bindings
-        }
-        bindings_22 = {
-            item.cell: item.binding
-            for item in original_22.field_bindings
-        }
-        bindings_25 = {
-            item.cell: item.binding
-            for item in original_25.field_bindings
-        }
-
-        self.assertIs(
-            bindings_21["H5"].formatter,
-            format_stake_range_spaced,
-        )
-        self.assertIs(
-            bindings_21["H7"].formatter,
-            format_side_slope,
-        )
-        self.assertIs(
-            bindings_22["H6"].formatter,
-            format_opening_size,
-        )
-        self.assertIs(
-            bindings_25["F5"].formatter,
-            format_stake_range_compact,
-        )
-        self.assertIs(
-            bindings_25["E8"].formatter,
-            format_dimension_pair_asterisk,
         )
 
 

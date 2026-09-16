@@ -23,6 +23,10 @@ from database import (
     get_engineering_survey_query_records,
 )
 
+from forms.engineering.formatters import (
+    format_record_status,
+)
+
 
 class EngineeringSurveyListPage(QWidget):
     """
@@ -69,18 +73,9 @@ class EngineeringSurveyListPage(QWidget):
     TABLE_HEADERS = ()
     TABLE_WIDTHS = ()
 
-    # 当前2.1～2.9均为 A/B/C/D。
-    # 后续2.10等三级评价表可以单独覆盖。
-    GRADE_OPTIONS = (
-        "A",
-        "B",
-        "C",
-        "D",
-    )
-
-    # 现有2.3列表显示A/B/C/D统计；
-    # 2.1、2.2当前仅显示录入进度。
-    # 迁移时保持各表原行为。
+    # 由 GenericEngineeringListPage
+    # 从 EngineeringFormDefinition / ListDefinition 注入。
+    GRADE_OPTIONS = ()
     SHOW_GRADE_STATISTICS = True
 
     EXPORT_FILENAME_PREFIX = "工程调查表"
@@ -650,12 +645,8 @@ class EngineeringSurveyListPage(QWidget):
 
         position_text = self._position_text(selected_record)
 
-        status_text = {
-            "draft": "草稿",
-            "completed": "录入完成",
-        }.get(
-            selected_record["record_status"],
-            selected_record["record_status"],
+        status_text = format_record_status(
+            selected_record["record_status"]
         )
 
         reply = QMessageBox.question(

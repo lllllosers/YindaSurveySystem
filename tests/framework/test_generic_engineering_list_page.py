@@ -32,10 +32,6 @@ from forms.engineering.form_2_3 import (
     FORM_2_3,
 )
 
-from pages.aqueduct_list_page import (
-    AqueductListPage,
-)
-
 from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
@@ -60,9 +56,6 @@ class GenericEngineeringListPageTestCase(
     def setUp(
         self,
     ):
-        # 列表页 __init__ 会自动 load_data。
-        # 本组测试只验证声明式 UI/runtime，
-        # 不访问真实数据库。
         self.load_data_patch = patch.object(
             EngineeringSurveyListPage,
             "load_data",
@@ -72,7 +65,9 @@ class GenericEngineeringListPageTestCase(
         self.load_data_patch.start()
 
         self.page = (
-            AqueductListPage()
+            GenericEngineeringListPage(
+                FORM_2_3
+            )
         )
 
     def tearDown(
@@ -104,14 +99,9 @@ class GenericEngineeringListPageTestCase(
             .show_grade_statistics
         )
 
-    def test_aqueduct_list_uses_generic_page(
+    def test_generic_list_uses_definition_directly(
         self,
     ):
-        self.assertIsInstance(
-            self.page,
-            GenericEngineeringListPage,
-        )
-
         self.assertIs(
             self.page.definition,
             FORM_2_3,
@@ -125,6 +115,23 @@ class GenericEngineeringListPageTestCase(
         self.assertEqual(
             self.page.GRADE_OPTIONS,
             FORM_2_3.grade_options,
+        )
+
+        original = (
+            FORM_2_3
+            .original_form_export_definition
+        )
+
+        assert original is not None
+
+        self.assertEqual(
+            self.page.EXPORT_FILENAME_PREFIX,
+            original.output_filename_prefix,
+        )
+
+        self.assertEqual(
+            self.page.EXPORT_FALLBACK_ASSET_NAME,
+            original.fallback_asset_name,
         )
 
     def test_headers_and_widths_come_from_definition(
@@ -167,22 +174,6 @@ class GenericEngineeringListPageTestCase(
                 "调查时间",
                 "状态",
                 "修改时间",
-            ),
-        )
-
-        self.assertEqual(
-            self.page.TABLE_WIDTHS,
-            (
-                155,
-                180,
-                130,
-                130,
-                150,
-                180,
-                105,
-                110,
-                90,
-                160,
             ),
         )
 
@@ -281,6 +272,36 @@ class GenericEngineeringListPageTestCase(
         self.assertEqual(
             values[8],
             "future_status",
+        )
+
+    def test_original_export_calls_generic_engine(
+        self,
+    ):
+        with patch(
+            "pages.components."
+            "generic_engineering_list_page."
+            "export_engineering_original_form",
+            return_value={
+                "survey_record_id": 123,
+            },
+        ) as exporter:
+            result = (
+                self.page
+                ._export_original_form(
+                    123,
+                    "test.xlsx",
+                )
+            )
+
+        exporter.assert_called_once_with(
+            FORM_2_3,
+            survey_record_id=123,
+            file_path="test.xlsx",
+        )
+
+        self.assertEqual(
+            result["survey_record_id"],
+            123,
         )
 
 

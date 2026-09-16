@@ -10,7 +10,10 @@ from openpyxl import (
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = (
+    Path(__file__).resolve().parents[2]
+)
+
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -23,9 +26,6 @@ if str(SRC_DIR) not in sys.path:
 from forms.engineering.form_2_4 import (
     FORM_2_4,
 )
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
-)
 from services.engineering_original_form_export import (
     export_engineering_original_form,
 )
@@ -34,112 +34,12 @@ from services.engineering_original_form_export import (
 class GenericEngineeringOriginalFormExportTestCase(
     unittest.TestCase,
 ):
-    def test_form_2_4_and_2_6_original_definitions(
-        self,
-    ):
-        expectations = (
-            (
-                FORM_2_4,
-                "form_2_4_V1.xlsx",
-                "附表2.4",
-                14,
-                "C22",
-                "J22",
-                "J23",
-                "A1:J25",
-            ),
-            (
-                FORM_2_6,
-                "form_2_6_V1.xlsx",
-                "附表2.6",
-                16,
-                "C21",
-                "J21",
-                "J22",
-                "A1:J23",
-            ),
-        )
-
-        for (
-            definition,
-            template_filename,
-            sheet_name,
-            field_count,
-            comment_cell,
-            grade_cell,
-            date_cell,
-            print_area,
-        ) in expectations:
-            with self.subTest(
-                form_code=definition.form_code
-            ):
-                export_definition = (
-                    definition
-                    .original_form_export_definition
-                )
-
-                self.assertIsNotNone(
-                    export_definition
-                )
-                assert export_definition is not None
-
-                self.assertEqual(
-                    export_definition.template_filename,
-                    template_filename,
-                )
-                self.assertEqual(
-                    export_definition.sheet_name,
-                    sheet_name,
-                )
-                self.assertEqual(
-                    len(
-                        export_definition
-                        .field_bindings
-                    ),
-                    field_count,
-                )
-                self.assertEqual(
-                    export_definition
-                    .evaluation_binding
-                    .column,
-                    "E",
-                )
-                self.assertEqual(
-                    export_definition
-                    .evaluation_binding
-                    .start_row,
-                    10,
-                )
-                self.assertEqual(
-                    export_definition
-                    .conclusion_binding
-                    .survey_comment_cell,
-                    comment_cell,
-                )
-                self.assertEqual(
-                    export_definition
-                    .conclusion_binding
-                    .overall_grade_cell,
-                    grade_cell,
-                )
-                self.assertEqual(
-                    export_definition
-                    .conclusion_binding
-                    .survey_date_cell,
-                    date_cell,
-                )
-                self.assertEqual(
-                    export_definition
-                    .print_settings
-                    .print_area,
-                    print_area,
-                )
-
     def test_generic_original_export_executes_declared_bindings(
         self,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+
             template_dir = (
                 root
                 / "templates"
@@ -156,7 +56,9 @@ class GenericEngineeringOriginalFormExportTestCase(
 
             workbook = Workbook()
             worksheet = workbook.active
+
             assert worksheet is not None
+
             worksheet.title = "附表2.4"
             workbook.save(template_path)
             workbook.close()
@@ -246,6 +148,14 @@ class GenericEngineeringOriginalFormExportTestCase(
             self.assertEqual(
                 result["survey_record_id"],
                 99,
+            )
+            self.assertEqual(
+                result["business_code"],
+                "1-01-01-04-001",
+            )
+            self.assertEqual(
+                result["asset_name"],
+                "测试倒虹吸",
             )
 
             fill_header.assert_called_once()

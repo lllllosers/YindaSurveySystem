@@ -1,7 +1,3 @@
-from typing import (
-    Callable,
-)
-
 from PySide6.QtCore import (
     Qt,
 )
@@ -14,50 +10,28 @@ from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
 
-
-OriginalFormExporter = Callable[..., dict]
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
 
 
 class GenericEngineeringListPage(
     EngineeringSurveyListPage,
 ):
     """
-    基于 EngineeringFormDefinition.list_definition
+    基于 EngineeringFormDefinition
     驱动的附表2当前批次通用列表页。
 
-    EngineeringSurveyListPage 继续负责：
-    - 当前批次加载；
-    - 筛选；
-    - 统计；
-    - 删除；
-    - 双击打开；
-    - 正式原表导出的交互流程。
-
-    本类负责把声明式 ListDefinition
-    转换为基类需要的页面配置和行数据。
+    EngineeringSurveyListPage 负责公共列表交互；
+    本类只把声明式 ListDefinition /
+    OriginalFormExportDefinition
+    适配为运行时配置。
     """
-
-    DEFINITION: (
-        EngineeringFormDefinition | None
-    ) = None
-
-    # R1-13D 正式原表引擎迁移前，
-    # 暂由极薄表级 wrapper 提供现有 exporter。
-    ORIGINAL_EXPORTER: (
-        OriginalFormExporter | None
-    ) = None
 
     def __init__(
         self,
+        definition: EngineeringFormDefinition,
     ):
-        definition = self.DEFINITION
-
-        if definition is None:
-            raise ValueError(
-                "GenericEngineeringListPage "
-                "必须配置 DEFINITION。"
-            )
-
         list_definition = (
             definition.list_definition
         )
@@ -68,9 +42,27 @@ class GenericEngineeringListPage(
                 "尚未配置 ListDefinition。"
             )
 
+        original_form_definition = (
+            definition
+            .original_form_export_definition
+        )
+
+        if (
+            original_form_definition
+            is None
+        ):
+            raise ValueError(
+                f"{definition.form_code} "
+                "尚未配置 "
+                "OriginalFormExportDefinition。"
+            )
+
         self.definition = definition
         self.list_definition = (
             list_definition
+        )
+        self.original_form_definition = (
+            original_form_definition
         )
 
         # =====================================================
@@ -119,6 +111,16 @@ class GenericEngineeringListPage(
             .show_grade_statistics
         )
 
+        self.EXPORT_FILENAME_PREFIX = (
+            original_form_definition
+            .output_filename_prefix
+        )
+
+        self.EXPORT_FALLBACK_ASSET_NAME = (
+            original_form_definition
+            .fallback_asset_name
+        )
+
         super().__init__()
 
     # =========================================================
@@ -128,25 +130,24 @@ class GenericEngineeringListPage(
     def _validate_configuration(
         self,
     ):
-        if self.DEFINITION is None:
-            raise ValueError(
-                "GenericEngineeringListPage "
-                "必须配置 DEFINITION。"
-            )
-
         if (
-            self.DEFINITION.list_definition
+            self.definition.list_definition
             is None
         ):
             raise ValueError(
-                f"{self.DEFINITION.form_code} "
+                f"{self.definition.form_code} "
                 "尚未配置 ListDefinition。"
             )
 
-        if self.ORIGINAL_EXPORTER is None:
+        if (
+            self.definition
+            .original_form_export_definition
+            is None
+        ):
             raise ValueError(
-                f"{self.DEFINITION.form_code} "
-                "尚未配置正式原表 exporter。"
+                f"{self.definition.form_code} "
+                "尚未配置 "
+                "OriginalFormExportDefinition。"
             )
 
         super()._validate_configuration()
@@ -160,13 +161,19 @@ class GenericEngineeringListPage(
         record,
         binding,
     ):
-        if binding.source == "query_record":
+        if (
+            binding.source
+            == "query_record"
+        ):
             values = [
                 record[key]
                 for key in binding.keys
             ]
 
-        elif binding.source == "record_data":
+        elif (
+            binding.source
+            == "record_data"
+        ):
             record_data = (
                 record["record_data"]
                 or {}
@@ -229,7 +236,6 @@ class GenericEngineeringListPage(
         self,
         records,
     ):
-        # 记录 ID 存储和基础单元格创建继续复用公共基类。
         super()._render_records(
             records
         )
@@ -281,15 +287,8 @@ class GenericEngineeringListPage(
         survey_record_id,
         file_path,
     ):
-        exporter = self.ORIGINAL_EXPORTER
-
-        if exporter is None:
-            raise ValueError(
-                "当前调查表尚未配置"
-                "正式原表 exporter。"
-            )
-
-        return exporter(
+        return export_engineering_original_form(
+            self.definition,
             survey_record_id=(
                 survey_record_id
             ),

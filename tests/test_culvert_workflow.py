@@ -15,6 +15,18 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_6 import (
+    FORM_2_6,
+)
+
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
+from services.engineering_summary_export import (
+    export_engineering_summary,
+)
+
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
 )
@@ -27,10 +39,6 @@ from openpyxl import (
     load_workbook,
 )
 
-from services.culvert_export import (
-    export_culvert_original_form,
-    export_culvert_summary,
-)
 
 
 class CulvertWorkflowTestCase(
@@ -448,7 +456,8 @@ class CulvertWorkflowTestCase(
 
         output_path = Path(self.temp_directory.name) / "form_2_6_export.xlsx"
 
-        export_culvert_original_form(
+        export_engineering_original_form(
+            FORM_2_6,
             survey_record_id=(survey_record_id),
             file_path=output_path,
         )
@@ -606,7 +615,8 @@ class CulvertWorkflowTestCase(
 
         output_path = Path(self.temp_directory.name) / "culvert_summary.xlsx"
 
-        export_result = export_culvert_summary(
+        export_result = export_engineering_summary(
+            FORM_2_6,
             records=target_records,
             file_path=output_path,
         )

@@ -4,9 +4,11 @@
 
 ## 当前版本
 
-**V0.5.0 测试版**
+**V0.5.1 测试版**
 
-当前系统已完成附表2.1～2.6六类工程调查的完整业务闭环，并完成工程调查录入层的框架化重构。
+V0.5.1 是当前测试基线，完成了附表2.1～2.6工程调查框架的展示层、汇总导出层、正式原表导出层及注册入口收口。
+
+当前系统已完成附表2.1～2.6六类工程调查的完整业务闭环。附表2.7尚未开始开发。
 
 ## 当前已实现
 
@@ -41,45 +43,73 @@
 - 开发测试数据与正式运行数据分离
 - 独立临时数据库自动化回归测试
 
-## 工程调查框架
+## Engineering Form Framework
 
-附表2.1～2.6的录入层已经统一采用声明式工程调查框架：
+附表2.1～2.6已经统一进入声明式工程调查框架。
 
 ```text
 EngineeringFormDefinition
+├── core identity / fields / position / evaluation
+├── ListDefinition
+├── SummaryExportDefinition
+└── OriginalFormExportDefinition
+        │
         ↓
 EngineeringFormRegistry
-        ↓
-GenericEngineeringSurveyPage
-        ↓
-generic persistence
-        ↓
-point / range common DB API
+        │
+        ├── GenericEngineeringSurveyPage
+        │       ↓
+        │   generic persistence
+        │       ↓
+        │   point / range common DB API
+        │
+        ├── GenericEngineeringListPage
+        │       ↓
+        │   EngineeringSurveyListPage
+        │
+        ├── Generic Engineering Summary Exporter
+        └── Generic Original Form Exporter
 ```
+
+`EngineeringFormRegistry` 是生产代码中已接入工程调查表身份的统一注册入口。
 
 每张工程调查表主要保留自身的：
 
-- 正式字段定义
-- 页面分区与字段布局
+- 正式字段和页面分区
 - 工程位置类型
-- A/B/C/D评价标准
-- 必要的列表表现差异
-- 正式Excel成果差异
+- 正式评价项目与标准
+- 列表声明
+- 详细汇总列声明
+- 正式原表 Excel 映射
+- 必要的纯 formatter
 
-相同业务语义优先使用公共实现，不再为每张附表复制一套录入页、CRUD和完成逻辑。
+公共生命周期、当前批次列表行为、详细汇总执行流程和正式原表执行流程均由通用实现承担。
+
+当前不再为每张附表复制：
+
+- 专属录入页面
+- 专属 CRUD / completion 流程
+- 专属当前批次 List Page
+- 专属 summary exporter
+- 专属 original-form exporter
+
+## 后续新增工程调查表的标准路径
+
+后续附表2.x原则上应只新增或补充：
+
+1. `FORM_2_X` 正式定义；
+2. 正式评价内容；
+3. List / Summary / Original Form 声明；
+4. 正式 Excel 模板；
+5. 表级合同测试和业务 workflow 回归测试。
+
+只有在真实业务差异无法由现有合同清晰表达时，才增加受控扩展点；不预先建设万能动态表单平台。
 
 ## 当前开发方向
 
-当前2.1～2.6录入框架已经稳定。
+当前阶段先冻结并验证本轮重构基线，不继续改造已稳定公共框架。
 
-下一阶段优先继续收敛附表2系列的公共展示与导出能力，包括：
-
-- List Page公共与特异配置进一步声明化
-- 详细汇总导出通用化
-- 正式原表导出逐步形成“公共引擎 + 表级配置”
-- 降低后续2.7～2.14接入时的重复代码量
-
-完成上述扩展性优化后，再继续接入后续正式调查表。
+下一张正式调查表开始前，应先核对正式源和业务差异，再判断现有框架是否需要最小扩展。附表2.7尚未开始开发。
 
 ## 技术栈
 

@@ -22,6 +22,14 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
+from services.engineering_summary_export import (
+    export_engineering_summary,
+)
+
 from forms.engineering.form_2_1 import (
     FORM_2_1,
 )
@@ -39,10 +47,6 @@ from tests.workflow_test_support import (
 
 from services.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
-)
-from services.lined_channel_export import (
-    export_lined_channel_original_form,
-    export_lined_channel_summary,
 )
 
 
@@ -1254,7 +1258,8 @@ class LinedChannelWorkflowTestCase(
 
         file_path = Path(self.temp_directory.name) / "lined_channel_summary.xlsx"
 
-        export_result = export_lined_channel_summary(
+        export_result = export_engineering_summary(
+            FORM_2_1,
             records=records,
             file_path=file_path,
         )
@@ -1341,7 +1346,8 @@ class LinedChannelWorkflowTestCase(
 
         file_path = Path(self.temp_directory.name) / "lined_channel_original.xlsx"
 
-        export_result = export_lined_channel_original_form(
+        export_result = export_engineering_original_form(
+            FORM_2_1,
             survey_record_id=(result["survey_record_id"]),
             file_path=file_path,
         )

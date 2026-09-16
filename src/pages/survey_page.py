@@ -1,5 +1,4 @@
 from functools import partial
-from typing import Any
 
 from PySide6.QtWidgets import (
     QLabel,
@@ -10,169 +9,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pages.aqueduct_list_page import (
-    AqueductListPage,
+from forms.engineering.registry import (
+    get_engineering_form_definitions,
 )
 
-from pages.inverted_siphon_list_page import (
-    InvertedSiphonListPage,
-)
-
-from pages.lined_channel_section_list_page import (
-    LinedChannelSectionListPage,
-)
-
-from pages.sluice_gate_list_page import (
-    SluiceGateListPage,
-)
-
-from pages.tunnel_list_page import (
-    TunnelListPage,
-)
-
-from pages.culvert_list_page import (
-    CulvertListPage,
-)
-
-from forms.engineering.form_2_1 import (
-    FORM_2_1,
-)
-
-from forms.engineering.form_2_2 import (
-    FORM_2_2,
-)
-
-from forms.engineering.form_2_3 import (
-    FORM_2_3,
-)
-
-from forms.engineering.form_2_4 import (
-    FORM_2_4,
-)
-
-from forms.engineering.form_2_5 import (
-    FORM_2_5,
-)
-
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
+from pages.components.generic_engineering_list_page import (
+    GenericEngineeringListPage,
 )
 
 from pages.components.generic_engineering_survey_page import (
     GenericEngineeringSurveyPage,
 )
-
-# =============================================================
-# 附表2工程现状调查页面注册
-# =============================================================
-
-ENGINEERING_SURVEY_FORMS: tuple[
-    dict[str, Any],
-    ...,
-] = (
-    {
-        "form_code": FORM_2_1.form_code,
-        "button_text": (
-            FORM_2_1.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": (
-            LinedChannelSectionListPage
-        ),
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_1,
-        ),
-    },
-    {
-        "form_code": FORM_2_2.form_code,
-        "button_text": (
-            FORM_2_2.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": (
-            SluiceGateListPage
-        ),
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_2,
-        ),
-    },
-    {
-        "form_code": FORM_2_3.form_code,
-        "button_text": (
-            FORM_2_3.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": (
-            AqueductListPage
-        ),
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_3,
-        ),
-    },
-    {
-        "form_code": FORM_2_4.form_code,
-        "button_text": (
-            FORM_2_4.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": (
-            InvertedSiphonListPage
-        ),
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_4,
-        ),
-    },
-    {
-        "form_code": FORM_2_5.form_code,
-        "button_text": (
-            FORM_2_5.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": TunnelListPage,
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_5,
-        ),
-    },
-    {
-        "form_code": FORM_2_6.form_code,
-        "button_text": (
-            FORM_2_6.display_name.removesuffix(
-                "表"
-            )
-        ),
-        "list_page_class": CulvertListPage,
-        "edit_page_factory": partial(
-            GenericEngineeringSurveyPage,
-            FORM_2_6,
-        ),
-    },
-)
-
-
-def prepare_engineering_new_page(
-    edit_page,
-):
-    """
-    初始化一条新的工程调查记录。
-
-    附表2工程调查录入页面已经统一使用
-    GenericEngineeringSurveyPage，
-    新增流程统一调用
-    initialize_new_record()。
-    """
-
-    edit_page.initialize_new_record()
-
 
 
 class SurveyPage(QWidget):
@@ -192,9 +39,9 @@ class SurveyPage(QWidget):
        - 当前仅建立业务域入口；
        - 后续独立设计数据模型和录入方式。
 
-    附表2具体页面通过注册表接入，
-    避免每增加一张表就在本类中
-    重复增加一整套导航方法。
+    附表2页面直接由 EngineeringFormRegistry
+    中的正式定义生成，SurveyPage 不再维护
+    第二套表单注册或专属列表页类型。
     """
 
     def __init__(
@@ -360,15 +207,21 @@ class SurveyPage(QWidget):
         # 根据注册表生成工程调查入口
         # =====================================================
 
-        for definition in ENGINEERING_SURVEY_FORMS:
-            button = QPushButton(definition["button_text"])
+        for definition in (
+            get_engineering_form_definitions()
+        ):
+            button = QPushButton(
+                definition
+                .display_name
+                .removesuffix("表")
+            )
 
             button.setMinimumHeight(46)
 
             button.clicked.connect(
                 partial(
                     self.open_engineering_list,
-                    definition["form_code"],
+                    definition.form_code,
                 )
             )
 
@@ -440,12 +293,22 @@ class SurveyPage(QWidget):
     def _register_engineering_pages(
         self,
     ):
-        for definition in ENGINEERING_SURVEY_FORMS:
-            form_code = definition["form_code"]
+        for definition in (
+            get_engineering_form_definitions()
+        ):
+            form_code = definition.form_code
 
-            list_page = definition["list_page_class"]()
+            list_page = (
+                GenericEngineeringListPage(
+                    definition
+                )
+            )
 
-            edit_page = definition["edit_page_factory"]()
+            edit_page = (
+                GenericEngineeringSurveyPage(
+                    definition
+                )
+            )
 
             self.engineering_pages[form_code] = {
                 "list_page": list_page,
@@ -554,7 +417,7 @@ class SurveyPage(QWidget):
 
         edit_page = pages["edit_page"]
 
-        prepare_engineering_new_page(edit_page)
+        edit_page.initialize_new_record()
 
         self.stack.setCurrentWidget(edit_page)
 

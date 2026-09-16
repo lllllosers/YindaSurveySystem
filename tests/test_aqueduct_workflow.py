@@ -20,6 +20,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
 from forms.engineering.form_2_3 import (
     FORM_2_3,
 )
@@ -42,9 +46,6 @@ from services.business_code import (
     get_engineering_type_code,
 )
 
-from services.aqueduct_export import (
-    export_aqueduct_original_form,
-)
 
 
 class AqueductWorkflowTestCase(
@@ -1118,7 +1119,8 @@ class AqueductWorkflowTestCase(
 
         output_path = Path(self.temp_directory.name) / "form_2_3_export.xlsx"
 
-        export_result = export_aqueduct_original_form(
+        export_result = export_engineering_original_form(
+            FORM_2_3,
             survey_record_id=(survey_record_id),
             file_path=(output_path),
         )

@@ -20,15 +20,20 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
+from services.engineering_summary_export import (
+    export_engineering_summary,
+)
+
 from forms.engineering.form_2_1 import (
     FORM_2_1,
 )
 
 from services.query_export import (
     export_common_query_summary,
-)
-from services.aqueduct_export import (
-    export_aqueduct_summary,
 )
 from services.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
@@ -633,7 +638,8 @@ class DataQueryTestCase(unittest.TestCase):
 
         file_path = Path(self.temp_directory.name) / "aqueduct_summary.xlsx"
 
-        result = export_aqueduct_summary(
+        result = export_engineering_summary(
+            FORM_2_3,
             records=records,
             file_path=file_path,
         )

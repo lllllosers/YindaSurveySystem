@@ -19,6 +19,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
 from forms.engineering.form_2_2 import (
     FORM_2_2,
 )
@@ -39,9 +43,6 @@ from openpyxl import (
 
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
-)
-from services.sluice_gate_export import (
-    export_sluice_gate_original_form,
 )
 
 
@@ -576,7 +577,8 @@ class SluiceGateWorkflowTestCase(
         )
 
         export_result = (
-            export_sluice_gate_original_form(
+            export_engineering_original_form(
+                FORM_2_2,
                 survey_record_id=(
                     survey_record_id
                 ),

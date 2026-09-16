@@ -27,32 +27,18 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from forms.engineering.form_2_1 import (
-    FORM_2_1,
-)
 from forms.engineering.form_2_2 import (
     FORM_2_2,
 )
 from forms.engineering.form_2_3 import (
     FORM_2_3,
 )
-from forms.engineering.form_2_4 import (
-    FORM_2_4,
-)
-from forms.engineering.form_2_5 import (
-    FORM_2_5,
-)
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
+from forms.engineering.registry import (
+    get_engineering_form_definitions,
 )
 
 from pages.components.generic_engineering_survey_page import (
     GenericEngineeringSurveyPage,
-)
-
-from pages.survey_page import (
-    ENGINEERING_SURVEY_FORMS,
-    prepare_engineering_new_page,
 )
 
 
@@ -68,59 +54,34 @@ class GenericSurveyIntegrationTestCase(
             or QApplication([])
         )
 
-    def test_all_forms_use_generic_production_page(
+    def test_all_registered_forms_build_generic_production_page(
         self,
     ):
+        """
+        Registry 是工程调查表唯一注册事实。
+
+        每个已经注册的 EngineeringFormDefinition
+        都必须能够直接构造统一生产录入页。
+        """
+
         definitions = (
-            FORM_2_1,
-            FORM_2_2,
-            FORM_2_3,
-            FORM_2_4,
-            FORM_2_5,
-            FORM_2_6,
+            get_engineering_form_definitions()
         )
 
-        self.assertEqual(
-            tuple(
-                item["form_code"]
-                for item
-                in ENGINEERING_SURVEY_FORMS
-            ),
-            tuple(
-                definition.form_code
-                for definition
-                in definitions
-            ),
+        self.assertGreater(
+            len(definitions),
+            0,
         )
 
         for definition in definitions:
             with self.subTest(
                 form_code=definition.form_code
             ):
-                registration = next(
-                    item
-                    for item
-                    in ENGINEERING_SURVEY_FORMS
-                    if (
-                        item["form_code"]
-                        == definition.form_code
+                page = (
+                    GenericEngineeringSurveyPage(
+                        definition
                     )
                 )
-
-                self.assertEqual(
-                    registration[
-                        "button_text"
-                    ],
-                    (
-                        definition
-                        .display_name
-                        .removesuffix("表")
-                    ),
-                )
-
-                page = registration[
-                    "edit_page_factory"
-                ]()
 
                 try:
                     self.assertIsInstance(
@@ -178,8 +139,6 @@ class GenericSurveyIntegrationTestCase(
 
         finally:
             page.deleteLater()
-
-
 
 
 if __name__ == "__main__":

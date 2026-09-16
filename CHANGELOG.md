@@ -3,6 +3,44 @@
 引大灌区调查数据采集系统版本变更记录。
 
 ---
+## [0.5.1] - 2026-09-16
+
+### Added
+
+- 为附表2.1～2.6补齐 `ListDefinition`
+- 为附表2.1～2.6补齐 `SummaryExportDefinition`
+- 为附表2.1～2.6补齐 `OriginalFormExportDefinition`
+- 建立通用工程调查详细汇总导出执行器
+- 建立通用工程调查正式原表导出执行器
+- 增加六表List、Summary、Original Form声明式合同测试
+- 增加 SurveyPage Registry 集成测试
+
+### Changed
+
+- `SurveyPage` 直接从 `EngineeringFormRegistry` 构建工程调查入口
+- `GenericEngineeringListPage` 直接接收 `EngineeringFormDefinition`
+- 当前批次正式原表导出直接调用通用 Original Form Exporter
+- DataQuery详细汇总导出直接依据 Registry / Definition 调用通用 Summary Exporter
+- workflow测试直接验证通用导出执行器，不再依赖逐表兼容入口
+- 公共状态显示复用统一 formatter
+
+### Removed
+
+- 删除附表2.1～2.6六个专属 List Page 薄壳
+- 删除附表2.1～2.6六个逐表 export 兼容模块
+- 删除 `ENGINEERING_SURVEY_FORMS` 并行页面注册
+- 删除迁移期 `prepare_engineering_new_page` 兼容 helper
+- 删除已被统一六表合同测试取代的阶段性 Original Form Definition 测试
+- 清理重构施工脚本和误生成文件
+
+### Notes
+
+- 本轮以消除双源事实、重复执行逻辑和迁移期薄壳为目标，不改变2.1～2.6正式业务行为
+- 附表2.1～2.6继续通过真实业务 workflow 和 Excel 模板回归测试
+- 附表2.7尚未开始开发
+- V0.5.1 作为附表2.7开发前的工程调查框架稳定测试基线
+
+---
 ## [0.5.0] - 2026-09-16
 
 ### Added

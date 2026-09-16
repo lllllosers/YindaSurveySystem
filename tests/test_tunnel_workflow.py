@@ -17,6 +17,14 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
+from services.engineering_summary_export import (
+    export_engineering_summary,
+)
+
 from forms.engineering.form_2_5 import (
     FORM_2_5,
 )
@@ -28,10 +36,6 @@ from forms.engineering.persistence import (
     update_engineering_record,
 )
 
-from services.tunnel_export import (
-    export_tunnel_original_form,
-    export_tunnel_summary,
-)
 
 from tests.workflow_test_support import (
     EngineeringWorkflowTestCaseBase,
@@ -475,7 +479,8 @@ class TunnelWorkflowTestCase(
 
         output_path = self.temp_data_dir / "tunnel_summary.xlsx"
 
-        result = export_tunnel_summary(
+        result = export_engineering_summary(
+            FORM_2_5,
             records=records,
             file_path=(output_path),
         )
@@ -542,7 +547,8 @@ class TunnelWorkflowTestCase(
 
         output_path = self.temp_data_dir / "tunnel_original.xlsx"
 
-        export_tunnel_original_form(
+        export_engineering_original_form(
+            FORM_2_5,
             survey_record_id=(survey_record_id),
             file_path=(output_path),
         )

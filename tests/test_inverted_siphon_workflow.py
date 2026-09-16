@@ -16,6 +16,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from services.engineering_original_form_export import (
+    export_engineering_original_form,
+)
+
 from forms.engineering.form_2_4 import (
     FORM_2_4,
 )
@@ -34,9 +38,6 @@ from services.business_code import (
     get_engineering_type_code,
 )
 
-from services.inverted_siphon_export import (
-    export_inverted_siphon_original_form,
-)
 
 from openpyxl import (
     load_workbook,
@@ -772,7 +773,8 @@ class InvertedSiphonWorkflowTestCase(
             / "form_2_4_export.xlsx"
         )
 
-        export_inverted_siphon_original_form(
+        export_engineering_original_form(
+            FORM_2_4,
             survey_record_id=(
                 survey_record_id
             ),
