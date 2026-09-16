@@ -960,7 +960,7 @@ def create_initial_forms():
     数据库初始化元数据统一从
     EngineeringFormRegistry 中的正式
     EngineeringFormDefinition 生成，
-    不再维护 legacy 表单元数据副本。
+    工程表单元数据统一由 EngineeringFormRegistry 提供。
     """
 
     # 使用函数内导入，

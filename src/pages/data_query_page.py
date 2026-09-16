@@ -21,6 +21,25 @@ from database import (
     get_survey_batches,
 )
 
+from forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+from forms.engineering.form_2_2 import (
+    FORM_2_2,
+)
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+from forms.engineering.form_2_5 import (
+    FORM_2_5,
+)
+from forms.engineering.form_2_6 import (
+    FORM_2_6,
+)
+
 from services.lined_channel_export import (
     export_lined_channel_summary,
 )
@@ -54,12 +73,12 @@ from services.culvert_export import (
 # =============================================================
 
 ENGINEERING_SUMMARY_EXPORTERS = {
-    "form_2_1": export_lined_channel_summary,
-    "form_2_2": export_sluice_gate_summary,
-    "form_2_3": export_aqueduct_summary,
-    "form_2_4": export_inverted_siphon_summary,
-    "form_2_5": (export_tunnel_summary),
-    "form_2_6": export_culvert_summary,
+    FORM_2_1.form_code: export_lined_channel_summary,
+    FORM_2_2.form_code: export_sluice_gate_summary,
+    FORM_2_3.form_code: export_aqueduct_summary,
+    FORM_2_4.form_code: export_inverted_siphon_summary,
+    FORM_2_5.form_code: export_tunnel_summary,
+    FORM_2_6.form_code: export_culvert_summary,
 }
 
 

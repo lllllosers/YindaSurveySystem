@@ -19,11 +19,14 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_range_engineering_record,
 )
 
 from forms.engineering.form_2_5 import (
     FORM_2_5,
+)
+
+from forms.engineering.persistence import (
+    get_engineering_record,
 )
 
 from services.original_form_export_common import (
@@ -112,9 +115,9 @@ def export_tunnel_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_range_engineering_record(
+        record = get_engineering_record(
+            FORM_2_5,
             survey_record_id=survey_record_id,
-            form_code=FORM_2_5.form_code,
         )
 
         if record is None:
@@ -456,10 +459,10 @@ def export_tunnel_original_form(
     # 2. 调查记录
     # =========================================================
 
-    record = get_range_engineering_record(
-        survey_record_id=survey_record_id,
-        form_code=FORM_2_5.form_code,
-    )
+    record = get_engineering_record(
+            FORM_2_5,
+            survey_record_id=survey_record_id,
+        )
 
     if record is None:
         raise ValueError("没有找到需要导出的" "隧洞调查记录。")

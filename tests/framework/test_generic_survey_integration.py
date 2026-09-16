@@ -2,7 +2,6 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
 
 
 os.environ.setdefault(
@@ -180,50 +179,7 @@ class GenericSurveyIntegrationTestCase(
         finally:
             page.deleteLater()
 
-    def test_new_page_prefers_generic_initializer(
-        self,
-    ):
-        page = Mock()
 
-        page.initialize_new_record = Mock()
-        page.prepare_new = Mock()
-
-        prepare_engineering_new_page(
-            page
-        )
-
-        (
-            page
-            .initialize_new_record
-            .assert_called_once_with()
-        )
-
-        (
-            page
-            .prepare_new
-            .assert_not_called()
-        )
-
-    def test_legacy_compatibility_path_still_works(
-        self,
-    ):
-        class LegacyPage:
-            def __init__(
-                self,
-            ):
-                self.prepare_new = Mock()
-
-        page = LegacyPage()
-
-        prepare_engineering_new_page(
-            page
-        )
-
-        (
-            page
-            .prepare_new
-            .assert_called_once_with()
-        )
 
 
 if __name__ == "__main__":

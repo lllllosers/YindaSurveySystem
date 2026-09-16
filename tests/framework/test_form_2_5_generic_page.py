@@ -98,7 +98,7 @@ class Form25GenericPageTestCase(
             },
         )
 
-    def test_record_data_matches_legacy_types(
+    def test_record_data_matches_expected_types(
         self,
     ):
         values = {

@@ -3,21 +3,6 @@ import re
 from forms.engineering.registry import (
     get_engineering_form_definition,
 )
-
-# =============================================================
-# 工程类型代码 legacy 兼容符号
-# =============================================================
-#
-# 附表2.1～2.6已经全部由
-# EngineeringFormDefinition 提供业务类型代码。
-#
-# 该空映射仅暂时保留到 R1-12，
-# 用于明确验证 legacy 映射已经清空。
-# =============================================================
-
-LEGACY_ENGINEERING_TYPE_CODES = {}
-
-
 # 当前渠道层级代码
 CANAL_LEVEL_CODES = {
     "01": "干渠",
@@ -193,46 +178,3 @@ def suggest_next_sequence(
         raise ValueError("当前编号前缀下的顺序号已超过999。")
 
     return next_sequence
-
-
-if __name__ == "__main__":
-    form_code = "form_2_2"
-
-    engineering_type_code = get_engineering_type_code(form_code)
-
-    code = build_business_code(
-        department_code="1",
-        water_office_code="01",
-        canal_level_code="03",
-        engineering_type_code=(engineering_type_code),
-        sequence=1,
-    )
-
-    print(
-        "生成编号：",
-        code,
-    )
-
-    print(
-        "解析结果：",
-        parse_business_code(code),
-    )
-
-    existing = [
-        "1-01-03-02-001",
-        "1-01-03-02-002",
-        "1-01-03-02-003",
-    ]
-
-    next_number = suggest_next_sequence(
-        existing_codes=existing,
-        department_code="1",
-        water_office_code="01",
-        canal_level_code="03",
-        engineering_type_code="02",
-    )
-
-    print(
-        "建议顺序号：",
-        next_number,
-    )

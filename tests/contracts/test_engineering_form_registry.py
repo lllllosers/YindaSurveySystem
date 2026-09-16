@@ -45,7 +45,6 @@ from forms.engineering.registry import (
 )
 
 from services.business_code import (
-    LEGACY_ENGINEERING_TYPE_CODES,
     get_engineering_type_code,
 )
 
@@ -139,13 +138,6 @@ class EngineeringFormRegistryContractTestCase(
                 len(set(values)),
             )
 
-    def test_legacy_business_code_map_is_empty(
-        self,
-    ):
-        self.assertEqual(
-            LEGACY_ENGINEERING_TYPE_CODES,
-            {},
-        )
 
     def test_all_business_codes_come_from_definitions(
         self,

@@ -17,11 +17,14 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_point_engineering_record,
 )
 
-from services.aqueduct_evaluation import (
-    AQUEDUCT_EVALUATION_ITEMS,
+from forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
+from forms.engineering.persistence import (
+    get_engineering_record,
 )
 from services.original_form_export_common import (
     display_value,
@@ -100,7 +103,7 @@ def export_aqueduct_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in AQUEDUCT_EVALUATION_ITEMS
+        for item in FORM_2_3.evaluation_items
     ]
 
     conclusion_headers = [
@@ -127,9 +130,9 @@ def export_aqueduct_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_point_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code="form_2_3",
+        record = get_engineering_record(
+            FORM_2_3,
+            survey_record_id=survey_record_id,
         )
 
         if record is None:
@@ -178,7 +181,7 @@ def export_aqueduct_summary(
         ]
 
         # 12项分项评价
-        for item in AQUEDUCT_EVALUATION_ITEMS:
+        for item in FORM_2_3.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -272,7 +275,7 @@ def export_aqueduct_summary(
 
     evaluation_start_column = 22
 
-    evaluation_end_column = evaluation_start_column + len(AQUEDUCT_EVALUATION_ITEMS) - 1
+    evaluation_end_column = evaluation_start_column + len(FORM_2_3.evaluation_items) - 1
 
     center_columns.update(
         range(
@@ -419,10 +422,10 @@ def export_aqueduct_original_form(
     # 2. 调查记录
     # =========================================================
 
-    record = get_point_engineering_record(
-        survey_record_id=(survey_record_id),
-        form_code="form_2_3",
-    )
+    record = get_engineering_record(
+            FORM_2_3,
+            survey_record_id=survey_record_id,
+        )
 
     if record is None:
         raise ValueError("没有找到需要导出的" "渡槽（座槽）调查记录。")
@@ -524,12 +527,12 @@ def export_aqueduct_original_form(
     #
     # 模板第10～21行，
     # 项目类别位于E列。
-    # 与 AQUEDUCT_EVALUATION_ITEMS
+    # 与 FORM_2_3.evaluation_items
     # 顺序一一对应。
     # =========================================================
 
     for row_number, item in enumerate(
-        AQUEDUCT_EVALUATION_ITEMS,
+        FORM_2_3.evaluation_items,
         start=10,
     ):
         grade = evaluation_map.get(

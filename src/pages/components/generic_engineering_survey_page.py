@@ -1583,10 +1583,6 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.shortcut_hint_label.setStyleSheet("color: #607080;")
 
-        # 暂时保留旧属性名，
-        # 避免已有测试或开发代码突然失效。
-        self.preview_status_label = self.runtime_status_label
-
         self.save_button = QPushButton("保存草稿")
 
         self.save_button.setMinimumWidth(120)

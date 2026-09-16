@@ -3,6 +3,53 @@
 引大灌区调查数据采集系统版本变更记录。
 
 ---
+## [0.5.0] - 2026-09-16
+
+### Added
+
+- 完成附表2.4倒虹吸工程状况调查完整业务闭环
+- 完成附表2.5隧洞工程状况调查完整业务闭环
+- 完成附表2.6涵洞（暗涵）工程状况调查完整业务闭环
+- 建立 EngineeringFormDefinition 声明式工程调查定义
+- 建立 EngineeringFormRegistry 作为工程调查表身份的统一代码级来源
+- 建立 GenericEngineeringSurveyPage 通用工程调查录入页面
+- 建立工程调查 generic persistence 层
+- 增加附表2.1～2.6工程调查框架合同与集成测试
+
+### Changed
+
+- 附表2.1～2.6录入页面全部迁移到统一工程调查框架
+- create / update / get / complete流程统一通过generic persistence
+- point / range工程调查继续复用统一数据库能力
+- 业务类型代码统一从 EngineeringFormDefinition 获取
+- 附表2.1～2.6 exporter统一通过FORM definition和generic persistence读取数据
+- 当前批次工程列表统一使用公共 EngineeringSurveyListPage 基础能力
+- 数据查询继续支持附表2.1～2.6跨表查询及详细汇总导出
+- 清理迁移期间遗留的legacy兼容路径、空兼容符号和重复import
+
+### Removed
+
+- 删除附表2.1～2.6旧专用录入页面
+- 删除附表2.1～2.6不再需要的逐表CRUD兼容函数
+- 删除逐表completion兼容函数
+- 删除已经失效的legacy新增页面兼容路径
+
+### Fixed
+
+- 清理工程调查重构后的双源事实
+- 统一2.1～2.6 exporter评价项目来源
+- 统一2.1～2.6 exporter调查记录读取路径
+- 清理过期迁移注释和硬编码form_code
+- 清理重复import及旧兼容属性
+
+### Notes
+
+- V0.5.0标志附表2.1～2.6录入层已经完成框架化收敛
+- 六张现有工程调查表继续保持各自正式字段、评价标准及Excel成果差异
+- 当前不再为新附表复制完整录入页面、CRUD和completion逻辑
+- 下一阶段优先设计List Page和Excel导出层的可扩展结构，再继续附表2.7～2.14
+
+---
 ## [0.4.0] - 2026-09-14
 
 ### Added

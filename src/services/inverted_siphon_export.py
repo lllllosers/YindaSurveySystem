@@ -17,11 +17,14 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_point_engineering_record,
 )
 
-from services.inverted_siphon_evaluation import (
-    INVERTED_SIPHON_EVALUATION_ITEMS,
+from forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+
+from forms.engineering.persistence import (
+    get_engineering_record,
 )
 
 from services.original_form_export_common import (
@@ -84,7 +87,7 @@ def export_inverted_siphon_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in (INVERTED_SIPHON_EVALUATION_ITEMS)
+        for item in (FORM_2_4.evaluation_items)
     ]
 
     conclusion_headers = [
@@ -111,9 +114,9 @@ def export_inverted_siphon_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_point_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code="form_2_4",
+        record = get_engineering_record(
+            FORM_2_4,
+            survey_record_id=survey_record_id,
         )
 
         if record is None:
@@ -159,7 +162,7 @@ def export_inverted_siphon_summary(
             record_data.get("channel_bottom_elevation"),
         ]
 
-        for item in INVERTED_SIPHON_EVALUATION_ITEMS:
+        for item in FORM_2_4.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -252,7 +255,7 @@ def export_inverted_siphon_summary(
     evaluation_start_column = 20
 
     evaluation_end_column = (
-        evaluation_start_column + len(INVERTED_SIPHON_EVALUATION_ITEMS) - 1
+        evaluation_start_column + len(FORM_2_4.evaluation_items) - 1
     )
 
     center_columns.update(
@@ -402,10 +405,10 @@ def export_inverted_siphon_original_form(
     # 2. 调查记录
     # =========================================================
 
-    record = get_point_engineering_record(
-        survey_record_id=(survey_record_id),
-        form_code="form_2_4",
-    )
+    record = get_engineering_record(
+            FORM_2_4,
+            survey_record_id=survey_record_id,
+        )
 
     if record is None:
         raise ValueError("没有找到需要导出的" "倒虹吸调查记录。")
@@ -486,7 +489,7 @@ def export_inverted_siphon_original_form(
     # =========================================================
 
     for row_number, item in enumerate(
-        INVERTED_SIPHON_EVALUATION_ITEMS,
+        FORM_2_4.evaluation_items,
         start=10,
     ):
         grade = evaluation_map.get(

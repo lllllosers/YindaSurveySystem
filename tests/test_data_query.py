@@ -64,7 +64,7 @@ def create_form_2_1_query_fixture(
     一条附表2.1 range 工程记录。
 
     使用公共 range DB API，
-    不再依赖附表2.1 legacy wrapper。
+    直接使用公共 range DB API 准备查询测试数据。
     """
 
     return (

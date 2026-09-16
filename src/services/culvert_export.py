@@ -19,27 +19,17 @@ from database import (
     get_app_root,
     get_engineering_asset_detail,
     get_inspection_results,
-    get_point_engineering_record,
 )
 
-from database import (
-    get_app_root,
-    get_engineering_asset_detail,
-    get_inspection_results,
-    get_point_engineering_record,
-)
 
 from forms.engineering.form_2_6 import (
     FORM_2_6,
 )
 
-from services.culvert_evaluation import (
-    CULVERT_EVALUATION_ITEMS,
+from forms.engineering.persistence import (
+    get_engineering_record,
 )
 
-from services.culvert_evaluation import (
-    CULVERT_EVALUATION_ITEMS,
-)
 
 from services.original_form_export_common import (
     fill_original_form_ownership_header,
@@ -104,7 +94,7 @@ def export_culvert_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in CULVERT_EVALUATION_ITEMS
+        for item in FORM_2_6.evaluation_items
     ]
 
     conclusion_headers = [
@@ -131,9 +121,9 @@ def export_culvert_summary(
     ):
         survey_record_id = summary_record["survey_record_id"]
 
-        record = get_point_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code=FORM_2_6.form_code,
+        record = get_engineering_record(
+            FORM_2_6,
+            survey_record_id=survey_record_id,
         )
 
         if record is None:
@@ -181,7 +171,7 @@ def export_culvert_summary(
             record_data.get("channel_bottom_elevation"),
         ]
 
-        for item in CULVERT_EVALUATION_ITEMS:
+        for item in FORM_2_6.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -276,7 +266,7 @@ def export_culvert_summary(
 
     evaluation_start_column = 22
 
-    evaluation_end_column = evaluation_start_column + len(CULVERT_EVALUATION_ITEMS) - 1
+    evaluation_end_column = evaluation_start_column + len(FORM_2_6.evaluation_items) - 1
 
     center_columns.update(
         range(
@@ -427,10 +417,10 @@ def export_culvert_original_form(
     # 2. 调查记录
     # =========================================================
 
-    record = get_point_engineering_record(
-        survey_record_id=(survey_record_id),
-        form_code=FORM_2_6.form_code,
-    )
+    record = get_engineering_record(
+            FORM_2_6,
+            survey_record_id=survey_record_id,
+        )
 
     if record is None:
         raise ValueError("没有找到需要导出的" "涵洞（暗涵）调查记录。")
@@ -520,7 +510,7 @@ def export_culvert_original_form(
         row_number,
         item,
     ) in enumerate(
-        CULVERT_EVALUATION_ITEMS,
+        FORM_2_6.evaluation_items,
         start=10,
     ):
         grade = evaluation_map.get(

@@ -343,9 +343,8 @@ class EngineeringSurveyListPage(QWidget):
         """
         默认使用工程调查统一查询。
 
-        现有旧表如仍使用专属查询函数，
-        后续迁移时可以在子类覆盖本方法，
-        不要求同时修改数据库层。
+        个别附表如果确有特殊查询需求，
+        可以在子类中覆盖本方法。
         """
 
         current_context = self.current_context
@@ -623,8 +622,8 @@ class EngineeringSurveyListPage(QWidget):
         """
         默认使用工程调查统一删除能力。
 
-        旧表迁移时如需保留专属删除函数，
-        子类可以覆盖。
+        个别附表如果确有特殊删除规则，
+        可以在子类中覆盖本方法。
         """
 
         return delete_engineering_survey_record(

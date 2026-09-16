@@ -163,30 +163,16 @@ def prepare_engineering_new_page(
     edit_page,
 ):
     """
-    进入工程调查新增页面。
+    初始化一条新的工程调查记录。
 
-    新通用框架：
-        使用 initialize_new_record()
-        初始化实际业务上下文。
-
-    尚未迁移的旧页面：
-        继续使用 prepare_new()。
-
-    等全部附表迁移完成后，
-    可以统一收敛为前一种接口。
+    附表2工程调查录入页面已经统一使用
+    GenericEngineeringSurveyPage，
+    新增流程统一调用
+    initialize_new_record()。
     """
 
-    initialize_new_record = getattr(
-        edit_page,
-        "initialize_new_record",
-        None,
-    )
+    edit_page.initialize_new_record()
 
-    if callable(initialize_new_record):
-        initialize_new_record()
-        return
-
-    edit_page.prepare_new()
 
 
 class SurveyPage(QWidget):
