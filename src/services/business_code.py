@@ -24,7 +24,6 @@ LEGACY_ENGINEERING_TYPE_CODES = {
     "form_2_2": "02",  # 水闸
     "form_2_3": "03",  # 渡槽
     "form_2_4": "04",  # 倒虹吸
-    "form_2_5": "05",  # 隧洞
 }
 
 
@@ -99,7 +98,7 @@ def build_business_code(
         r"\d{2}",
         water_office_code,
     ):
-        raise ValueError("水管所业务代码必须为2位数字，例如01。")
+        raise ValueError("水管所业务代码必须为2位数字，" "例如01。")
 
     if canal_level_code not in CANAL_LEVEL_CODES:
         raise ValueError("无效的渠道层级代码。")
@@ -172,7 +171,8 @@ def suggest_next_sequence(
     engineering_type_code: str,
 ) -> int:
     """
-    根据相同前四段编号，建议下一个顺序号。
+    根据相同前四段编号，
+    建议下一个顺序号。
 
     当前属于开发阶段默认逻辑。
     如果甲方后续确认顺序号需按具体渠道分别排序，
@@ -215,12 +215,19 @@ if __name__ == "__main__":
         department_code="1",
         water_office_code="01",
         canal_level_code="03",
-        engineering_type_code=engineering_type_code,
+        engineering_type_code=(engineering_type_code),
         sequence=1,
     )
 
-    print("生成编号：", code)
-    print("解析结果：", parse_business_code(code))
+    print(
+        "生成编号：",
+        code,
+    )
+
+    print(
+        "解析结果：",
+        parse_business_code(code),
+    )
 
     existing = [
         "1-01-03-02-001",
@@ -236,4 +243,7 @@ if __name__ == "__main__":
         engineering_type_code="02",
     )
 
-    print("建议顺序号：", next_number)
+    print(
+        "建议顺序号：",
+        next_number,
+    )

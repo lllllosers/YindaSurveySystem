@@ -22,12 +22,12 @@ from database import (
     get_range_engineering_record,
 )
 
-from services.original_form_export_common import (
-    fill_original_form_ownership_header,
+from forms.engineering.form_2_5 import (
+    FORM_2_5,
 )
 
-from services.tunnel_evaluation import (
-    TUNNEL_EVALUATION_ITEMS,
+from services.original_form_export_common import (
+    fill_original_form_ownership_header,
 )
 
 
@@ -85,7 +85,7 @@ def export_tunnel_summary(
 
     evaluation_headers = [
         (f"{item['category']}" f"-{item['item_name']}")
-        for item in TUNNEL_EVALUATION_ITEMS
+        for item in FORM_2_5.evaluation_items
     ]
 
     conclusion_headers = [
@@ -113,13 +113,13 @@ def export_tunnel_summary(
         survey_record_id = summary_record["survey_record_id"]
 
         record = get_range_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code="form_2_5",
+            survey_record_id=survey_record_id,
+            form_code=FORM_2_5.form_code,
         )
 
         if record is None:
             raise ValueError(
-                "导出过程中发现" "附表2.5调查记录不存在：" f"{survey_record_id}"
+                "导出过程中发现附表2.5调查记录不存在：" f"{survey_record_id}"
             )
 
         record_data = record["record_data"] or {}
@@ -168,7 +168,7 @@ def export_tunnel_summary(
             record_data.get("cover_thickness"),
         ]
 
-        for item in TUNNEL_EVALUATION_ITEMS:
+        for item in FORM_2_5.evaluation_items:
             row.append(
                 evaluation_map.get(
                     item["item_code"],
@@ -231,7 +231,7 @@ def export_tunnel_summary(
 
     for row_cells in worksheet.iter_rows(
         min_row=2,
-        max_row=(worksheet.max_row),
+        max_row=worksheet.max_row,
     ):
         for cell in row_cells:
             cell.alignment = Alignment(
@@ -246,25 +246,25 @@ def export_tunnel_summary(
     # =========================================================
 
     center_columns = {
-        1,  # 序号
-        7,  # 起始桩号
-        8,  # 终止桩号
-        9,  # 设计流量
-        10,  # 建筑物等级
-        11,  # 建成年月
-        12,  # 加固改造年月
-        13,  # 长度
-        14,  # 加大流量
-        16,  # 衬砌厚度
-        18,  # 进出口底部高程
-        19,  # 纵坡
-        21,  # 尺寸
-        22,  # 钢筋保护层厚度
+        1,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        16,
+        18,
+        19,
+        21,
+        22,
     }
 
     evaluation_start_column = 23
 
-    evaluation_end_column = evaluation_start_column + len(TUNNEL_EVALUATION_ITEMS) - 1
+    evaluation_end_column = evaluation_start_column + len(FORM_2_5.evaluation_items) - 1
 
     center_columns.update(
         range(
@@ -457,8 +457,8 @@ def export_tunnel_original_form(
     # =========================================================
 
     record = get_range_engineering_record(
-        survey_record_id=(survey_record_id),
-        form_code="form_2_5",
+        survey_record_id=survey_record_id,
+        form_code=FORM_2_5.form_code,
     )
 
     if record is None:
@@ -483,7 +483,7 @@ def export_tunnel_original_form(
 
     workbook = load_workbook(template_path)
 
-    if "附表2.5" not in (workbook.sheetnames):
+    if "附表2.5" not in workbook.sheetnames:
         workbook.close()
 
         raise ValueError("附表2.5 Excel模板中" "缺少工作表“附表2.5”。")
@@ -551,7 +551,7 @@ def export_tunnel_original_form(
         row_number,
         item,
     ) in enumerate(
-        TUNNEL_EVALUATION_ITEMS,
+        FORM_2_5.evaluation_items,
         start=10,
     ):
         grade = evaluation_map.get(

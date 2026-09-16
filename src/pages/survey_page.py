@@ -13,36 +13,47 @@ from PySide6.QtWidgets import (
 from pages.aqueduct_list_page import (
     AqueductListPage,
 )
+
 from pages.aqueduct_page import (
     AqueductPage,
 )
+
 from pages.inverted_siphon_list_page import (
     InvertedSiphonListPage,
 )
+
 from pages.inverted_siphon_page import (
     InvertedSiphonPage,
 )
+
 from pages.lined_channel_section_list_page import (
     LinedChannelSectionListPage,
 )
+
 from pages.lined_channel_section_page import (
     LinedChannelSectionPage,
 )
+
 from pages.sluice_gate_list_page import (
     SluiceGateListPage,
 )
+
 from pages.sluice_gate_page import (
     SluiceGatePage,
 )
+
 from pages.tunnel_list_page import (
     TunnelListPage,
 )
-from pages.tunnel_page import (
-    TunnelPage,
-)
+
 from pages.culvert_list_page import (
     CulvertListPage,
 )
+
+from forms.engineering.form_2_5 import (
+    FORM_2_5,
+)
+
 from forms.engineering.form_2_6 import (
     FORM_2_6,
 )
@@ -84,10 +95,13 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "edit_page_factory": (InvertedSiphonPage),
     },
     {
-        "form_code": "form_2_5",
-        "button_text": ("附表2.5 隧洞工程状况调查"),
-        "list_page_class": (TunnelListPage),
-        "edit_page_factory": (TunnelPage),
+        "form_code": FORM_2_5.form_code,
+        "button_text": (FORM_2_5.display_name.removesuffix("表")),
+        "list_page_class": TunnelListPage,
+        "edit_page_factory": partial(
+            GenericEngineeringSurveyPage,
+            FORM_2_5,
+        ),
     },
     {
         "form_code": FORM_2_6.form_code,
@@ -153,7 +167,9 @@ class SurveyPage(QWidget):
     重复增加一整套导航方法。
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         super().__init__()
 
         self.engineering_pages = {}
@@ -164,7 +180,9 @@ class SurveyPage(QWidget):
     # UI
     # =========================================================
 
-    def init_ui(self):
+    def init_ui(
+        self,
+    ):
         layout = QVBoxLayout(self)
 
         layout.setContentsMargins(
@@ -204,10 +222,13 @@ class SurveyPage(QWidget):
     # 调查录入首页
     # =========================================================
 
-    def create_home_page(self):
+    def create_home_page(
+        self,
+    ):
         page = QWidget()
 
         layout = QVBoxLayout(page)
+
         layout.setSpacing(16)
 
         title = QLabel("调查录入")
@@ -276,10 +297,13 @@ class SurveyPage(QWidget):
     # 工程现状调查首页
     # =========================================================
 
-    def create_engineering_home_page(self):
+    def create_engineering_home_page(
+        self,
+    ):
         page = QWidget()
 
         layout = QVBoxLayout(page)
+
         layout.setSpacing(16)
 
         back_button = QPushButton("返回调查分类")
@@ -334,10 +358,13 @@ class SurveyPage(QWidget):
     # 灌区综合与水土资源调查首页
     # =========================================================
 
-    def create_comprehensive_home_page(self):
+    def create_comprehensive_home_page(
+        self,
+    ):
         page = QWidget()
 
         layout = QVBoxLayout(page)
+
         layout.setSpacing(16)
 
         back_button = QPushButton("返回调查分类")
@@ -380,7 +407,9 @@ class SurveyPage(QWidget):
     # 附表2页面注册
     # =========================================================
 
-    def _register_engineering_pages(self):
+    def _register_engineering_pages(
+        self,
+    ):
         for definition in ENGINEERING_SURVEY_FORMS:
             form_code = definition["form_code"]
 
@@ -439,7 +468,9 @@ class SurveyPage(QWidget):
     # 离开模块检查
     # =========================================================
 
-    def can_leave_page(self):
+    def can_leave_page(
+        self,
+    ):
         current_widget = self.stack.currentWidget()
 
         for pages in self.engineering_pages.values():
@@ -454,13 +485,19 @@ class SurveyPage(QWidget):
     # 一级业务域导航
     # =========================================================
 
-    def open_home(self):
+    def open_home(
+        self,
+    ):
         self.stack.setCurrentWidget(self.home_page)
 
-    def open_engineering_home(self):
+    def open_engineering_home(
+        self,
+    ):
         self.stack.setCurrentWidget(self.engineering_home_page)
 
-    def open_comprehensive_home(self):
+    def open_comprehensive_home(
+        self,
+    ):
         self.stack.setCurrentWidget(self.comprehensive_home_page)
 
     # =========================================================

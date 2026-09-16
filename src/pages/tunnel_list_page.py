@@ -1,3 +1,7 @@
+from forms.engineering.form_2_5 import (
+    FORM_2_5,
+)
+
 from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
@@ -20,9 +24,9 @@ class TunnelListPage(
     显示和导出差异。
     """
 
-    FORM_CODE = "form_2_5"
+    FORM_CODE = FORM_2_5.form_code
 
-    PAGE_TITLE = "附表2.5 隧洞工程状况调查记录"
+    PAGE_TITLE = f"{FORM_2_5.display_name.removesuffix('表')}" "记录"
 
     NEW_BUTTON_TEXT = "新增隧洞调查"
 
@@ -93,6 +97,6 @@ class TunnelListPage(
         file_path,
     ):
         return export_tunnel_original_form(
-            survey_record_id=(survey_record_id),
+            survey_record_id=survey_record_id,
             file_path=file_path,
         )

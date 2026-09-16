@@ -1,3 +1,7 @@
+from forms.engineering.form_2_5 import (
+    FORM_2_5,
+)
+
 from forms.engineering.form_2_6 import (
     FORM_2_6,
 )
@@ -10,20 +14,26 @@ from forms.engineering.models import (
 # 已迁移到 Engineering Form Framework 的正式表单定义
 # =============================================================
 #
-# 这里只注册已经完成声明式迁移并进入正式运行入口的表单。
+# 这里只注册已经完成声明式迁移
+# 并进入正式运行入口的表单。
 #
 # 当前：
+# - 附表2.5 已迁移；
 # - 附表2.6 已迁移；
-# - 附表2.1～2.5 仍属于 legacy 页面，不在这里提前注册。
+# - 附表2.1～2.4 仍属于 legacy 页面。
 #
-# 后续每完成一张表迁移，只需要把对应 FORM_2_X
+# 后续每完成一张表迁移，
+# 只需要把对应 FORM_2_X
 # 加入此处。
 # =============================================================
 
 _ENGINEERING_FORM_DEFINITIONS: tuple[
     EngineeringFormDefinition,
     ...,
-] = (FORM_2_6,)
+] = (
+    FORM_2_5,
+    FORM_2_6,
+)
 
 
 def _validate_registry(
@@ -33,11 +43,12 @@ def _validate_registry(
     ],
 ) -> None:
     """
-    检查业务定义 Registry 中必须全局唯一的身份字段。
+    检查业务定义 Registry 中
+    必须全局唯一的身份字段。
 
-    EngineeringFormDefinition 自身的字段、位置、
-    评价等级和评价项目合法性已由其 __post_init__
-    在对象创建时完成校验。
+    EngineeringFormDefinition 自身的
+    字段、位置、评价等级和评价项目合法性
+    已由其 __post_init__ 在对象创建时完成校验。
 
     Registry 这里只负责跨表单唯一性。
     """
@@ -57,7 +68,10 @@ def _validate_registry(
         ),
     )
 
-    for attribute_name, display_name in unique_attributes:
+    for (
+        attribute_name,
+        display_name,
+    ) in unique_attributes:
         values = [
             getattr(
                 definition,
@@ -104,7 +118,8 @@ def get_engineering_form_definitions() -> tuple[
     """
     返回所有已经迁移到新框架的正式表单定义。
 
-    返回不可变 tuple，避免调用方修改 Registry。
+    返回不可变 tuple，
+    避免调用方修改 Registry。
     """
 
     return _ENGINEERING_FORM_DEFINITIONS
