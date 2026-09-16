@@ -4,7 +4,8 @@ setlocal
 
 REM ============================================================
 REM 引大入秦工程现状调查采集系统
-REM V0.3.1 测试版一键构建脚本
+REM 一键测试版构建脚本
+REM 版本信息统一读取 src\version.py
 REM ============================================================
 
 cd /d "%~dp0"
@@ -16,18 +17,15 @@ set "BUILD_DIR=%~dp0build"
 set "DIST_DIR=%~dp0dist"
 set "DIST_APP=%~dp0dist\YindaSurveySystem"
 
-set "RELEASE_NAME=引大入秦工程现状调查采集系统_V0.3.1_测试版"
 set "RELEASE_ROOT=%~dp0release"
-set "RELEASE_DIR=%RELEASE_ROOT%\%RELEASE_NAME%"
 
-set "TEMPLATE_21=%~dp0templates\excel\form_2_1_V1.xlsx"
-set "TEMPLATE_22=%~dp0templates\excel\form_2_2_V1.xlsx"
+set "TEMPLATE_DIR=%~dp0templates\excel"
 set "ICON_FILE=%~dp0assets\app_icon.ico"
 
 echo.
 echo ============================================================
 echo   引大入秦工程现状调查采集系统
-echo   V0.3.1 测试版构建
+echo   V%APP_VERSION% %APP_STAGE%构建
 echo ============================================================
 echo.
 
@@ -41,6 +39,31 @@ if not exist "%PYTHON%" (
     goto :failed
 )
 
+REM ============================================================
+REM 从 src\version.py 读取统一版本信息
+REM ============================================================
+
+for /f "delims=" %%V in ('"%PYTHON%" -c "import sys; sys.path.insert(0, 'src'); import version; print(version.APP_VERSION)"') do (
+    set "APP_VERSION=%%V"
+)
+
+for /f "delims=" %%S in ('"%PYTHON%" -c "import sys; sys.path.insert(0, 'src'); import version; print(version.APP_STAGE)"') do (
+    set "APP_STAGE=%%S"
+)
+
+if not defined APP_VERSION (
+    echo [ERROR] 无法从 src\version.py 读取 APP_VERSION。
+    goto :failed
+)
+
+if not defined APP_STAGE (
+    echo [ERROR] 无法从 src\version.py 读取 APP_STAGE。
+    goto :failed
+)
+
+set "RELEASE_NAME=引大入秦工程现状调查采集系统_V%APP_VERSION%_%APP_STAGE%"
+set "RELEASE_DIR=%RELEASE_ROOT%\%RELEASE_NAME%"
+
 if not exist "%SPEC%" (
     echo [ERROR] 未找到 PyInstaller 配置：
     echo %SPEC%
@@ -53,15 +76,9 @@ if not exist "%ICON_FILE%" (
     goto :failed
 )
 
-if not exist "%TEMPLATE_21%" (
-    echo [ERROR] 未找到附表2.1 Excel模板：
-    echo %TEMPLATE_21%
-    goto :failed
-)
-
-if not exist "%TEMPLATE_22%" (
-    echo [ERROR] 未找到附表2.2 Excel模板：
-    echo %TEMPLATE_22%
+if not exist "%TEMPLATE_DIR%" (
+    echo [ERROR] 未找到正式 Excel 模板目录：
+    echo %TEMPLATE_DIR%
     goto :failed
 )
 
@@ -167,13 +184,8 @@ if not exist "%RELEASE_DIR%\_internal" (
     goto :failed
 )
 
-if not exist "%RELEASE_DIR%\templates\excel\form_2_1_V1.xlsx" (
-    echo [ERROR] 缺少附表2.1 Excel模板。
-    goto :failed
-)
-
-if not exist "%RELEASE_DIR%\templates\excel\form_2_2_V1.xlsx" (
-    echo [ERROR] 缺少附表2.2 Excel模板。
+if not exist "%RELEASE_DIR%\templates\excel" (
+    echo [ERROR] 缺少正式 Excel 模板目录。
     goto :failed
 )
 
