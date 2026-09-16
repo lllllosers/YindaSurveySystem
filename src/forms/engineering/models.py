@@ -6,6 +6,13 @@ from typing import (
 )
 
 
+from forms.engineering.extension_models import (
+    ListDefinition,
+    OriginalFormExportDefinition,
+    SummaryExportDefinition,
+)
+
+
 FieldType = Literal[
     "text",
     "decimal",
@@ -283,6 +290,26 @@ class EngineeringFormDefinition:
     conclusion_title: str = (
         "调查结论"
     )
+
+    # =====================================================
+    # 列表 / 汇总 / 正式原表扩展定义
+    # =====================================================
+    #
+    # 三者仅描述表级差异；
+    # Qt / openpyxl / 数据库执行逻辑不放入 Definition。
+    # 当前2.1～2.6尚未迁移时保持 None，
+    # 后续 R1-13B/C/D 分阶段接入。
+    list_definition: (
+        ListDefinition | None
+    ) = None
+
+    summary_export_definition: (
+        SummaryExportDefinition | None
+    ) = None
+
+    original_form_export_definition: (
+        OriginalFormExportDefinition | None
+    ) = None
 
     @property
     def field_map(
@@ -638,3 +665,117 @@ class EngineeringFormDefinition:
                 "评价项目 item_code "
                 "不能重复。"
             )
+
+        # =====================================================
+        # 7. List / Summary / Original Form 扩展合同
+        # =====================================================
+        #
+        # extension_models 负责各自内部结构校验；
+        # EngineeringFormDefinition 只负责需要结合
+        # 本表正式字段 / evaluation_items 才能完成的
+        # 跨定义引用校验。
+        # =====================================================
+
+        extension_bindings = []
+
+        if self.list_definition is not None:
+            extension_bindings.extend(
+                column.binding
+                for column
+                in self.list_definition.columns
+            )
+            extension_bindings.extend(
+                self.list_definition
+                .keyword_bindings
+            )
+
+        if (
+            self.summary_export_definition
+            is not None
+        ):
+            extension_bindings.extend(
+                column.binding
+                for column
+                in self.summary_export_definition
+                .columns
+            )
+
+        if (
+            self.original_form_export_definition
+            is not None
+        ):
+            extension_bindings.extend(
+                cell_binding.binding
+                for cell_binding
+                in self.original_form_export_definition
+                .field_bindings
+            )
+
+        for binding in extension_bindings:
+            if binding.source != "record_data":
+                continue
+
+            for key in binding.keys:
+                if key not in field_key_set:
+                    raise ValueError(
+                        "扩展定义引用了不存在的 "
+                        "record_data 字段："
+                        f"{key}"
+                    )
+
+        # 正式原表的评价区域需要结合本表
+        # evaluation_items 数量后才能确定完整写入范围。
+        original_definition = (
+            self.original_form_export_definition
+        )
+
+        if original_definition is not None:
+            evaluation_binding = (
+                original_definition
+                .evaluation_binding
+            )
+
+            evaluation_cells = {
+                (
+                    f"{evaluation_binding.column}"
+                    f"{evaluation_binding.start_row + index}"
+                )
+                for index in range(
+                    len(self.evaluation_items)
+                )
+            }
+
+            occupied_cells = {
+                cell_binding.cell
+                for cell_binding
+                in original_definition
+                .field_bindings
+            }
+
+            occupied_cells.update(
+                {
+                    original_definition
+                    .conclusion_binding
+                    .survey_comment_cell,
+                    original_definition
+                    .conclusion_binding
+                    .overall_grade_cell,
+                    original_definition
+                    .conclusion_binding
+                    .survey_date_cell,
+                }
+            )
+
+            overlap = (
+                evaluation_cells
+                & occupied_cells
+            )
+
+            if overlap:
+                raise ValueError(
+                    "分项评价写入区域与其他正式原表"
+                    "绑定冲突："
+                    + "、".join(
+                        sorted(overlap)
+                    )
+                )

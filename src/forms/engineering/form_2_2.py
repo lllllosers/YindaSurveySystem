@@ -6,6 +6,10 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.list_definitions import (
+    build_standard_engineering_list_definition,
+)
+
 from services.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
 )
@@ -159,6 +163,14 @@ FORM_2_2 = EngineeringFormDefinition(
                 FieldRowDefinition(("crack_width_limit",)),
             ),
         ),
+    ),
+    # =========================================================
+    # 当前批次列表
+    # =========================================================
+    list_definition=(
+        build_standard_engineering_list_definition(
+            new_button_text='新增水闸调查',
+        )
     ),
     evaluation_items=tuple(SLUICE_GATE_EVALUATION_ITEMS),
     grade_options=(

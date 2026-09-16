@@ -6,6 +6,10 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.list_definitions import (
+    build_standard_engineering_list_definition,
+)
+
 from services.culvert_evaluation import (
     CULVERT_EVALUATION_ITEMS,
 )
@@ -180,6 +184,15 @@ FORM_2_6 = EngineeringFormDefinition(
             ),
         ),
     ),
+    # =========================================================
+    # 当前批次列表
+    # =========================================================
+    list_definition=(
+        build_standard_engineering_list_definition(
+            new_button_text='新增涵洞（暗涵）调查',
+        )
+    ),
+
     # =========================================================
     # 分项评价
     # =========================================================

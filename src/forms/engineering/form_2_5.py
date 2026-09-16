@@ -6,6 +6,10 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.list_definitions import (
+    build_standard_engineering_list_definition,
+)
+
 from services.tunnel_evaluation import (
     TUNNEL_EVALUATION_ITEMS,
 )
@@ -203,6 +207,15 @@ FORM_2_5 = EngineeringFormDefinition(
                 FieldRowDefinition(("cover_thickness",)),
             ),
         ),
+    ),
+
+    # =========================================================
+    # 当前批次列表
+    # =========================================================
+    list_definition=(
+        build_standard_engineering_list_definition(
+            new_button_text='新增隧洞调查',
+        )
     ),
 
     # =========================================================

@@ -6,6 +6,10 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.list_definitions import (
+    build_standard_engineering_list_definition,
+)
+
 from services.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
@@ -175,6 +179,14 @@ FORM_2_3 = EngineeringFormDefinition(
                 FieldRowDefinition(("lower_support_structure_form",)),
             ),
         ),
+    ),
+    # =========================================================
+    # 当前批次列表
+    # =========================================================
+    list_definition=(
+        build_standard_engineering_list_definition(
+            new_button_text='新增渡槽（座槽）调查',
+        )
     ),
     evaluation_items=tuple(AQUEDUCT_EVALUATION_ITEMS),
     grade_options=(

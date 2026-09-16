@@ -6,6 +6,10 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.list_definitions import (
+    build_standard_engineering_list_definition,
+)
+
 from services.inverted_siphon_evaluation import (
     INVERTED_SIPHON_EVALUATION_ITEMS,
 )
@@ -148,6 +152,14 @@ FORM_2_4 = EngineeringFormDefinition(
                 FieldRowDefinition(("channel_bottom_elevation",)),
             ),
         ),
+    ),
+    # =========================================================
+    # 当前批次列表
+    # =========================================================
+    list_definition=(
+        build_standard_engineering_list_definition(
+            new_button_text='新增倒虹吸调查',
+        )
     ),
     evaluation_items=tuple(INVERTED_SIPHON_EVALUATION_ITEMS),
     grade_options=(
