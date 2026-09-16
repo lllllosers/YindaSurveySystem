@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from PySide6.QtWidgets import (
+    QComboBox,
     QLineEdit,
 )
 
@@ -52,7 +53,7 @@ class EngineeringFieldRuntime:
     """
 
     definition: FieldDefinition
-    widget: QLineEdit
+    widget: QLineEdit | QComboBox
 
     # =========================================================
     # 读取
@@ -92,6 +93,9 @@ class EngineeringFieldRuntime:
 
             return stake_text
 
+        if input_type == "choice":
+            return self.widget.currentData()
+
         raise ValueError("暂不支持的工程调查字段类型：" f"{input_type}")
 
     def get_stake_parts(
@@ -127,6 +131,27 @@ class EngineeringFieldRuntime:
         错误判断为用户修改。
         """
 
+        if self.definition.input_type == "choice":
+            if value is None:
+                self.widget.setCurrentIndex(0)
+                return
+
+            index = self.widget.findData(
+                str(value)
+            )
+
+            if index < 0:
+                raise ValueError(
+                    f"{self.definition.label}"
+                    "存在未定义的选项值："
+                    f"{value}"
+                )
+
+            self.widget.setCurrentIndex(
+                index
+            )
+            return
+
         if value is None:
             self.widget.clear()
             return
@@ -138,6 +163,10 @@ class EngineeringFieldRuntime:
     # =========================================================
 
     def clear(self):
+        if self.definition.input_type == "choice":
+            self.widget.setCurrentIndex(0)
+            return
+
         self.widget.clear()
 
     # =========================================================
@@ -145,6 +174,9 @@ class EngineeringFieldRuntime:
     # =========================================================
 
     def is_blank(self) -> bool:
+        if self.definition.input_type == "choice":
+            return self.widget.currentData() is None
+
         return not (self.widget.text().strip())
 
     # =========================================================
@@ -161,6 +193,12 @@ class EngineeringFieldRuntime:
         使用 textEdited 而不是 textChanged，
         避免程序回填数据时误标 dirty。
         """
+
+        if self.definition.input_type == "choice":
+            # activated 只由用户选择触发，
+            # 程序 setCurrentIndex() 不会误标 dirty。
+            self.widget.activated.connect(callback)
+            return
 
         self.widget.textEdited.connect(callback)
 
@@ -190,8 +228,9 @@ def create_engineering_field_runtime(
     根据 FieldDefinition 创建
     对应 Qt 输入控件及运行时包装。
 
-    当前只覆盖附表2.1～2.6
-    已实际出现并验证过的字段类型。
+    根据 FieldDefinition 创建已支持的
+    工程调查输入控件。新增字段类型时，
+    模型合同、运行时和测试必须同步扩展。
     """
 
     input_type = definition.input_type
@@ -252,6 +291,28 @@ def create_engineering_field_runtime(
                 ("直接输入6位数字，" "例如：201006"),
             )
         )
+
+    elif input_type == "choice":
+        widget = QComboBox()
+
+        blank_text = _placeholder(
+            definition,
+            "请选择",
+        )
+
+        widget.addItem(
+            blank_text or "",
+            None,
+        )
+
+        for choice in (
+            definition.choices
+            or ()
+        ):
+            widget.addItem(
+                choice,
+                choice,
+            )
 
     else:
         raise ValueError("暂不支持的工程调查字段类型：" f"{input_type}")

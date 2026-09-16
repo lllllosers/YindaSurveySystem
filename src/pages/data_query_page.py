@@ -20,9 +20,13 @@ from database import (
     get_survey_batches,
 )
 
+from forms.engineering.formatters import (
+    format_record_status,
+)
 from forms.engineering.registry import (
     get_engineering_form_definition,
     get_engineering_form_definitions,
+    get_engineering_grade_options,
 )
 
 from services.engineering_summary_export import (
@@ -40,7 +44,7 @@ class DataQueryPage(QWidget):
 
     当前第一版：
     - 当前项目内跨批次查询；
-    - 跨附表2.1 ~ 2.6查询；
+    - 跨已注册附表2系列查询；
     - 公共条件筛选；
     - 轻量统计；
     - 当前查询结果导出。
@@ -164,22 +168,6 @@ class DataQueryPage(QWidget):
 
         self.grade_combo = QComboBox()
 
-        self.grade_combo.addItem(
-            "全部类别",
-            None,
-        )
-
-        for grade in (
-            "A",
-            "B",
-            "C",
-            "D",
-        ):
-            self.grade_combo.addItem(
-                grade,
-                grade,
-            )
-
         query_button = QPushButton("查询")
 
         query_button.clicked.connect(self.apply_filters)
@@ -197,6 +185,12 @@ class DataQueryPage(QWidget):
         export_button.clicked.connect(self.export_query_results)
 
         self.keyword_edit.returnPressed.connect(self.apply_filters)
+
+        self.form_combo.currentIndexChanged.connect(
+            self._form_filter_changed
+        )
+
+        self._refresh_grade_options()
 
         filter_row_3.addWidget(QLabel("状态："))
 
@@ -380,6 +374,61 @@ class DataQueryPage(QWidget):
 
         self.form_combo.blockSignals(False)
 
+        self._refresh_grade_options()
+
+    def _form_filter_changed(
+        self,
+        *args,
+    ):
+        self._refresh_grade_options()
+
+    def _current_grade_options(
+        self,
+    ):
+        return get_engineering_grade_options(
+            self.form_combo.currentData()
+        )
+
+    def _refresh_grade_options(
+        self,
+    ):
+        current_value = (
+            self.grade_combo.currentData()
+        )
+
+        grade_options = (
+            self._current_grade_options()
+        )
+
+        self.grade_combo.blockSignals(True)
+
+        self.grade_combo.clear()
+
+        self.grade_combo.addItem(
+            "全部类别",
+            None,
+        )
+
+        for grade in grade_options:
+            self.grade_combo.addItem(
+                grade,
+                grade,
+            )
+
+        if current_value in grade_options:
+            index = (
+                self.grade_combo.findData(
+                    current_value
+                )
+            )
+
+            if index >= 0:
+                self.grade_combo.setCurrentIndex(
+                    index
+                )
+
+        self.grade_combo.blockSignals(False)
+
     # =========================================================
     # 动态筛选值
     # =========================================================
@@ -533,12 +582,8 @@ class DataQueryPage(QWidget):
         self.table.setRowCount(len(records))
 
         for row_index, record in enumerate(records):
-            status_text = {
-                "draft": "草稿",
-                "completed": "录入完成",
-            }.get(
-                record["record_status"],
-                record["record_status"],
+            status_text = format_record_status(
+                record["record_status"]
             )
 
             values = [
@@ -585,11 +630,13 @@ class DataQueryPage(QWidget):
             1 for record in records if record["record_status"] == "completed"
         )
 
+        grade_options = (
+            self._current_grade_options()
+        )
+
         grade_counts = {
-            "A": 0,
-            "B": 0,
-            "C": 0,
-            "D": 0,
+            grade: 0
+            for grade in grade_options
         }
 
         ungraded_count = 0
@@ -602,14 +649,16 @@ class DataQueryPage(QWidget):
             else:
                 ungraded_count += 1
 
+        grade_statistics = "".join(
+            f"  |  {grade} {grade_counts[grade]}"
+            for grade in grade_options
+        )
+
         self.statistics_label.setText(
             f"查询结果 {len(records)} 条"
             f"  |  草稿 {draft_count}"
             f"  |  已完成 {completed_count}"
-            f"  |  A {grade_counts['A']}"
-            f"  |  B {grade_counts['B']}"
-            f"  |  C {grade_counts['C']}"
-            f"  |  D {grade_counts['D']}"
+            f"{grade_statistics}"
             f"  |  未定 {ungraded_count}"
         )
 

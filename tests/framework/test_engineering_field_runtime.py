@@ -27,6 +27,7 @@ from PySide6.QtGui import (
 
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
 )
 
 from forms.engineering.models import (
@@ -266,6 +267,115 @@ class EngineeringFieldRuntimeTestCase(unittest.TestCase):
             "stake",
         ):
             runtime.get_stake_parts()
+
+        runtime.widget.deleteLater()
+
+    # =========================================================
+    # choice
+    # =========================================================
+
+    def test_choice_field(
+        self,
+    ):
+        runtime = create_engineering_field_runtime(
+            FieldDefinition(
+                key="has_flood_control",
+                label="有无防洪设施",
+                input_type="choice",
+                choices=(
+                    "有",
+                    "无",
+                ),
+            )
+        )
+
+        self.assertIsInstance(
+            runtime.widget,
+            QComboBox,
+        )
+
+        self.assertTrue(
+            runtime.is_blank()
+        )
+
+        runtime.set_value("有")
+
+        self.assertEqual(
+            runtime.get_value(),
+            "有",
+        )
+
+        runtime.clear()
+
+        self.assertTrue(
+            runtime.is_blank()
+        )
+
+        runtime.widget.deleteLater()
+
+    def test_choice_programmatic_set_does_not_mark_dirty(
+        self,
+    ):
+        runtime = create_engineering_field_runtime(
+            FieldDefinition(
+                key="earthwork_type",
+                label="渠道类型",
+                input_type="choice",
+                choices=(
+                    "挖方",
+                    "填方",
+                ),
+            )
+        )
+
+        called = []
+
+        runtime.connect_dirty(
+            lambda *args: (
+                called.append(True)
+            )
+        )
+
+        runtime.set_value("填方")
+
+        self.assertEqual(
+            called,
+            [],
+        )
+
+        runtime.widget.activated.emit(
+            runtime.widget.currentIndex()
+        )
+
+        self.assertEqual(
+            called,
+            [True],
+        )
+
+        runtime.widget.deleteLater()
+
+    def test_choice_unknown_value_is_rejected(
+        self,
+    ):
+        runtime = create_engineering_field_runtime(
+            FieldDefinition(
+                key="has_flood_control",
+                label="有无防洪设施",
+                input_type="choice",
+                choices=(
+                    "有",
+                    "无",
+                ),
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "未定义",
+        ):
+            runtime.set_value(
+                "未知"
+            )
 
         runtime.widget.deleteLater()
 

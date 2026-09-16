@@ -32,7 +32,7 @@ class SurveyPage(QWidget):
        - 附表2系列；
        - 基于 EngineeringAsset /
          SurveyRecord / InspectionResult；
-       - 当前已接入附表2.1～2.6。
+       - 已接入表单由 EngineeringFormRegistry 决定。
 
     2. 灌区综合与水土资源调查
        - 附表1系列；
@@ -227,11 +227,17 @@ class SurveyPage(QWidget):
 
             layout.addWidget(button)
 
-        placeholder = QLabel("附表2.7～2.14将在后续" "逐步接入。")
+        registry_note = QLabel(
+            "当前可用调查表由工程调查 Registry 自动生成。"
+        )
 
-        placeholder.setStyleSheet("color: #7a8793;")
+        registry_note.setStyleSheet(
+            "color: #7a8793;"
+        )
 
-        layout.addWidget(placeholder)
+        layout.addWidget(
+            registry_note
+        )
 
         layout.addStretch()
 

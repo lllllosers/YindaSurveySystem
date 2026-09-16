@@ -94,8 +94,9 @@ class GenericEngineeringSurveyPage(QWidget):
     forms.engineering.persistence
     及 database 公共接口负责。
 
-    正式原表和汇总 Excel 导出
-    由各表对应的 exporter 负责。
+    正式原表和详细汇总 Excel 导出
+    由 EngineeringFormDefinition 中的声明
+    配合通用 exporter 执行。
     """
 
     survey_saved = Signal()

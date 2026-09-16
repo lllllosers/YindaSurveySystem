@@ -954,8 +954,8 @@ def create_initial_forms():
     """
     初始化系统内置工程调查表定义。
 
-    附表2.1～2.6已经全部迁移到
-    Engineering Form Framework。
+    已接入的附表2工程调查表统一由
+    Engineering Form Framework 管理。
 
     数据库初始化元数据统一从
     EngineeringFormRegistry 中的正式

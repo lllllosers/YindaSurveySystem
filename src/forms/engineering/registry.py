@@ -31,8 +31,8 @@ from forms.engineering.models import (
 # 已迁移到 Engineering Form Framework 的正式表单定义
 # =============================================================
 #
-# 附表2.1～2.6均已完成声明式迁移，
-# 并由本 Registry 作为工程调查表身份的
+# 所有已接入附表2工程调查表均在此注册，
+# 本 Registry 作为工程调查表身份的
 # 唯一代码级事实来源。
 # =============================================================
 
@@ -128,7 +128,7 @@ def get_engineering_form_definitions() -> tuple[
     ...,
 ]:
     """
-    返回所有已经迁移到工程调查框架的
+    返回所有已接入工程调查框架的
     正式表单定义。
 
     使用不可变 tuple，
@@ -136,3 +136,38 @@ def get_engineering_form_definitions() -> tuple[
     """
 
     return _ENGINEERING_FORM_DEFINITIONS
+
+def get_engineering_grade_options(
+    form_code: str | None = None,
+) -> tuple[str, ...]:
+    # 指定表单时返回该表等级；
+    # 跨表时返回 Registry 中全部等级的有序并集。
+    if form_code is not None:
+        definition = (
+            get_engineering_form_definition(
+                form_code
+            )
+        )
+
+        if definition is None:
+            raise ValueError(
+                "未找到工程调查表定义："
+                f"{form_code}"
+            )
+
+        return tuple(
+            definition.grade_options
+        )
+
+    result = []
+
+    for definition in (
+        get_engineering_form_definitions()
+    ):
+        for grade in (
+            definition.grade_options
+        ):
+            if grade not in result:
+                result.append(grade)
+
+    return tuple(result)

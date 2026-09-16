@@ -20,6 +20,7 @@ FieldType = Literal[
     "integer",
     "month",
     "stake",
+    "choice",
 ]
 
 PositionType = Literal[
@@ -48,6 +49,49 @@ class FieldDefinition:
 
     # 当前主要服务 integer 类型。
     maximum: int | None = None
+
+    # choice 类型的固定候选项。
+    # 仅在 input_type="choice" 时允许配置。
+    choices: tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        if self.input_type == "choice":
+            if not self.choices:
+                raise ValueError(
+                    "choice 字段必须配置至少一个候选项。"
+                )
+
+            normalized = tuple(
+                str(choice).strip()
+                for choice in self.choices
+            )
+
+            if any(
+                not choice
+                for choice in normalized
+            ):
+                raise ValueError(
+                    "choice 字段候选项不能为空。"
+                )
+
+            if (
+                len(normalized)
+                != len(set(normalized))
+            ):
+                raise ValueError(
+                    "choice 字段候选项不能重复。"
+                )
+
+            object.__setattr__(
+                self,
+                "choices",
+                normalized,
+            )
+
+        elif self.choices is not None:
+            raise ValueError(
+                "只有 choice 字段可以配置 choices。"
+            )
 
     @property
     def display_label(self) -> str:

@@ -283,6 +283,57 @@ class EngineeringFormDefinitionTestCase(unittest.TestCase):
             ),
         )
 
+    def test_choice_field_definition_is_valid(
+        self,
+    ):
+        field = FieldDefinition(
+            key="has_flood_control",
+            label="有无防洪设施",
+            input_type="choice",
+            choices=(
+                " 有 ",
+                "无",
+            ),
+        )
+
+        self.assertEqual(
+            field.choices,
+            (
+                "有",
+                "无",
+            ),
+        )
+
+    def test_choice_field_requires_options(
+        self,
+    ):
+        with self.assertRaisesRegex(
+            ValueError,
+            "候选项",
+        ):
+            FieldDefinition(
+                key="has_flood_control",
+                label="有无防洪设施",
+                input_type="choice",
+            )
+
+    def test_non_choice_field_rejects_choices(
+        self,
+    ):
+        with self.assertRaisesRegex(
+            ValueError,
+            "只有 choice",
+        ):
+            FieldDefinition(
+                key="name",
+                label="名称",
+                input_type="text",
+                choices=(
+                    "A",
+                    "B",
+                ),
+            )
+
     def test_invalid_position_field_is_rejected(
         self,
     ):

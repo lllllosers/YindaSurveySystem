@@ -16,12 +16,6 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
-from forms.engineering.form_2_1 import FORM_2_1
-from forms.engineering.form_2_2 import FORM_2_2
-from forms.engineering.form_2_3 import FORM_2_3
-from forms.engineering.form_2_4 import FORM_2_4
-from forms.engineering.form_2_5 import FORM_2_5
-from forms.engineering.form_2_6 import FORM_2_6
 from forms.engineering.formatters import (
     format_dimension_pair,
     format_dimension_pair_asterisk,
@@ -30,96 +24,26 @@ from forms.engineering.formatters import (
     format_stake_range_compact,
     format_stake_range_spaced,
 )
+from forms.engineering.registry import (
+    get_engineering_form_definition,
+    get_engineering_form_definitions,
+)
+
+
+FORMS = get_engineering_form_definitions()
 
 
 class AllEngineeringOriginalFormDefinitionsTestCase(
     unittest.TestCase,
 ):
-    def test_all_forms_have_original_form_definitions(
+    def test_every_registered_form_has_original_form_definition(
         self,
     ):
-        expectations = (
-            (
-                FORM_2_1,
-                "form_2_1_V1.xlsx",
-                "附表2.1",
-                22,
-                11,
-                "C23",
-                "J23",
-                "J24",
-                "A1:J24",
-            ),
-            (
-                FORM_2_2,
-                "form_2_2_V1.xlsx",
-                "附表2.2",
-                13,
-                9,
-                "C23",
-                "J23",
-                "J24",
-                "A1:J27",
-            ),
-            (
-                FORM_2_3,
-                "form_2_3_V1.xlsx",
-                "附表2.3",
-                16,
-                10,
-                "C22",
-                "J22",
-                "J23",
-                "A1:J26",
-            ),
-            (
-                FORM_2_4,
-                "form_2_4_V1.xlsx",
-                "附表2.4",
-                14,
-                10,
-                "C22",
-                "J22",
-                "J23",
-                "A1:J25",
-            ),
-            (
-                FORM_2_5,
-                "form_2_5_V1.xlsx",
-                "附表2.5",
-                16,
-                10,
-                "C23",
-                "J23",
-                "J24",
-                "A1:J25",
-            ),
-            (
-                FORM_2_6,
-                "form_2_6_V1.xlsx",
-                "附表2.6",
-                16,
-                10,
-                "C21",
-                "J21",
-                "J22",
-                "A1:J23",
-            ),
-        )
+        self.assertTrue(FORMS)
 
-        for (
-            definition,
-            template_filename,
-            sheet_name,
-            field_count,
-            evaluation_start_row,
-            comment_cell,
-            grade_cell,
-            date_cell,
-            print_area,
-        ) in expectations:
+        for definition in FORMS:
             with self.subTest(
-                form_code=definition.form_code
+                form_code=definition.form_code,
             ):
                 original = (
                     definition
@@ -132,6 +56,123 @@ class AllEngineeringOriginalFormDefinitionsTestCase(
 
                 assert original is not None
 
+                self.assertTrue(
+                    original.template_filename.strip()
+                )
+                self.assertTrue(
+                    original.sheet_name.strip()
+                )
+                self.assertTrue(
+                    original.field_bindings
+                )
+                self.assertTrue(
+                    original.output_filename_prefix
+                )
+                self.assertTrue(
+                    original.fallback_asset_name
+                )
+
+    def test_existing_forms_keep_exact_original_layout_regression(
+        self,
+    ):
+        expectations = {
+            "form_2_1": (
+                "form_2_1_V1.xlsx",
+                "附表2.1",
+                22,
+                11,
+                "C23",
+                "J23",
+                "J24",
+                "A1:J24",
+            ),
+            "form_2_2": (
+                "form_2_2_V1.xlsx",
+                "附表2.2",
+                13,
+                9,
+                "C23",
+                "J23",
+                "J24",
+                "A1:J27",
+            ),
+            "form_2_3": (
+                "form_2_3_V1.xlsx",
+                "附表2.3",
+                16,
+                10,
+                "C22",
+                "J22",
+                "J23",
+                "A1:J26",
+            ),
+            "form_2_4": (
+                "form_2_4_V1.xlsx",
+                "附表2.4",
+                14,
+                10,
+                "C22",
+                "J22",
+                "J23",
+                "A1:J25",
+            ),
+            "form_2_5": (
+                "form_2_5_V1.xlsx",
+                "附表2.5",
+                16,
+                10,
+                "C23",
+                "J23",
+                "J24",
+                "A1:J25",
+            ),
+            "form_2_6": (
+                "form_2_6_V1.xlsx",
+                "附表2.6",
+                16,
+                10,
+                "C21",
+                "J21",
+                "J22",
+                "A1:J23",
+            ),
+        }
+
+        for (
+            form_code,
+            (
+                template_filename,
+                sheet_name,
+                field_count,
+                evaluation_start_row,
+                comment_cell,
+                grade_cell,
+                date_cell,
+                print_area,
+            ),
+        ) in expectations.items():
+            definition = (
+                get_engineering_form_definition(
+                    form_code
+                )
+            )
+
+            self.assertIsNotNone(
+                definition
+            )
+
+            assert definition is not None
+
+            original = (
+                definition
+                .original_form_export_definition
+            )
+
+            assert original is not None
+
+            with self.subTest(
+                form_code=form_code
+            ):
                 self.assertEqual(
                     original.template_filename,
                     template_filename,
@@ -172,26 +213,30 @@ class AllEngineeringOriginalFormDefinitionsTestCase(
                     .print_area,
                     print_area,
                 )
-                self.assertTrue(
-                    original.output_filename_prefix
-                )
-                self.assertTrue(
-                    original.fallback_asset_name
-                )
 
-    def test_composite_bindings_use_shared_formatters(
+    def test_existing_composite_bindings_keep_shared_formatters(
         self,
     ):
-        definitions = (
-            FORM_2_1,
-            FORM_2_2,
-            FORM_2_3,
-            FORM_2_5,
-        )
-
         bindings = {}
 
-        for definition in definitions:
+        for form_code in (
+            "form_2_1",
+            "form_2_2",
+            "form_2_3",
+            "form_2_5",
+        ):
+            definition = (
+                get_engineering_form_definition(
+                    form_code
+                )
+            )
+
+            self.assertIsNotNone(
+                definition
+            )
+
+            assert definition is not None
+
             original = (
                 definition
                 .original_form_export_definition
@@ -199,9 +244,7 @@ class AllEngineeringOriginalFormDefinitionsTestCase(
 
             assert original is not None
 
-            bindings[
-                definition.form_code
-            ] = {
+            bindings[form_code] = {
                 item.cell: item.binding
                 for item
                 in original.field_bindings
