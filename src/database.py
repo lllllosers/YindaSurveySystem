@@ -5932,9 +5932,3 @@ def show_database_info():
             print(
                 f"  {batch['id']} | " f"{batch['batch_name']} | " f"{batch['status']}"
             )
-
-
-if __name__ == "__main__":
-    init_database()
-    create_demo_data()
-    show_database_info()
