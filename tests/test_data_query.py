@@ -33,11 +33,8 @@ from services.aqueduct_export import (
 from services.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
-from pages.data_query_page import (
-    ENGINEERING_SUMMARY_EXPORTERS,
-)
-from services.culvert_export import (
-    export_culvert_summary,
+from forms.engineering.registry import (
+    get_engineering_form_definition,
 )
 
 
@@ -776,24 +773,38 @@ class DataQueryTestCase(unittest.TestCase):
 
         workbook.close()
 
-    def test_form_2_6_uses_detailed_summary_exporter(
+    def test_form_2_6_uses_declared_summary_definition(
         self,
     ):
         """
         DataQuery单独选择附表2.6时，
-        应使用2.6详细汇总导出器。
+        应通过 Registry 中的正式表单定义
+        取得详细汇总配置，而不是维护
+        form_code -> exporter 并行映射。
         """
 
-        self.assertIn(
-            "form_2_6",
-            ENGINEERING_SUMMARY_EXPORTERS,
+        definition = (
+            get_engineering_form_definition(
+                "form_2_6"
+            )
         )
 
-        self.assertIs(
-            ENGINEERING_SUMMARY_EXPORTERS[
-                "form_2_6"
-            ],
-            export_culvert_summary,
+        self.assertIsNotNone(
+            definition
+        )
+
+        assert definition is not None
+
+        self.assertIsNotNone(
+            definition
+            .summary_export_definition
+        )
+
+        self.assertEqual(
+            definition
+            .summary_export_definition
+            .sheet_name,
+            "涵洞（暗涵）调查汇总",
         )
 
 if __name__ == "__main__":

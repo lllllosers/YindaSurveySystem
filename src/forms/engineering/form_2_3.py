@@ -6,6 +6,15 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.extension_models import (
+    SummaryColumnDefinition,
+    SummaryExportDefinition,
+    ValueBindingDefinition,
+)
+from forms.engineering.formatters import (
+    format_dimension_pair,
+)
+
 from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
@@ -187,6 +196,189 @@ FORM_2_3 = EngineeringFormDefinition(
         build_standard_engineering_list_definition(
             new_button_text='新增渡槽（座槽）调查',
         )
+    ),
+    # =========================================================
+    # 详细汇总导出
+    # =========================================================
+    summary_export_definition=SummaryExportDefinition(
+        sheet_name="渡槽调查汇总",
+        columns=(
+            SummaryColumnDefinition(
+                header="业务编号",
+                width=22,
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="business_code",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="名称",
+                width=20,
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="asset_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="基层处",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="department_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="水管所",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="office_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="渠系",
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="canal_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="桩号",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="stake",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="设计流量（m³/s）",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="design_flow",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="建筑物等级",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_grade",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="建成年月",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="build_date",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="加固改造年月",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="renovation_date",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="长度",
+                width=12,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="length",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="加大流量（m³/s）",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="increased_flow",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="结构形式",
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_form",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="断面尺寸（宽×高）",
+                width=18,
+                binding=ValueBindingDefinition.composite(
+                    source="record_data",
+                    keys=(
+                        "section_width",
+                        "section_height",
+                    ),
+                    formatter=format_dimension_pair,
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="槽身结构",
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_body_structure",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="槽壁厚度",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_wall_thickness",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="止水形式",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="waterstop_form",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="槽底高程",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="trough_bottom_elevation",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="跨数",
+                width=10,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="span_count",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="下部支撑结构型式",
+                width=22,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="lower_support_structure_form",
+                ),
+            ),
+        ),
     ),
     evaluation_items=tuple(AQUEDUCT_EVALUATION_ITEMS),
     grade_options=(

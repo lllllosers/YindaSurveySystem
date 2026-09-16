@@ -6,6 +6,12 @@ from forms.engineering.models import (
     PositionDefinition,
 )
 
+from forms.engineering.extension_models import (
+    SummaryColumnDefinition,
+    SummaryExportDefinition,
+    ValueBindingDefinition,
+)
+
 from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
@@ -171,6 +177,177 @@ FORM_2_2 = EngineeringFormDefinition(
         build_standard_engineering_list_definition(
             new_button_text='新增水闸调查',
         )
+    ),
+    # =========================================================
+    # 详细汇总导出
+    # =========================================================
+    summary_export_definition=SummaryExportDefinition(
+        sheet_name="水闸调查汇总",
+        columns=(
+            SummaryColumnDefinition(
+                header="业务编号",
+                width=22,
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="business_code",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="工程名称",
+                width=20,
+                binding=ValueBindingDefinition.single(
+                    source="record",
+                    key="asset_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="基层处",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="department_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="水管所",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="office_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="渠系",
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="query_record",
+                    key="canal_name",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="桩号",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="stake",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="设计流量（m³/s）",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="design_flow",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="建筑物等级",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="structure_grade",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="建成年月",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="build_date",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="加固改造年月",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="renovation_date",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="加大流量（m³/s）",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="increased_flow",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="孔数",
+                width=10,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="opening_count",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="孔宽",
+                width=10,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="opening_width",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="孔高",
+                width=10,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="opening_height",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="主要构件材料",
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="main_component_material",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="混凝土强度",
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="concrete_strength",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="钢筋混凝土强度",
+                width=20,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="reinforced_concrete_strength",
+                ),
+            ),
+            SummaryColumnDefinition(
+                header="保护层厚度",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="cover_thickness",
+                ),
+                alignment="center",
+            ),
+            SummaryColumnDefinition(
+                header="裂缝限宽",
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key="crack_width_limit",
+                ),
+                alignment="center",
+            ),
+        ),
     ),
     evaluation_items=tuple(SLUICE_GATE_EVALUATION_ITEMS),
     grade_options=(

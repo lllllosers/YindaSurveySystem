@@ -16,70 +16,22 @@ from PySide6.QtWidgets import (
 
 from database import (
     get_current_context,
-    get_engineering_form_definitions,
     get_engineering_survey_query_records,
     get_survey_batches,
 )
 
-from forms.engineering.form_2_1 import (
-    FORM_2_1,
-)
-from forms.engineering.form_2_2 import (
-    FORM_2_2,
-)
-from forms.engineering.form_2_3 import (
-    FORM_2_3,
-)
-from forms.engineering.form_2_4 import (
-    FORM_2_4,
-)
-from forms.engineering.form_2_5 import (
-    FORM_2_5,
-)
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
+from forms.engineering.registry import (
+    get_engineering_form_definition,
+    get_engineering_form_definitions,
 )
 
-from services.lined_channel_export import (
-    export_lined_channel_summary,
+from services.engineering_summary_export import (
+    export_engineering_summary,
 )
 
 from services.query_export import (
     export_common_query_summary,
 )
-
-from services.sluice_gate_export import (
-    export_sluice_gate_summary,
-)
-
-from services.aqueduct_export import (
-    export_aqueduct_summary,
-)
-
-from services.inverted_siphon_export import (
-    export_inverted_siphon_summary,
-)
-
-from services.tunnel_export import (
-    export_tunnel_summary,
-)
-
-from services.culvert_export import (
-    export_culvert_summary,
-)
-
-# =============================================================
-# 附表2单表详细汇总导出注册
-# =============================================================
-
-ENGINEERING_SUMMARY_EXPORTERS = {
-    FORM_2_1.form_code: export_lined_channel_summary,
-    FORM_2_2.form_code: export_sluice_gate_summary,
-    FORM_2_3.form_code: export_aqueduct_summary,
-    FORM_2_4.form_code: export_inverted_siphon_summary,
-    FORM_2_5.form_code: export_tunnel_summary,
-    FORM_2_6.form_code: export_culvert_summary,
-}
 
 
 class DataQueryPage(QWidget):
@@ -412,14 +364,12 @@ class DataQueryPage(QWidget):
             None,
         )
 
-        forms = get_engineering_form_definitions()
-
-        for form in forms:
-            display_text = f"附表{form['form_number']} " f"{form['form_name']}"
-
+        for definition in (
+            get_engineering_form_definitions()
+        ):
             self.form_combo.addItem(
-                display_text,
-                form["form_code"],
+                definition.display_name,
+                definition.form_code,
             )
 
         if current_value is not None:
@@ -678,31 +628,61 @@ class DataQueryPage(QWidget):
 
         form_code = self.form_combo.currentData()
 
-        batch_id = self.batch_combo.currentData()
+        form_definition = (
+            get_engineering_form_definition(
+                form_code
+            )
+            if form_code is not None
+            else None
+        )
 
-        batch_text = self.batch_combo.currentText() or "全部批次"
+        if (
+            form_code is not None
+            and form_definition is None
+        ):
+            QMessageBox.warning(
+                self,
+                "无法导出",
+                (
+                    "当前调查表尚未接入"
+                    "工程调查定义 Registry。"
+                ),
+            )
+            return
+
+        batch_text = (
+            self.batch_combo.currentText()
+            or "全部批次"
+        )
 
         safe_batch_text = batch_text
 
         invalid_chars = '\\/:*?"<>|'
 
         for char in invalid_chars:
-            safe_batch_text = safe_batch_text.replace(
-                char,
-                "_",
+            safe_batch_text = (
+                safe_batch_text.replace(
+                    char,
+                    "_",
+                )
             )
 
         # =========================
         # 单一表单
         # =========================
 
-        if form_code is not None:
-            form_number = str(form_code).removeprefix("form_").replace("_", ".")
-
-            default_name = f"数据查询_附表{form_number}_" f"{safe_batch_text}.xlsx"
+        if form_definition is not None:
+            default_name = (
+                "数据查询_"
+                f"附表{form_definition.form_number}_"
+                f"{safe_batch_text}.xlsx"
+            )
 
         else:
-            default_name = "数据查询_工程调查汇总_" f"{safe_batch_text}.xlsx"
+            default_name = (
+                "数据查询_工程调查汇总_"
+                f"{safe_batch_text}.xlsx"
+            )
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -718,14 +698,19 @@ class DataQueryPage(QWidget):
             file_path += ".xlsx"
 
         try:
-            exporter = (
-                ENGINEERING_SUMMARY_EXPORTERS.get(form_code)
-                if form_code is not None
-                else None
-            )
+            if form_definition is not None:
+                if (
+                    form_definition
+                    .summary_export_definition
+                    is None
+                ):
+                    raise ValueError(
+                        f"{form_definition.form_code} "
+                        "尚未配置详细汇总导出定义。"
+                    )
 
-            if exporter is not None:
-                result = exporter(
+                result = export_engineering_summary(
+                    form_definition,
                     records=self.filtered_records,
                     file_path=file_path,
                 )
