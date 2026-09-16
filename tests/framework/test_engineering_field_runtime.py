@@ -64,18 +64,18 @@ class EngineeringFieldRuntimeTestCase(unittest.TestCase):
             "填写名称",
         )
 
-        runtime.widget.setText("  测试涵洞  ")
+        runtime.widget.setText("测试工程甲")
 
         self.assertEqual(
             runtime.get_value(),
-            "测试涵洞",
+            "测试工程甲",
         )
 
-        runtime.set_value("测试渡槽")
+        runtime.set_value("测试工程乙")
 
         self.assertEqual(
             runtime.widget.text(),
-            "测试渡槽",
+            "测试工程乙",
         )
 
         runtime.clear()
