@@ -22,6 +22,10 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
+from forms.engineering.registry import (
+    get_engineering_form_definitions,
+)
+
 from services.business_code import (
     get_engineering_type_code,
 )
@@ -426,69 +430,153 @@ class DatabaseCoreTestCase(unittest.TestCase):
                 batch_code="DUPLICATE",
             )
 
+    def test_registered_engineering_forms_are_bootstrapped(
+        self,
+    ):
+        """
+        已迁移到 EngineeringFormRegistry 的工程表，
+        数据库初始化元数据必须来自并匹配正式 definition。
+        """
 
-def test_form_2_4_metadata_and_business_type_code(
-    self,
-):
-    form_version = database.get_current_form_version("form_2_4")
+        definitions = get_engineering_form_definitions()
 
-    self.assertIsNotNone(form_version)
+        self.assertTrue(definitions)
 
-    self.assertEqual(
-        get_engineering_type_code("form_2_4"),
-        "04",
-    )
+        with database.get_connection() as connection:
+            for definition in definitions:
+                with self.subTest(
+                    form_code=definition.form_code,
+                ):
+                    form = connection.execute(
+                        """
+                        SELECT
+                            form_code,
+                            form_number,
+                            form_name,
+                            series,
+                            record_type,
+                            asset_type,
+                            sort_order
+                        FROM form_definitions
+                        WHERE form_code = ?
+                        """,
+                        (definition.form_code,),
+                    ).fetchone()
 
-    with database.get_connection() as connection:
-        form = connection.execute(
-            """
-            SELECT
-                form_code,
-                form_number,
-                form_name,
-                series,
-                record_type,
-                asset_type,
-                sort_order
-            FROM form_definitions
-            WHERE form_code = ?
-            """,
-            ("form_2_4",),
-        ).fetchone()
+                    self.assertIsNotNone(form)
 
-    self.assertIsNotNone(form)
+                    assert form is not None
 
-    assert form is not None
+                    self.assertEqual(
+                        form["form_code"],
+                        definition.form_code,
+                    )
 
-    self.assertEqual(
-        form["form_number"],
-        "2.4",
-    )
+                    self.assertEqual(
+                        form["form_number"],
+                        definition.form_number,
+                    )
 
-    self.assertEqual(
-        form["form_name"],
-        "倒虹吸工程状况调查表",
-    )
+                    self.assertEqual(
+                        form["form_name"],
+                        definition.form_name,
+                    )
 
-    self.assertEqual(
-        form["series"],
-        "series_2",
-    )
+                    self.assertEqual(
+                        form["series"],
+                        "series_2",
+                    )
 
-    self.assertEqual(
-        form["record_type"],
-        "engineering",
-    )
+                    self.assertEqual(
+                        form["record_type"],
+                        "engineering",
+                    )
 
-    self.assertEqual(
-        form["asset_type"],
-        "inverted_siphon",
-    )
+                    self.assertEqual(
+                        form["asset_type"],
+                        definition.asset_type,
+                    )
 
-    self.assertEqual(
-        int(form["sort_order"]),
-        204,
-    )
+                    form_number_parts = definition.form_number.split(
+                        ".",
+                        1,
+                    )
+
+                    expected_sort_order = 200 + int(form_number_parts[1])
+
+                    self.assertEqual(
+                        int(form["sort_order"]),
+                        expected_sort_order,
+                    )
+
+                    form_version = database.get_current_form_version(
+                        definition.form_code
+                    )
+
+                    self.assertIsNotNone(form_version)
+
+    def test_form_2_4_metadata_and_business_type_code(
+        self,
+    ):
+        form_version = database.get_current_form_version("form_2_4")
+
+        self.assertIsNotNone(form_version)
+
+        self.assertEqual(
+            get_engineering_type_code("form_2_4"),
+            "04",
+        )
+
+        with database.get_connection() as connection:
+            form = connection.execute(
+                """
+                SELECT
+                    form_code,
+                    form_number,
+                    form_name,
+                    series,
+                    record_type,
+                    asset_type,
+                    sort_order
+                FROM form_definitions
+                WHERE form_code = ?
+                """,
+                ("form_2_4",),
+            ).fetchone()
+
+        self.assertIsNotNone(form)
+
+        assert form is not None
+
+        self.assertEqual(
+            form["form_number"],
+            "2.4",
+        )
+
+        self.assertEqual(
+            form["form_name"],
+            "倒虹吸工程状况调查表",
+        )
+
+        self.assertEqual(
+            form["series"],
+            "series_2",
+        )
+
+        self.assertEqual(
+            form["record_type"],
+            "engineering",
+        )
+
+        self.assertEqual(
+            form["asset_type"],
+            "inverted_siphon",
+        )
+
+        self.assertEqual(
+            int(form["sort_order"]),
+            204,
+        )
 
 
 if __name__ == "__main__":

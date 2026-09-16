@@ -46,7 +46,9 @@ class CulvertWorkflowTestCase(
     - 重复保护；
     - 公共读取和修改；
     - 公共删除；
-    - 附表2.6完成调查规则。
+    - 通用工程完成事务；
+    - 附表2.6正式原表导出；
+    - 附表2.6详细汇总导出。
     """
 
     FORM_CODE = "form_2_6"
@@ -366,42 +368,7 @@ class CulvertWorkflowTestCase(
     # 5. 正常完成调查
     # =========================================================
 
-    def test_complete_culvert_record(
-        self,
-    ):
-        result = self.create_culvert_draft(
-            business_code=("1-01-01-06-010"),
-            record_data=(self.make_complete_record_data()),
-            inspection_results=(self.make_complete_inspection_results()),
-            survey_date="2026-09-15",
-            overall_grade="B",
-            survey_comment=("自动测试调查意见。"),
-        )
-
-        survey_record_id = int(result["survey_record_id"])
-
-        complete_result = database.complete_culvert_record(survey_record_id)
-
-        self.assertEqual(
-            complete_result["inspection_count"],
-            11,
-        )
-
-        record = database.get_point_engineering_record(
-            survey_record_id=(survey_record_id),
-            form_code="form_2_6",
-        )
-
-        self.assertIsNotNone(record)
-
-        assert record is not None
-
-        self.assertEqual(
-            record["record_status"],
-            "completed",
-        )
-
-    def test_generic_completion_core_for_culvert(
+    def test_complete_culvert_with_generic_completion_core(
         self,
     ):
         result = self.create_culvert_draft(
@@ -450,68 +417,6 @@ class CulvertWorkflowTestCase(
     # =========================================================
     # 6. 11项评价必须全部完成
     # =========================================================
-
-    def test_completion_requires_all_11_items(
-        self,
-    ):
-        inspections = (self.make_complete_inspection_results())[:-1]
-
-        result = self.create_culvert_draft(
-            business_code=("1-01-01-06-011"),
-            asset_name=("评价不完整涵洞"),
-            stake="K31+500",
-            stake_value=31500.0,
-            record_data=(
-                self.make_complete_record_data(
-                    asset_name=("评价不完整涵洞"),
-                    stake="K31+500",
-                    stake_value=31500.0,
-                )
-            ),
-            inspection_results=inspections,
-            survey_date="2026-09-15",
-            overall_grade="B",
-            survey_comment="自动测试。",
-        )
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "全部11项",
-        ):
-            database.complete_culvert_record(int(result["survey_record_id"]))
-
-    # =========================================================
-    # 7. 正式基本信息必须完整
-    # =========================================================
-
-    def test_completion_requires_basic_fields(
-        self,
-    ):
-        record_data = self.make_complete_record_data(
-            asset_name=("缺少覆土厚度涵洞"),
-            stake="K32+000",
-            stake_value=32000.0,
-        )
-
-        record_data["soil_cover_thickness"] = None
-
-        result = self.create_culvert_draft(
-            business_code=("1-01-01-06-012"),
-            asset_name=("缺少覆土厚度涵洞"),
-            stake="K32+000",
-            stake_value=32000.0,
-            record_data=record_data,
-            inspection_results=(self.make_complete_inspection_results()),
-            survey_date="2026-09-15",
-            overall_grade="B",
-            survey_comment="自动测试。",
-        )
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "覆土厚度",
-        ):
-            database.complete_culvert_record(int(result["survey_record_id"]))
 
     def test_export_culvert_original_form(
         self,

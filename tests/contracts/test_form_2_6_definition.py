@@ -20,19 +20,9 @@ from forms.engineering.form_2_6 import (
 from services.culvert_evaluation import (
     CULVERT_EVALUATION_ITEMS,
 )
-from services.business_code import (
-    get_engineering_type_code,
-)
 
 
 class Form26DefinitionTestCase(unittest.TestCase):
-    def test_business_code_contract_matches_service(
-        self,
-    ):
-        self.assertEqual(
-            FORM_2_6.business_type_code,
-            get_engineering_type_code("form_2_6"),
-        )
 
     def test_identity_contract(
         self,
@@ -281,6 +271,88 @@ class Form26DefinitionTestCase(unittest.TestCase):
             actual_item_codes,
             expected_item_codes,
         )
+
+
+def test_evaluation_source_text_fidelity(
+    self,
+):
+    """
+    锁定正式附表2.6评价内容。
+
+    正式源中存在的特殊编号和文字
+    不允许在开发过程中被自动纠正。
+    """
+
+    items = FORM_2_6.evaluation_items
+
+    expected_categories = (
+        "水力条件",
+        "水力条件",
+        "水力条件",
+        "水力条件",
+        "结构变形",
+        "结构变形",
+        "结构破损",
+        "结构破损",
+        "结构破损",
+        "结构破损",
+        "地基基础",
+    )
+
+    self.assertEqual(
+        tuple(item["category"] for item in items),
+        expected_categories,
+    )
+
+    expected_item_names = (
+        "进、出口流态",
+        "进、出口水位",
+        "过流能力",
+        "冲淤情况",
+        "洞身衬砌结构变形",
+        "其它部位结构变形",
+        "洞身结构",
+        "其它结构",
+        "混凝土碳化深度",
+        "混凝土强度",
+        "地基基础",
+    )
+
+    self.assertEqual(
+        tuple(item["item_name"] for item in items),
+        expected_item_names,
+    )
+
+    for item in items:
+        with self.subTest(
+            item_code=item["item_code"],
+        ):
+            self.assertEqual(
+                set(item["standards"].keys()),
+                {
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                },
+            )
+
+    # 以下文字按正式调查表原文锁定，
+    # 即使看起来存在编号或措辞异常，
+    # 也不能在代码中擅自修正。
+    self.assertTrue(items[1]["standards"]["C"].startswith("②"))
+
+    carbonation = items[8]["standards"]
+
+    self.assertEqual(
+        carbonation["A"],
+        carbonation["B"],
+    )
+
+    self.assertIn(
+        "剥蚀脱离",
+        items[6]["standards"]["D"],
+    )
 
     def test_grade_contract(
         self,

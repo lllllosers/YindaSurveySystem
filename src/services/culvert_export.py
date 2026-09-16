@@ -22,6 +22,21 @@ from database import (
     get_point_engineering_record,
 )
 
+from database import (
+    get_app_root,
+    get_engineering_asset_detail,
+    get_inspection_results,
+    get_point_engineering_record,
+)
+
+from forms.engineering.form_2_6 import (
+    FORM_2_6,
+)
+
+from services.culvert_evaluation import (
+    CULVERT_EVALUATION_ITEMS,
+)
+
 from services.culvert_evaluation import (
     CULVERT_EVALUATION_ITEMS,
 )
@@ -118,7 +133,7 @@ def export_culvert_summary(
 
         record = get_point_engineering_record(
             survey_record_id=(survey_record_id),
-            form_code="form_2_6",
+            form_code=FORM_2_6.form_code,
         )
 
         if record is None:
@@ -414,7 +429,7 @@ def export_culvert_original_form(
 
     record = get_point_engineering_record(
         survey_record_id=(survey_record_id),
-        form_code="form_2_6",
+        form_code=FORM_2_6.form_code,
     )
 
     if record is None:

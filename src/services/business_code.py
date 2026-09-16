@@ -1,13 +1,30 @@
 import re
 
-# 当前附表2工程类型代码
-ENGINEERING_TYPE_CODES = {
+from forms.engineering.registry import (
+    get_engineering_form_definition,
+)
+
+# =============================================================
+# 尚未迁移到 Engineering Form Framework 的兼容映射
+# =============================================================
+#
+# 这里只允许保留 legacy 表单。
+#
+# 已经迁移并注册到 EngineeringFormRegistry 的表单，
+# 其业务类型代码必须由
+# EngineeringFormDefinition.business_type_code
+# 提供。
+#
+# 后续每迁移完成一张表，就从这里删除一项。
+# 全部迁移完成后，本映射及兼容分支整体删除。
+# =============================================================
+
+LEGACY_ENGINEERING_TYPE_CODES = {
     "form_2_1": "01",  # 防渗衬砌渠道
     "form_2_2": "02",  # 水闸
     "form_2_3": "03",  # 渡槽
     "form_2_4": "04",  # 倒虹吸
     "form_2_5": "05",  # 隧洞
-    "form_2_6": "06",  # 涵洞（暗涵）
 }
 
 
@@ -20,12 +37,29 @@ CANAL_LEVEL_CODES = {
 }
 
 
-def get_engineering_type_code(form_code: str) -> str:
+def get_engineering_type_code(
+    form_code: str,
+) -> str:
     """
     根据调查表代码获取业务编号中的工程类型代码。
+
+    已迁移表单：
+        从 EngineeringFormDefinition 获取。
+
+    尚未迁移表单：
+        暂时从 legacy 兼容映射获取。
     """
+
+    definition = get_engineering_form_definition(
+        form_code,
+    )
+
+    if definition is not None:
+        return definition.business_type_code
+
     try:
-        return ENGINEERING_TYPE_CODES[form_code]
+        return LEGACY_ENGINEERING_TYPE_CODES[form_code]
+
     except KeyError as error:
         raise ValueError(f"暂不支持调查表：{form_code}") from error
 

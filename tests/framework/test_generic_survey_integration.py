@@ -46,28 +46,41 @@ class GenericSurveyIntegrationTestCase(unittest.TestCase):
     ):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_form_2_6_registry_uses_generic_page(
-        self,
-    ):
-        registration = next(
-            item for item in ENGINEERING_SURVEY_FORMS if item["form_code"] == "form_2_6"
+
+def test_form_2_6_registry_uses_generic_page(
+    self,
+):
+    registration = next(
+        item
+        for item in ENGINEERING_SURVEY_FORMS
+        if item["form_code"] == FORM_2_6.form_code
+    )
+
+    self.assertEqual(
+        registration["form_code"],
+        FORM_2_6.form_code,
+    )
+
+    self.assertEqual(
+        registration["button_text"],
+        FORM_2_6.display_name.removesuffix("表"),
+    )
+
+    page = registration["edit_page_factory"]()
+
+    try:
+        self.assertIsInstance(
+            page,
+            GenericEngineeringSurveyPage,
         )
 
-        page = registration["edit_page_factory"]()
+        self.assertIs(
+            page.definition,
+            FORM_2_6,
+        )
 
-        try:
-            self.assertIsInstance(
-                page,
-                GenericEngineeringSurveyPage,
-            )
-
-            self.assertIs(
-                page.definition,
-                FORM_2_6,
-            )
-
-        finally:
-            page.deleteLater()
+    finally:
+        page.deleteLater()
 
     def test_new_page_prefers_generic_initializer(
         self,

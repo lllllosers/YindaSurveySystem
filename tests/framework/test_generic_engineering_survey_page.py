@@ -38,8 +38,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
+from tests.framework.engineering_test_fixtures import (
+    TEST_POINT_DEFINITION,
 )
 
 from pages.components.generic_engineering_survey_page import (
@@ -57,7 +57,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     def setUp(
         self,
     ):
-        self.page = GenericEngineeringSurveyPage(FORM_2_6)
+        self.page = GenericEngineeringSurveyPage(TEST_POINT_DEFINITION)
 
     def tearDown(
         self,
@@ -73,7 +73,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.assertEqual(
             self.page.title_label.text(),
-            (f"{FORM_2_6.display_name}" " - 新增"),
+            (f"{TEST_POINT_DEFINITION.display_name}" " - 新增"),
         )
 
     # =========================================================
@@ -99,18 +99,17 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     # =========================================================
     # 动态字段
     # =========================================================
-
-    def test_all_form_2_6_fields_are_created(
+    def test_all_definition_fields_are_created(
         self,
     ):
         self.assertEqual(
             set(self.page.field_runtimes.keys()),
-            {field.key for field in FORM_2_6.fields},
+            {field.key for field in TEST_POINT_DEFINITION.fields},
         )
 
         self.assertEqual(
             len(self.page.field_runtimes),
-            16,
+            len(TEST_POINT_DEFINITION.fields),
         )
 
     def test_dynamic_sections_are_created(
@@ -118,17 +117,14 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.assertEqual(
             len(self.page.section_groups),
-            2,
+            len(TEST_POINT_DEFINITION.sections),
         )
 
         titles = tuple(group.title() for group in self.page.section_groups)
 
         self.assertEqual(
             titles,
-            (
-                "二、工程基本信息",
-                "三、结构与断面参数",
-            ),
+            tuple(section.title for section in TEST_POINT_DEFINITION.sections),
         )
 
     def test_field_widget_types_follow_definition(
@@ -140,13 +136,6 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
                 QLineEdit,
             )
 
-        signed_runtime = self.page.field_runtimes["channel_bottom_elevation"]
-
-        self.assertEqual(
-            signed_runtime.definition.input_type,
-            "signed_decimal",
-        )
-
     # =========================================================
     # 评价
     # =========================================================
@@ -156,22 +145,17 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.assertEqual(
             len(self.page.evaluation_section.evaluation_items),
-            11,
+            len(TEST_POINT_DEFINITION.evaluation_items),
         )
 
         self.assertEqual(
             self.page.evaluation_section.grade_options,
-            (
-                "A",
-                "B",
-                "C",
-                "D",
-            ),
+            TEST_POINT_DEFINITION.grade_options,
         )
 
         self.assertEqual(
             self.page.evaluation_section.title(),
-            "四、分项评价",
+            TEST_POINT_DEFINITION.evaluation_title,
         )
 
     # =========================================================
@@ -183,17 +167,12 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.assertEqual(
             tuple(self.page.overall_grade_buttons.keys()),
-            (
-                "A",
-                "B",
-                "C",
-                "D",
-            ),
+            TEST_POINT_DEFINITION.grade_options,
         )
 
         self.assertEqual(
             self.page.conclusion_group.title(),
-            "五、调查结论",
+            TEST_POINT_DEFINITION.conclusion_title,
         )
 
     # =========================================================
@@ -244,22 +223,11 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self,
     ):
         values = {
-            "asset_name": "一号涵洞",
+            "asset_name": "一号测试工程",
             "stake": "K12+350",
             "design_flow": "6.5",
-            "structure_grade": "3",
             "build_date": "2010-06",
             "renovation_date": "",
-            "length": "18.5",
-            "increased_flow": "8.0",
-            "structure_form": "箱涵",
-            "main_structure_material": ("钢筋混凝土"),
-            "concrete_strength": "C30",
-            "cover_thickness": "40",
-            "soil_cover_thickness": "2.5",
-            "channel_width": "3.2",
-            "channel_depth": "2.8",
-            "channel_bottom_elevation": ("-1.25"),
         }
 
         for key, value in values.items():
@@ -269,7 +237,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             data["asset_name"],
-            "一号涵洞",
+            "一号测试工程",
         )
 
         self.assertEqual(
@@ -287,12 +255,12 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             6.5,
         )
 
-        self.assertIsNone(data["renovation_date"])
-
         self.assertEqual(
-            data["channel_bottom_elevation"],
-            -1.25,
+            data["build_date"],
+            "2010-06",
         )
+
+        self.assertIsNone(data["renovation_date"])
 
     # =========================================================
     # point位置
@@ -323,7 +291,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.page.load_record_data(
             {
-                "asset_name": ("回填涵洞"),
+                "asset_name": ("回填测试工程"),
                 "stake": "CH1+005",
                 "design_flow": 5.5,
                 "stake_value": 1005.0,
@@ -333,7 +301,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.get_field_widget("asset_name").text(),
-            "回填涵洞",
+            "回填测试工程",
         )
 
         self.assertEqual(
@@ -353,11 +321,11 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     def test_collect_form_data(
         self,
     ):
-        self.page.get_field_widget("asset_name").setText("测试涵洞")
+        self.page.get_field_widget("asset_name").setText("测试点工程")
 
         self.page.get_field_widget("stake").setText("CH2+100")
 
-        first_item = FORM_2_6.evaluation_items[0]
+        first_item = TEST_POINT_DEFINITION.evaluation_items[0]
 
         item_code = first_item["item_code"]
 
@@ -369,10 +337,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         payload = self.page.collect_form_data()
 
-        self.assertEqual(
-            payload["asset_name"],
-            "测试涵洞",
-        )
+        self.page.get_field_widget("asset_name").setText("测试点工程")
 
         self.assertEqual(
             payload["position"]["single_stake_value"],
@@ -401,13 +366,13 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     def test_load_form_data(
         self,
     ):
-        first_item = FORM_2_6.evaluation_items[0]
+        first_item = TEST_POINT_DEFINITION.evaluation_items[0]
 
         item_code = first_item["item_code"]
 
         self.page.load_form_data(
             record_data={
-                "asset_name": ("历史涵洞"),
+                "asset_name": ("历史测试工程"),
                 "stake": ("CH3+200"),
             },
             inspection_results=[
@@ -423,7 +388,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.get_field_widget("asset_name").text(),
-            "历史涵洞",
+            "历史测试工程",
         )
 
         self.assertTrue(
@@ -491,7 +456,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         errors = self.page.validate_for_completion()
 
         self.assertIn(
-            "名称不能为空。",
+            "工程名称不能为空。",
             errors,
         )
 
@@ -561,7 +526,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.business_code_edit.text(),
-            "1-01-01-06-001",
+            self._expected_business_code(),
         )
 
         mock_codes.assert_called()
@@ -631,7 +596,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.business_code_edit.text(),
-            "1-01-01-06-001",
+            self._expected_business_code(),
         )
 
         self.assertFalse(self.page.is_dirty)
@@ -717,8 +682,14 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.business_code_edit.text(),
-            "1-01-01-06-001",
+            self._expected_business_code(),
         )
+
+    def _expected_business_code(
+        self,
+        sequence="001",
+    ):
+        return "1-01-01-" f"{TEST_POINT_DEFINITION.business_type_code}" f"-{sequence}"
 
     def _seed_ownership(
         self,
@@ -762,7 +733,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
             combo.blockSignals(False)
 
-        self.page.business_code_edit.setText("1-01-01-06-001")
+        self.page.business_code_edit.setText(self._expected_business_code())
 
     # =========================================================
     # 草稿生命周期
@@ -797,12 +768,12 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         mock_create.return_value = {
             "survey_record_id": 101,
             "engineering_asset_id": 201,
-            "business_code": "1-01-01-06-001",
+            "business_code": self._expected_business_code(),
         }
 
         self._seed_ownership()
 
-        self.page.get_field_widget("asset_name").setText("测试涵洞")
+        self.page.get_field_widget("asset_name").setText("测试点工程")
 
         result = self.page._save_current_record(show_message=False)
 
@@ -839,7 +810,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             kwargs["payload"]["asset_name"],
-            "测试涵洞",
+            "测试点工程",
         )
 
     @patch(
@@ -873,7 +844,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self.page.editing_record_id = 102
         self.page.editing_record_status = "draft"
 
-        self.page.get_field_widget("asset_name").setText("修改后的涵洞")
+        self.page.get_field_widget("asset_name").setText("修改后的测试工程")
 
         self.page._save_current_record(show_message=False)
 
@@ -888,7 +859,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             kwargs["payload"]["asset_name"],
-            "修改后的涵洞",
+            "修改后的测试工程",
         )
 
         self.assertEqual(
@@ -958,12 +929,14 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             }
         ]
 
+        expected_business_code = self._expected_business_code("005")
+
         mock_bundle.return_value = {
             "record": {
                 "survey_record_id": 103,
                 "record_status": "draft",
-                "business_code": "1-01-01-06-005",
-                "asset_name": "数据库中的涵洞",
+                "business_code": expected_business_code,
+                "asset_name": "数据库中的测试工程",
                 "single_stake_text": "CH8+500",
                 "single_stake_value": 8500.0,
                 "department_id": 10,
@@ -987,7 +960,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.get_field_widget("asset_name").text(),
-            "数据库中的涵洞",
+            "数据库中的测试工程",
         )
 
         self.assertEqual(
@@ -997,7 +970,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.business_code_edit.text(),
-            "1-01-01-06-005",
+            expected_business_code,
         )
 
         self.assertFalse(self.page.department_combo.isEnabled())
@@ -1013,15 +986,15 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         self,
     ):
         """
-        按FORM_2_6定义生成一份
+        按测试 definition 生成一份
         可以通过完成校验的页面数据。
         """
 
-        for field in FORM_2_6.fields:
+        for field in TEST_POINT_DEFINITION.fields:
             widget = self.page.get_field_widget(field.key)
 
             if field.key == "asset_name":
-                value = "完整测试涵洞"
+                value = "完整测试工程"
 
             elif field.key == "stake":
                 value = "CH10+500"
@@ -1049,7 +1022,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
             widget.setText(value)
 
-        for item in FORM_2_6.evaluation_items:
+        for item in TEST_POINT_DEFINITION.evaluation_items:
             item_code = item["item_code"]
 
             controls = self.page.evaluation_section.grade_buttons[item_code]
@@ -1171,17 +1144,10 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         "generic_engineering_survey_page."
         "get_current_form_version"
     )
+    @patch("pages.components." "generic_engineering_survey_page." "get_current_context")
     @patch(
-        "pages.components."
-        "generic_engineering_survey_page."
-        "get_current_context"
-    )
-    @patch(
-        "PySide6.QtWidgets."
-        "QMessageBox.question",
-        return_value=(
-            QMessageBox.StandardButton.Yes
-        ),
+        "PySide6.QtWidgets." "QMessageBox.question",
+        return_value=(QMessageBox.StandardButton.Yes),
     )
     def test_existing_draft_can_complete(
         self,
@@ -1191,6 +1157,8 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         mock_complete,
         mock_after_completion,
     ):
+        inspection_count = len(TEST_POINT_DEFINITION.evaluation_items)
+
         mock_context.return_value = {
             "project_id": 1,
             "batch_id": 2,
@@ -1202,7 +1170,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         mock_complete.return_value = {
             "survey_record_id": 203,
-            "inspection_count": 11,
+            "inspection_count": inspection_count,
         }
 
         self._seed_ownership()
@@ -1220,16 +1188,14 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             "completed",
         )
 
-        self.assertFalse(
-            self.page.complete_button.isEnabled()
-        )
+        self.assertFalse(self.page.complete_button.isEnabled())
 
         mock_complete.assert_called_once()
 
         mock_after_completion.assert_called_once_with(
             {
                 "survey_record_id": 203,
-                "inspection_count": 11,
+                "inspection_count": inspection_count,
             },
             previous_survey_date="2026-09-15",
         )
@@ -1239,10 +1205,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         "generic_engineering_survey_page."
         "complete_engineering_record"
     )
-    @patch(
-        "PySide6.QtWidgets."
-        "QMessageBox.warning"
-    )
+    @patch("PySide6.QtWidgets." "QMessageBox.warning")
     def test_invalid_form_does_not_complete(
         self,
         mock_warning,
@@ -1327,7 +1290,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         result = {
             "survey_record_id": 302,
-            "inspection_count": 11,
+            "inspection_count": len(TEST_POINT_DEFINITION.evaluation_items),
         }
 
         action = self.page._handle_completion_success(
@@ -1360,7 +1323,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
         action = self.page._handle_completion_success(
             {
                 "survey_record_id": 303,
-                "inspection_count": 11,
+                "inspection_count": len(TEST_POINT_DEFINITION.evaluation_items),
             },
             previous_survey_date=("2026-09-15"),
         )

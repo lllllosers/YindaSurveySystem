@@ -76,22 +76,26 @@ class GenericEngineeringSurveyPage(QWidget):
     """
     附表2工程调查通用录入页面。
 
-    R1-5阶段仅负责根据
-    EngineeringFormDefinition
-    生成页面结构。
+    页面根据 EngineeringFormDefinition
+    生成字段、位置、评价和调查结论，
+    并统一负责工程调查的页面生命周期：
 
-    当前明确不负责：
-    - 数据库读取；
-    - 草稿保存；
-    - completed流程；
+    - 新增记录；
+    - 草稿保存和继续编辑；
+    - 完成调查；
+    - 已完成记录修改；
     - 业务编号生成；
     - dirty tracking；
     - 连续录入；
     - 返回拦截；
-    - Excel导出。
+    - 快捷键操作。
 
-    后续阶段在当前结构上逐步接入，
-    不另起第二套通用页面。
+    数据持久化和完成事务由
+    forms.engineering.persistence
+    及 database 公共接口负责。
+
+    正式原表和汇总 Excel 导出
+    由各表对应的 exporter 负责。
     """
 
     survey_saved = Signal()
@@ -248,7 +252,7 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         # =====================================================
-        # R1-5底部仅做预览状态
+        # 页面操作区
         # =====================================================
 
         self._build_runtime_footer(root_layout)
@@ -429,12 +433,11 @@ class GenericEngineeringSurveyPage(QWidget):
         self,
     ):
         """
-        根据当前归属自动生成业务编号。
+        根据当前归属和表单定义
+        自动生成业务编号。
 
-        新框架直接使用
-        definition.business_type_code，
-        不再从旧 ENGINEERING_TYPE_CODES
-        读取第二份工程类型代码。
+        工程类型代码来自
+        definition.business_type_code。
         """
 
         # 已经建立的 EngineeringAsset
@@ -501,10 +504,9 @@ class GenericEngineeringSurveyPage(QWidget):
         except Exception as error:
             self.business_code_edit.clear()
 
-            # 当前阶段不在自动级联过程中
-            # 弹出 QMessageBox，
+            # 自动级联过程中不弹出 QMessageBox，
             # 防止切换下拉框时连续弹窗。
-            # 真正保存时仍会正式校验。
+            # 正式保存时仍会执行完整校验。
             self.business_code_edit.setToolTip(str(error))
 
             return None
@@ -565,10 +567,6 @@ class GenericEngineeringSurveyPage(QWidget):
             "canal_id": canal_data["id"],
             "business_code": business_code,
         }
-
-    # =========================================================
-    # 页面模式
-    # =========================================================
 
     # =========================================================
     # 页面模式
@@ -649,16 +647,17 @@ class GenericEngineeringSurveyPage(QWidget):
         show_message=True,
     ):
         """
-        保存当前通用工程调查。
+        保存当前工程调查。
 
         新记录：
             创建 EngineeringAsset
-            + SurveyRecord。
+            和 SurveyRecord。
 
-        已有 draft：
-            修改原记录。
+        已有记录：
+            更新原调查记录。
 
-        completed 修改留到 R1-8C3。
+        已完成记录保存修改前，
+        必须继续满足完整的完成条件。
         """
 
         try:
@@ -969,10 +968,12 @@ class GenericEngineeringSurveyPage(QWidget):
         """
         打开已有工程调查。
 
-        当前阶段：
-        - draft 可继续编辑；
-        - completed 可以正确读取，
-          但暂不允许保存修改。
+        支持：
+        - draft 继续编辑；
+        - completed 读取并保存修改。
+
+        已建立 EngineeringAsset 的
+        归属和业务编号保持锁定。
         """
 
         bundle = load_engineering_record_bundle(
@@ -1535,7 +1536,6 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.back_button = QPushButton("返回")
 
-        # 未保存修改拦截在 R1-8C3 接入。
         self.back_button.clicked.connect(self.request_back)
 
         self.runtime_status_label = QLabel(

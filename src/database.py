@@ -957,6 +957,11 @@ def create_initial_forms():
     调查表定义属于系统元数据，
     正式运行环境也需要自动初始化。
 
+    尚未迁移的附表继续使用 legacy 元数据；
+    已迁移到 Engineering Form Framework 的附表，
+    从 EngineeringFormRegistry 中的正式 definition
+    生成数据库初始化元数据。
+
     当前已经建立：
     - 附表2.1 防渗衬砌渠道
     - 附表2.2 水闸
@@ -966,7 +971,18 @@ def create_initial_forms():
     - 附表2.6 涵洞（暗涵）
     """
 
-    forms = [
+    # ---------------------------------------------------------
+    # 尚未迁移到新框架的 legacy 表单元数据
+    # ---------------------------------------------------------
+    #
+    # 后续每迁移完成一张表，
+    # 就从这里删除对应项。
+    #
+    # 已迁移表单不得同时保留在这里，
+    # 防止数据库初始化再次形成第二份表单身份事实。
+    # ---------------------------------------------------------
+
+    legacy_forms = [
         {
             "form_code": "form_2_1",
             "form_number": "2.1",
@@ -1012,16 +1028,72 @@ def create_initial_forms():
             "asset_type": "tunnel",
             "sort_order": 205,
         },
-        {
-            "form_code": "form_2_6",
-            "form_number": "2.6",
-            "form_name": "涵洞（暗涵）工程状况调查表",
-            "series": "series_2",
-            "record_type": "engineering",
-            "asset_type": "culvert",
-            "sort_order": 206,
-        },
     ]
+
+    # ---------------------------------------------------------
+    # 已迁移表单
+    # ---------------------------------------------------------
+    #
+    # 使用函数内导入，避免 database 模块在加载阶段
+    # 对 forms 层形成不必要的顶层循环依赖。
+    # ---------------------------------------------------------
+
+    from forms.engineering.registry import (
+        get_engineering_form_definitions,
+    )
+
+    registered_definitions = get_engineering_form_definitions()
+
+    legacy_form_codes = {form["form_code"] for form in legacy_forms}
+
+    registered_form_codes = {
+        definition.form_code for definition in registered_definitions
+    }
+
+    duplicate_form_codes = legacy_form_codes & registered_form_codes
+
+    if duplicate_form_codes:
+        raise ValueError(
+            "已迁移工程调查表仍存在于 "
+            "database legacy 元数据中：" + "、".join(sorted(duplicate_form_codes))
+        )
+
+    forms = list(legacy_forms)
+
+    for definition in registered_definitions:
+        form_number_parts = definition.form_number.split(
+            ".",
+            1,
+        )
+
+        if (
+            len(form_number_parts) != 2
+            or form_number_parts[0] != "2"
+            or not form_number_parts[1].isdigit()
+        ):
+            raise ValueError(
+                "无法根据工程调查表编号生成 "
+                "数据库排序值："
+                f"{definition.form_number}"
+            )
+
+        sort_order = 200 + int(form_number_parts[1])
+
+        forms.append(
+            {
+                "form_code": (definition.form_code),
+                "form_number": (definition.form_number),
+                "form_name": (definition.form_name),
+                "series": "series_2",
+                "record_type": "engineering",
+                "asset_type": (definition.asset_type),
+                "sort_order": sort_order,
+            }
+        )
+
+    # ---------------------------------------------------------
+    # 写入数据库
+    # ---------------------------------------------------------
 
     with get_connection() as connection:
         for form in forms:
@@ -1060,6 +1132,7 @@ def create_initial_forms():
                 )
 
                 form_definition_id = cursor.lastrowid
+
             else:
                 form_definition_id = existing["id"]
 
@@ -3009,6 +3082,7 @@ def update_lined_channel_section_draft(
         business_code=(business_code),
     )
 
+
 def complete_engineering_survey_record(
     survey_record_id,
     form_code,
@@ -3040,64 +3114,35 @@ def complete_engineering_survey_record(
     - 最后原子更新为 completed。
     """
 
-    form_code = str(
-        form_code or ""
-    ).strip()
+    form_code = str(form_code or "").strip()
 
-    position_kind = str(
-        position_kind or ""
-    ).strip()
+    position_kind = str(position_kind or "").strip()
 
     expected_item_codes = tuple(
-        str(code).strip()
-        for code in (
-            expected_item_codes or ()
-        )
-        if str(code).strip()
+        str(code).strip() for code in (expected_item_codes or ()) if str(code).strip()
     )
 
     grade_options = tuple(
-        str(grade).strip()
-        for grade in (
-            grade_options or ()
-        )
-        if str(grade).strip()
+        str(grade).strip() for grade in (grade_options or ()) if str(grade).strip()
     )
 
     if not form_code:
-        raise ValueError(
-            "调查表代码不能为空。"
-        )
+        raise ValueError("调查表代码不能为空。")
 
     if position_kind not in (
         "point",
         "range",
     ):
-        raise ValueError(
-            "不支持的工程位置类型："
-            f"{position_kind}"
-        )
+        raise ValueError("不支持的工程位置类型：" f"{position_kind}")
 
     if not expected_item_codes:
-        raise ValueError(
-            "当前调查表没有配置"
-            "有效的评价项目。"
-        )
+        raise ValueError("当前调查表没有配置" "有效的评价项目。")
 
-    if (
-        len(set(expected_item_codes))
-        != len(expected_item_codes)
-    ):
-        raise ValueError(
-            "当前调查表评价项目代码"
-            "存在重复。"
-        )
+    if len(set(expected_item_codes)) != len(expected_item_codes):
+        raise ValueError("当前调查表评价项目代码" "存在重复。")
 
     if not grade_options:
-        raise ValueError(
-            "当前调查表没有配置"
-            "有效的评价等级。"
-        )
+        raise ValueError("当前调查表没有配置" "有效的评价等级。")
 
     with get_connection() as connection:
         record = connection.execute(
@@ -3148,19 +3193,10 @@ def complete_engineering_survey_record(
         ).fetchone()
 
         if record is None:
-            raise ValueError(
-                "没有找到该调查记录，"
-                "或调查表类型不匹配。"
-            )
+            raise ValueError("没有找到该调查记录，" "或调查表类型不匹配。")
 
-        if (
-            record["record_status"]
-            != "draft"
-        ):
-            raise ValueError(
-                "只有草稿记录可以"
-                "执行完成调查。"
-            )
+        if record["record_status"] != "draft":
+            raise ValueError("只有草稿记录可以" "执行完成调查。")
 
         # =====================================================
         # 公共工程身份
@@ -3168,168 +3204,78 @@ def complete_engineering_survey_record(
 
         missing_fields = []
 
-        asset_name = str(
-            record["asset_name"] or ""
-        ).strip()
+        asset_name = str(record["asset_name"] or "").strip()
 
-        business_code = str(
-            record["business_code"] or ""
-        ).strip()
+        business_code = str(record["business_code"] or "").strip()
 
-        survey_date = str(
-            record["survey_date"] or ""
-        ).strip()
+        survey_date = str(record["survey_date"] or "").strip()
 
-        survey_comment = str(
-            record["survey_comment"] or ""
-        ).strip()
+        survey_comment = str(record["survey_comment"] or "").strip()
 
         if not asset_name:
-            missing_fields.append(
-                "工程名称"
-            )
+            missing_fields.append("工程名称")
 
-        if (
-            record["organization_unit_id"]
-            is None
-        ):
-            missing_fields.append(
-                "所属水管所"
-            )
+        if record["organization_unit_id"] is None:
+            missing_fields.append("所属水管所")
 
-        if (
-            record["canal_unit_id"]
-            is None
-        ):
-            missing_fields.append(
-                "所属渠系"
-            )
+        if record["canal_unit_id"] is None:
+            missing_fields.append("所属渠系")
 
         if not business_code:
-            missing_fields.append(
-                "业务编号"
-            )
+            missing_fields.append("业务编号")
 
         # =====================================================
         # 工程位置
         # =====================================================
 
         if position_kind == "point":
-            if not str(
-                record[
-                    "single_stake_text"
-                ]
-                or ""
-            ).strip():
-                missing_fields.append(
-                    "工程桩号"
-                )
+            if not str(record["single_stake_text"] or "").strip():
+                missing_fields.append("工程桩号")
 
-            if (
-                record[
-                    "single_stake_value"
-                ]
-                is None
-            ):
-                missing_fields.append(
-                    "工程桩号数值"
-                )
+            if record["single_stake_value"] is None:
+                missing_fields.append("工程桩号数值")
 
         else:
-            if not str(
-                record[
-                    "start_stake_text"
-                ]
-                or ""
-            ).strip():
-                missing_fields.append(
-                    "起始桩号"
-                )
+            if not str(record["start_stake_text"] or "").strip():
+                missing_fields.append("起始桩号")
 
-            if (
-                record[
-                    "start_stake_value"
-                ]
-                is None
-            ):
-                missing_fields.append(
-                    "起始桩号数值"
-                )
+            if record["start_stake_value"] is None:
+                missing_fields.append("起始桩号数值")
 
-            if not str(
-                record[
-                    "end_stake_text"
-                ]
-                or ""
-            ).strip():
-                missing_fields.append(
-                    "终止桩号"
-                )
+            if not str(record["end_stake_text"] or "").strip():
+                missing_fields.append("终止桩号")
 
-            if (
-                record[
-                    "end_stake_value"
-                ]
-                is None
-            ):
-                missing_fields.append(
-                    "终止桩号数值"
-                )
+            if record["end_stake_value"] is None:
+                missing_fields.append("终止桩号数值")
 
-            start_value = (
-                record[
-                    "start_stake_value"
-                ]
-            )
+            start_value = record["start_stake_value"]
 
-            end_value = (
-                record[
-                    "end_stake_value"
-                ]
-            )
+            end_value = record["end_stake_value"]
 
             if (
                 start_value is not None
                 and end_value is not None
                 and end_value < start_value
             ):
-                raise ValueError(
-                    "终止桩号不能小于"
-                    "起始桩号。"
-                )
+                raise ValueError("终止桩号不能小于" "起始桩号。")
 
         # =====================================================
         # 调查结论
         # =====================================================
 
         if not survey_date:
-            missing_fields.append(
-                "调查时间"
-            )
+            missing_fields.append("调查时间")
 
-        if (
-            record["overall_grade"]
-            not in grade_options
-        ):
-            missing_fields.append(
-                "工程状况类别"
-            )
+        if record["overall_grade"] not in grade_options:
+            missing_fields.append("工程状况类别")
 
         if not survey_comment:
-            missing_fields.append(
-                "调查意见与建议"
-            )
+            missing_fields.append("调查意见与建议")
 
         if missing_fields:
-            field_text = "、".join(
-                missing_fields
-            )
+            field_text = "、".join(missing_fields)
 
-            raise ValueError(
-                "完成调查前仍有公共"
-                "必填内容未填写："
-                f"{field_text}。"
-            )
+            raise ValueError("完成调查前仍有公共" "必填内容未填写：" f"{field_text}。")
 
         try:
             datetime.strptime(
@@ -3338,10 +3284,7 @@ def complete_engineering_survey_record(
             )
 
         except ValueError as error:
-            raise ValueError(
-                "调查时间不是有效的 "
-                "YYYY-MM-DD 日期。"
-            ) from error
+            raise ValueError("调查时间不是有效的 " "YYYY-MM-DD 日期。") from error
 
         # =====================================================
         # 分项评价
@@ -3355,23 +3298,15 @@ def complete_engineering_survey_record(
             FROM inspection_results
             WHERE survey_record_id = ?
             """,
-            (
-                survey_record_id,
-            ),
+            (survey_record_id,),
         ).fetchall()
 
-        result_map = {
-            row["item_code"]:
-            row["grade"]
-            for row in result_rows
-        }
+        result_map = {row["item_code"]: row["grade"] for row in result_rows}
 
         missing_item_codes = [
             item_code
-            for item_code
-            in expected_item_codes
-            if item_code
-            not in result_map
+            for item_code in expected_item_codes
+            if item_code not in result_map
         ]
 
         if missing_item_codes:
@@ -3384,18 +3319,12 @@ def complete_engineering_survey_record(
 
         invalid_item_codes = [
             item_code
-            for item_code
-            in expected_item_codes
-            if result_map.get(
-                item_code
-            )
-            not in grade_options
+            for item_code in expected_item_codes
+            if result_map.get(item_code) not in grade_options
         ]
 
         if invalid_item_codes:
-            raise ValueError(
-                "存在无效的分项评价等级。"
-            )
+            raise ValueError("存在无效的分项评价等级。")
 
         # =====================================================
         # 正式完成
@@ -3412,19 +3341,14 @@ def complete_engineering_survey_record(
                 )
             WHERE id = ?
             """,
-            (
-                survey_record_id,
-            ),
+            (survey_record_id,),
         )
 
         return {
-            "survey_record_id":
-                survey_record_id,
-            "inspection_count":
-                len(
-                    expected_item_codes
-                ),
+            "survey_record_id": survey_record_id,
+            "inspection_count": len(expected_item_codes),
         }
+
 
 def complete_lined_channel_section_record(
     survey_record_id,
@@ -5458,74 +5382,6 @@ def complete_tunnel_record(
             "inspection_count": (inspection_count),
         }
 
-
-def complete_culvert_record(
-    survey_record_id,
-):
-    """
-    将附表2.6涵洞（暗涵）调查草稿
-    正式标记为 completed。
-
-    完成条件：
-    1. 必须属于附表2.6；
-    2. 当前必须为 draft；
-    3. 工程身份信息完整；
-    4. 正式基本信息完整；
-    5. 11项分项评价全部完成；
-    6. 工程状况类别已确定；
-    7. 调查时间有效；
-    8. 调查意见与建议已填写。
-
-    加固改造年月允许为空。
-    """
-
-    with get_connection() as connection:
-        record = connection.execute(
-            """
-            SELECT
-                sr.id,
-                sr.record_status,
-                sr.organization_unit_id,
-                sr.canal_unit_id,
-                sr.business_code,
-                sr.survey_date,
-                sr.overall_grade,
-                sr.survey_comment,
-                sr.record_data_json,
-
-                ea.asset_name,
-
-                fd.form_code
-
-            FROM survey_records AS sr
-
-            LEFT JOIN engineering_assets AS ea
-                ON sr.engineering_asset_id = ea.id
-
-            JOIN form_versions AS fv
-                ON sr.form_version_id = fv.id
-
-            JOIN form_definitions AS fd
-                ON fv.form_definition_id = fd.id
-
-            WHERE sr.id = ?
-              AND fd.form_code = 'form_2_6'
-            """,
-            (survey_record_id,),
-        ).fetchone()
-
-        if record is None:
-            raise ValueError("没有找到该附表2.6调查记录。")
-
-        if record["record_status"] != "draft":
-            raise ValueError("只有草稿记录可以执行完成调查。")
-
-        try:
-            record_data = json.loads(record["record_data_json"] or "{}")
-        except json.JSONDecodeError as error:
-            raise ValueError("当前调查记录数据异常，" "无法执行完成调查。") from error
-
-        missing_fields = []
 
         def is_missing(value):
             if value is None:

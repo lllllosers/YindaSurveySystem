@@ -90,8 +90,8 @@ ENGINEERING_SURVEY_FORMS: tuple[
         "edit_page_factory": (TunnelPage),
     },
     {
-        "form_code": "form_2_6",
-        "button_text": ("附表2.6 涵洞（暗涵）" "工程状况调查"),
+        "form_code": FORM_2_6.form_code,
+        "button_text": (FORM_2_6.display_name.removesuffix("表")),
         "list_page_class": CulvertListPage,
         "edit_page_factory": partial(
             GenericEngineeringSurveyPage,
