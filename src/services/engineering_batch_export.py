@@ -73,6 +73,7 @@ class BatchExportResult:
     total_records: int
     summary_success_count: int
     original_success_count: int
+    media_success_count: int
     errors: tuple[str, ...]
 
     @property
@@ -320,6 +321,7 @@ def _write_manifest(
     manifest_path,
     summary_entries,
     record_entries,
+    media_entries,
     errors,
 ):
     workbook = Workbook()
@@ -340,6 +342,7 @@ def _write_manifest(
         ("调查批次ID", scope.survey_batch_id),
         ("正式成果记录数", len(plan.records)),
         ("涉及调查表数", len(plan.groups)),
+        ("影像文件数", len(media_entries)),
         (
             "导出结论",
             "导出完成"
@@ -427,9 +430,62 @@ def _write_manifest(
             ]
         )
 
+    media_sheet = workbook.create_sheet(
+        "影像资料"
+    )
+
+    media_sheet.append(
+        [
+            "序号",
+            "业务编号",
+            "工程名称",
+            "渠系",
+            "工程位置",
+            "影像类型",
+            "影像用途",
+            "部位",
+            "关联评价项",
+            "影像序号",
+            "原文件名",
+            "导出状态",
+            "相对路径",
+            "错误信息",
+        ]
+    )
+
+    for index, entry in enumerate(
+        media_entries,
+        start=1,
+    ):
+        media_sheet.append(
+            [
+                index,
+                entry["business_code"],
+                entry["asset_name"],
+                entry["canal_name"],
+                entry[
+                    "engineering_position"
+                ],
+                entry[
+                    "media_kind_label"
+                ],
+                entry["media_role_label"],
+                entry["part_name"],
+                entry["item_code"],
+                entry["sequence_no"],
+                entry[
+                    "original_filename"
+                ],
+                entry["status"],
+                entry["relative_path"],
+                entry["error"],
+            ]
+        )
+
     for sheet in (
         summary_sheet,
         record_sheet,
+        media_sheet,
     ):
         for cell in sheet[1]:
             cell.font = Font(bold=True)
@@ -494,6 +550,31 @@ def _write_manifest(
             get_column_letter(index)
         ].width = width
 
+    media_widths = [
+        8,
+        24,
+        24,
+        18,
+        22,
+        12,
+        14,
+        16,
+        20,
+        10,
+        28,
+        12,
+        70,
+        60,
+    ]
+
+    for index, width in enumerate(
+        media_widths,
+        start=1,
+    ):
+        media_sheet.column_dimensions[
+            get_column_letter(index)
+        ].width = width
+
     workbook.save(manifest_path)
     workbook.close()
 
@@ -529,6 +610,10 @@ def execute_batch_export(plan):
         output_root / "02_正式调查表"
     )
 
+    media_root = (
+        output_root / "03_影像资料"
+    )
+
     summary_root.mkdir(
         parents=True,
         exist_ok=True,
@@ -539,12 +624,19 @@ def execute_batch_export(plan):
         exist_ok=True,
     )
 
+    media_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     errors = []
     summary_entries = []
     record_entries = []
+    media_entries = []
 
     summary_success_count = 0
     original_success_count = 0
+    media_success_count = 0
 
     for group in plan.groups:
         definition = group.definition
@@ -710,6 +802,33 @@ def execute_batch_export(plan):
                 }
             )
 
+    # 延迟导入，避免 engineering_media_export
+    # 与本模块的 sanitize_filename 形成顶层循环导入。
+    from services.engineering_media_export import (
+        export_record_media,
+    )
+
+    for record in plan.records:
+        media_result = export_record_media(
+            record=record,
+            media_root=media_root,
+        )
+
+        media_entries.extend(
+            media_result["entries"]
+        )
+        errors.extend(
+            media_result["errors"]
+        )
+
+        media_success_count += sum(
+            1
+            for entry in (
+                media_result["entries"]
+            )
+            if entry["status"] == "成功"
+        )
+
     manifest_path = (
         output_root / "00_成果清单.xlsx"
     )
@@ -719,6 +838,7 @@ def execute_batch_export(plan):
         manifest_path=manifest_path,
         summary_entries=summary_entries,
         record_entries=record_entries,
+        media_entries=media_entries,
         errors=errors,
     )
 
@@ -766,6 +886,9 @@ def execute_batch_export(plan):
         ),
         original_success_count=(
             original_success_count
+        ),
+        media_success_count=(
+            media_success_count
         ),
         errors=tuple(errors),
     )

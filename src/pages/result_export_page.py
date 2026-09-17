@@ -43,6 +43,9 @@ from services.engineering_batch_export import (
     execute_batch_export,
     sanitize_filename,
 )
+from services.engineering_result_preflight import (
+    inspect_batch_export_plan,
+)
 from services.survey_scope import SurveyScope
 
 
@@ -699,6 +702,12 @@ class ResultExportPage(QWidget):
             plan = build_batch_export_plan(
                 request
             )
+
+            preflight_report = (
+                inspect_batch_export_plan(
+                    plan
+                )
+            )
         except Exception as error:
             QMessageBox.warning(
                 self,
@@ -707,6 +716,28 @@ class ResultExportPage(QWidget):
             )
             self.status_label.setText(
                 "成果预检失败。"
+            )
+            return
+
+        if preflight_report.error_count:
+            QMessageBox.warning(
+                self,
+                "成果预检未通过",
+                (
+                    "正式成果导出前发现"
+                    f" {preflight_report.error_count} "
+                    "个必须处理的影像错误。\n"
+                    f"另有 "
+                    f"{preflight_report.warning_count} "
+                    "个警告。\n\n"
+                    "错误修正后才能开始正式导出。"
+                    "\n\n"
+                    f"{preflight_report.format_preview()}"
+                ),
+            )
+
+            self.status_label.setText(
+                "成果预检未通过。"
             )
             return
 
@@ -725,8 +756,20 @@ class ResultExportPage(QWidget):
                 "本次将生成正式成果：\n\n"
                 f"记录数：{len(plan.records)} 条\n"
                 f"调查表：{len(plan.groups)} 类\n"
-                f"范围：{form_names}\n\n"
-                "正式成果仅包含“录入完成”记录。\n"
+                f"范围：{form_names}\n"
+                f"影像预检：0 个错误，"
+                f"{preflight_report.warning_count} "
+                "个警告\n\n"
+                + (
+                    (
+                        "以下警告不会阻止本次导出：\n"
+                        f"{preflight_report.format_preview(limit=5)}"
+                        "\n\n"
+                    )
+                    if preflight_report.warning_count
+                    else ""
+                )
+                + "正式成果仅包含“录入完成”记录。\n"
                 "是否开始导出？"
             ),
             (
@@ -843,7 +886,9 @@ class ResultExportPage(QWidget):
                 f"详细汇总："
                 f"{result.summary_success_count} 个\n"
                 f"正式原表："
-                f"{result.original_success_count} 个\n\n"
+                f"{result.original_success_count} 个\n"
+                f"影像资料："
+                f"{result.media_success_count} 个\n\n"
                 f"成果目录：\n"
                 f"{result.output_root}"
             )

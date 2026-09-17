@@ -466,6 +466,73 @@ def init_database():
                     REFERENCES survey_records(id)
                     ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS survey_media (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                media_uid TEXT NOT NULL UNIQUE,
+
+                survey_record_id INTEGER NOT NULL,
+
+                media_kind TEXT NOT NULL
+                    CHECK (
+                        media_kind IN (
+                            'photo',
+                            'video'
+                        )
+                    ),
+
+                media_role TEXT NOT NULL DEFAULT 'other'
+                    CHECK (
+                        media_role IN (
+                            'overview',
+                            'location',
+                            'detail',
+                            'problem',
+                            'other'
+                        )
+                    ),
+
+                item_code TEXT,
+                part_name TEXT,
+
+                sequence_no INTEGER NOT NULL DEFAULT 1
+                    CHECK (sequence_no > 0),
+
+                original_filename TEXT NOT NULL,
+                stored_relative_path TEXT NOT NULL UNIQUE,
+
+                file_sha256 TEXT NOT NULL,
+                file_size INTEGER NOT NULL
+                    CHECK (file_size >= 0),
+
+                captured_at TEXT,
+                notes TEXT,
+
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now', 'localtime')),
+
+                UNIQUE (
+                    survey_record_id,
+                    file_sha256
+                ),
+
+                FOREIGN KEY (survey_record_id)
+                    REFERENCES survey_records(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS
+                idx_survey_media_record
+            ON survey_media (
+                survey_record_id,
+                sequence_no,
+                id
+            );
+
             """)
 
 

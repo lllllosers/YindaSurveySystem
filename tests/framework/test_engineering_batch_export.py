@@ -333,6 +333,10 @@ class EngineeringBatchExportTestCase(
                 "services.engineering_batch_export."
                 "export_engineering_original_form",
                 side_effect=fake_original,
+            ), patch(
+                "services.engineering_media_export."
+                "get_survey_media",
+                return_value=[],
             ):
                 result = execute_batch_export(
                     plan
@@ -454,6 +458,10 @@ class EngineeringBatchExportTestCase(
                 "services.engineering_batch_export."
                 "export_engineering_original_form",
                 side_effect=fake_export,
+            ), patch(
+                "services.engineering_media_export."
+                "get_survey_media",
+                return_value=[],
             ):
                 result = execute_batch_export(
                     plan
