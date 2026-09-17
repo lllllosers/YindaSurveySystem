@@ -154,8 +154,8 @@ class MainWindow(QMainWindow):
         self.content_label = QLabel(
             f"{APP_NAME}\n\n"
             f"{APP_VERSION_LABEL} {APP_STAGE}\n\n"
-            "当前已完成附表2.2水闸工程状况调查"
-            "完整数据采集闭环。\n\n"
+            "当前已完成附表2.1～2.14工程现状调查"
+            "完整业务闭环。\n\n"
             f"开发者：{APP_AUTHOR}"
         )
         self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
