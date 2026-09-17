@@ -1,12 +1,6 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
-setlocal
-
-REM ============================================================
-REM 引大入秦工程现状调查采集系统
-REM 一键测试版构建脚本
-REM 版本信息统一读取 src\version.py
-REM ============================================================
 
 cd /d "%~dp0"
 
@@ -18,204 +12,191 @@ set "DIST_DIR=%~dp0dist"
 set "DIST_APP=%~dp0dist\YindaSurveySystem"
 
 set "RELEASE_ROOT=%~dp0release"
-
 set "TEMPLATE_DIR=%~dp0templates\excel"
 set "ICON_FILE=%~dp0assets\app_icon.ico"
 
-echo.
-echo ============================================================
-echo   引大入秦工程现状调查采集系统
-echo   V%APP_VERSION% %APP_STAGE%构建
-echo ============================================================
-echo.
-
 REM ============================================================
-REM 1. 构建前检查
+REM 1. Preflight
 REM ============================================================
 
 if not exist "%PYTHON%" (
-    echo [ERROR] 未找到项目虚拟环境 Python：
+    echo [ERROR] Project virtualenv Python was not found:
     echo %PYTHON%
     goto :failed
 )
 
-REM ============================================================
-REM 从 src\version.py 读取统一版本信息
-REM ============================================================
-
-for /f "delims=" %%V in ('"%PYTHON%" -c "import sys; sys.path.insert(0, 'src'); import version; print(version.APP_VERSION)"') do (
-    set "APP_VERSION=%%V"
+if not exist "%~dp0src\version.py" (
+    echo [ERROR] src\version.py was not found.
+    goto :failed
 )
 
-for /f "delims=" %%S in ('"%PYTHON%" -c "import sys; sys.path.insert(0, 'src'); import version; print(version.APP_STAGE)"') do (
-    set "APP_STAGE=%%S"
+REM Read APP_VERSION / APP_STAGE directly from version.py.
+REM This avoids nested FOR/F command quoting around python.exe.
+set "APP_VERSION="
+set "APP_STAGE="
+
+for /f "tokens=1,2 delims== " %%A in (src\version.py) do (
+    if "%%A"=="APP_VERSION" set "APP_VERSION=%%~B"
+    if "%%A"=="APP_STAGE" set "APP_STAGE=%%~B"
 )
 
 if not defined APP_VERSION (
-    echo [ERROR] 无法从 src\version.py 读取 APP_VERSION。
+    echo [ERROR] Could not read APP_VERSION from src\version.py.
     goto :failed
 )
 
 if not defined APP_STAGE (
-    echo [ERROR] 无法从 src\version.py 读取 APP_STAGE。
+    echo [ERROR] Could not read APP_STAGE from src\version.py.
     goto :failed
 )
 
-set "RELEASE_NAME=引大入秦工程现状调查采集系统_V%APP_VERSION%_%APP_STAGE%"
+REM Keep the build folder name ASCII-only for cmd/xcopy robustness.
+set "RELEASE_NAME=YindaSurveySystem_V%APP_VERSION%_test"
 set "RELEASE_DIR=%RELEASE_ROOT%\%RELEASE_NAME%"
 
+echo.
+echo ============================================================
+echo   Yinda Survey System
+echo   Version: %APP_VERSION%
+echo   Stage:   %APP_STAGE%
+echo ============================================================
+echo.
+
 if not exist "%SPEC%" (
-    echo [ERROR] 未找到 PyInstaller 配置：
+    echo [ERROR] PyInstaller spec was not found:
     echo %SPEC%
     goto :failed
 )
 
 if not exist "%ICON_FILE%" (
-    echo [ERROR] 未找到程序图标：
+    echo [ERROR] Application icon was not found:
     echo %ICON_FILE%
     goto :failed
 )
 
 if not exist "%TEMPLATE_DIR%" (
-    echo [ERROR] 未找到正式 Excel 模板目录：
+    echo [ERROR] Excel template directory was not found:
     echo %TEMPLATE_DIR%
     goto :failed
 )
 
-echo [OK] 构建前资源检查通过。
+echo [OK] Preflight passed.
 echo.
 
 REM ============================================================
-REM 2. 清理旧构建结果
+REM 2. Clean old build results
 REM ============================================================
 
-echo [1/5] 清理旧构建目录...
+echo [1/5] Cleaning old build directories...
 
-if exist "%BUILD_DIR%" (
-    rmdir /s /q "%BUILD_DIR%"
-)
+if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
+if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
 
-if exist "%DIST_DIR%" (
-    rmdir /s /q "%DIST_DIR%"
-)
-
-if exist "%RELEASE_DIR%" (
-    rmdir /s /q "%RELEASE_DIR%"
-)
-
-echo [OK] 清理完成。
+echo [OK] Clean complete.
 echo.
 
 REM ============================================================
-REM 3. PyInstaller 构建
+REM 3. PyInstaller
 REM ============================================================
 
-echo [2/5] 正在执行 PyInstaller...
+echo [2/5] Running PyInstaller...
 
 "%PYTHON%" -m PyInstaller --noconfirm --clean "%SPEC%"
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] PyInstaller 构建失败。
+    echo [ERROR] PyInstaller failed.
     goto :failed
 )
 
 if not exist "%DIST_APP%\YindaSurveySystem.exe" (
     echo.
-    echo [ERROR] 构建结束后未找到：
+    echo [ERROR] Executable was not produced:
     echo %DIST_APP%\YindaSurveySystem.exe
     goto :failed
 )
 
-echo [OK] PyInstaller 构建完成。
+echo [OK] PyInstaller complete.
 echo.
 
 REM ============================================================
-REM 4. 创建正式测试版交付目录
+REM 4. Create release directory
 REM ============================================================
 
-echo [3/5] 创建测试版交付目录...
+echo [3/5] Creating release directory...
 
-if not exist "%RELEASE_ROOT%" (
-    mkdir "%RELEASE_ROOT%"
-)
-
+if not exist "%RELEASE_ROOT%" mkdir "%RELEASE_ROOT%"
 mkdir "%RELEASE_DIR%"
 
 xcopy /E /I /Y /Q "%DIST_APP%\*" "%RELEASE_DIR%\" >nul
 
 if errorlevel 1 (
-    echo [ERROR] 复制 PyInstaller 构建结果失败。
+    echo [ERROR] Failed to copy PyInstaller output.
     goto :failed
 )
 
-echo [OK] 程序文件复制完成。
+echo [OK] Program files copied.
 echo.
 
 REM ============================================================
-REM 5. 复制正式 Excel 模板
+REM 5. Copy Excel templates
 REM ============================================================
 
-echo [4/5] 复制调查表 Excel 模板...
+echo [4/5] Copying Excel templates...
 
 xcopy /E /I /Y /Q "%~dp0templates" "%RELEASE_DIR%\templates" >nul
 
 if errorlevel 1 (
-    echo [ERROR] Excel模板复制失败。
+    echo [ERROR] Failed to copy Excel templates.
     goto :failed
 )
 
-echo [OK] Excel模板复制完成。
+echo [OK] Templates copied.
 echo.
 
 REM ============================================================
-REM 6. 最终完整性检查
+REM 6. Integrity checks
 REM ============================================================
 
-echo [5/5] 检查交付目录...
+echo [5/5] Checking release directory...
 
 if not exist "%RELEASE_DIR%\YindaSurveySystem.exe" (
-    echo [ERROR] 缺少主程序。
+    echo [ERROR] Main executable is missing.
     goto :failed
 )
 
 if not exist "%RELEASE_DIR%\_internal" (
-    echo [ERROR] 缺少 _internal 运行依赖目录。
+    echo [ERROR] _internal runtime directory is missing.
     goto :failed
 )
 
 if not exist "%RELEASE_DIR%\templates\excel" (
-    echo [ERROR] 缺少正式 Excel 模板目录。
+    echo [ERROR] Excel template directory is missing.
     goto :failed
 )
 
 if exist "%RELEASE_DIR%\local_data" (
-    echo [ERROR] 交付目录中意外存在 local_data。
-    echo 为防止测试数据库被带入交付包，构建已停止。
+    echo [ERROR] local_data unexpectedly exists in the release directory.
+    echo [ERROR] Build stopped to avoid shipping a test database.
     goto :failed
 )
 
 echo.
 echo ============================================================
-echo [SUCCESS] 测试版构建完成
-echo.
-echo 输出目录：
+echo [SUCCESS] Test build completed.
+echo Release directory:
 echo %RELEASE_DIR%
-echo.
-echo 当前交付目录不包含 local_data。
-echo 请完成最终冒烟测试后，再添加使用说明并压缩交付。
 echo ============================================================
 echo.
-
 pause
 exit /b 0
-
 
 :failed
 echo.
 echo ============================================================
-echo [FAILED] 测试版构建失败
-echo 请根据上方错误信息检查后重新执行。
+echo [FAILED] Test build failed.
+echo Review the error above and run the script again.
 echo ============================================================
 echo.
 pause
