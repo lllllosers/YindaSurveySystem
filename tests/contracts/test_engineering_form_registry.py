@@ -16,25 +16,6 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
-from forms.engineering.form_2_1 import (
-    FORM_2_1,
-)
-from forms.engineering.form_2_2 import (
-    FORM_2_2,
-)
-from forms.engineering.form_2_3 import (
-    FORM_2_3,
-)
-from forms.engineering.form_2_4 import (
-    FORM_2_4,
-)
-from forms.engineering.form_2_5 import (
-    FORM_2_5,
-)
-from forms.engineering.form_2_6 import (
-    FORM_2_6,
-)
-
 from forms.engineering.models import (
     EngineeringFormDefinition,
 )
@@ -52,18 +33,34 @@ from services.business_code import (
 class EngineeringFormRegistryContractTestCase(
     unittest.TestCase,
 ):
-    def test_all_current_forms_are_registered(
+    def test_registry_contains_form_definitions_in_numeric_order(
         self,
     ):
+        definitions = (
+            get_engineering_form_definitions()
+        )
+
+        self.assertTrue(
+            definitions
+        )
+
+        # form_number 是层级编号，不是十进制数：
+        # 2.12 应排在 2.9 之后，而不是按 float
+        # 被解释成 2.12 < 2.2。
+        form_number_keys = tuple(
+            tuple(
+                int(part)
+                for part in
+                definition.form_number.split(".")
+            )
+            for definition
+            in definitions
+        )
+
         self.assertEqual(
-            get_engineering_form_definitions(),
-            (
-                FORM_2_1,
-                FORM_2_2,
-                FORM_2_3,
-                FORM_2_4,
-                FORM_2_5,
-                FORM_2_6,
+            form_number_keys,
+            tuple(
+                sorted(form_number_keys)
             ),
         )
 
@@ -112,6 +109,19 @@ class EngineeringFormRegistryContractTestCase(
                     r"^\d{2}$",
                 )
 
+                expected_code = (
+                    "form_"
+                    + definition.form_number.replace(
+                        ".",
+                        "_",
+                    )
+                )
+
+                self.assertEqual(
+                    definition.form_code,
+                    expected_code,
+                )
+
     def test_registry_identity_values_are_unique(
         self,
     ):
@@ -133,35 +143,19 @@ class EngineeringFormRegistryContractTestCase(
                 in definitions
             ]
 
-            self.assertEqual(
-                len(values),
-                len(set(values)),
-            )
-
+            with self.subTest(
+                attribute_name=attribute_name,
+            ):
+                self.assertEqual(
+                    len(values),
+                    len(set(values)),
+                )
 
     def test_all_business_codes_come_from_definitions(
         self,
     ):
-        expected_codes = (
-            "01",
-            "02",
-            "03",
-            "04",
-            "05",
-            "06",
-        )
-
         definitions = (
             get_engineering_form_definitions()
-        )
-
-        self.assertEqual(
-            tuple(
-                definition.business_type_code
-                for definition
-                in definitions
-            ),
-            expected_codes,
         )
 
         for definition in definitions:

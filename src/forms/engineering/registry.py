@@ -22,6 +22,26 @@ from forms.engineering.form_2_6 import (
     FORM_2_6,
 )
 
+from forms.engineering.form_2_7 import (
+    FORM_2_7,
+)
+
+from forms.engineering.form_2_8 import (
+    FORM_2_8,
+)
+
+from forms.engineering.form_2_9 import (
+    FORM_2_9,
+)
+
+from forms.engineering.form_2_12 import (
+    FORM_2_12,
+)
+
+from forms.engineering.form_2_13 import (
+    FORM_2_13,
+)
+
 from forms.engineering.models import (
     EngineeringFormDefinition,
 )
@@ -40,12 +60,17 @@ _ENGINEERING_FORM_DEFINITIONS: tuple[
     EngineeringFormDefinition,
     ...,
 ] = (
-    FORM_2_1,
+        FORM_2_1,
     FORM_2_2,
     FORM_2_3,
     FORM_2_4,
     FORM_2_5,
     FORM_2_6,
+    FORM_2_7,
+    FORM_2_8,
+    FORM_2_9,
+    FORM_2_12,
+    FORM_2_13,
 )
 
 
