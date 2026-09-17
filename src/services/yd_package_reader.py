@@ -197,10 +197,50 @@ def _read_json_object(
     return value
 
 
+def _hash_archive_member(
+    archive,
+    path,
+    *,
+    chunk_size=1024 * 1024,
+):
+    """
+    流式计算 ZIP 成员 SHA-256 和实际解压字节数。
+    避免成果包照片/视频通过 archive.read() 一次性进入内存。
+    """
+
+    digest = sha256()
+    actual_size = 0
+
+    with archive.open(
+        path,
+        "r",
+    ) as source:
+        while True:
+            chunk = source.read(
+                chunk_size
+            )
+
+            if not chunk:
+                break
+
+            digest.update(chunk)
+            actual_size += len(chunk)
+
+    return (
+        digest.hexdigest(),
+        actual_size,
+    )
+
+
 def inspect_package(
     package_path,
     *,
     expected_kind=None,
+    max_file_count=MAX_PACKAGE_FILE_COUNT,
+    max_single_file_bytes=MAX_SINGLE_FILE_BYTES,
+    max_total_uncompressed_bytes=(
+        MAX_TOTAL_UNCOMPRESSED_BYTES
+    ),
 ):
     """
     通用 YD 包只读检查。
@@ -276,13 +316,13 @@ def inspect_package(
                 infos
             )
 
-            if file_count > MAX_PACKAGE_FILE_COUNT:
+            if file_count > max_file_count:
                 _issue(
                     issues,
                     "TOO_MANY_FILES",
                     (
                         "包内文件数量超过安全上限 "
-                        f"{MAX_PACKAGE_FILE_COUNT}。"
+                        f"{max_file_count}。"
                     ),
                 )
 
@@ -318,14 +358,14 @@ def inspect_package(
 
                 if (
                     info.file_size
-                    > MAX_SINGLE_FILE_BYTES
+                    > max_single_file_bytes
                 ):
                     _issue(
                         issues,
                         "FILE_TOO_LARGE",
                         (
                             "单个包内文件超过安全上限 "
-                            f"{MAX_SINGLE_FILE_BYTES} bytes。"
+                            f"{max_single_file_bytes} bytes。"
                         ),
                         path=name,
                     )
@@ -338,14 +378,14 @@ def inspect_package(
 
             if (
                 total_uncompressed_bytes
-                > MAX_TOTAL_UNCOMPRESSED_BYTES
+                > max_total_uncompressed_bytes
             ):
                 _issue(
                     issues,
                     "PACKAGE_TOO_LARGE",
                     (
                         "包解压后总大小超过安全上限 "
-                        f"{MAX_TOTAL_UNCOMPRESSED_BYTES} bytes。"
+                        f"{max_total_uncompressed_bytes} bytes。"
                     ),
                 )
 
@@ -559,8 +599,12 @@ def inspect_package(
                         continue
 
                     try:
-                        content = archive.read(
-                            path
+                        (
+                            actual_hash,
+                            actual_size,
+                        ) = _hash_archive_member(
+                            archive,
+                            path,
                         )
                     except KeyError:
                         _issue(
@@ -574,9 +618,10 @@ def inspect_package(
                         )
                         continue
 
-                    if len(
-                        content
-                    ) != expected_size:
+                    if (
+                        actual_size
+                        != expected_size
+                    ):
                         _issue(
                             issues,
                             "SIZE_MISMATCH",
@@ -586,10 +631,6 @@ def inspect_package(
                             ),
                             path=path,
                         )
-
-                    actual_hash = sha256(
-                        content
-                    ).hexdigest()
 
                     if (
                         actual_hash

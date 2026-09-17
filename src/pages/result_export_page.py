@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QLayout,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +49,7 @@ from services.engineering_result_preflight import (
     inspect_batch_export_plan,
 )
 from services.survey_scope import SurveyScope
+from pages.components.survey_result_package_panel import SurveyResultPackagePanel
 
 
 class BatchExportWorker(QObject):
@@ -89,11 +92,38 @@ class ResultExportPage(QWidget):
         self.load_data()
 
     def init_ui(self):
-        root_layout = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        page_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(
+            True
+        )
+        self.scroll_area.setFrameShape(
+            QScrollArea.Shape.NoFrame
+        )
+
+        self.scroll_content = QWidget()
+        self.scroll_area.setWidget(
+            self.scroll_content
+        )
+        page_layout.addWidget(
+            self.scroll_area
+        )
+
+        root_layout = QVBoxLayout(
+            self.scroll_content
+        )
         root_layout.setContentsMargins(
             0, 0, 0, 0
         )
         root_layout.setSpacing(16)
+        root_layout.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
 
         description = QLabel(
             "生成当前调查批次的附表2正式成果。"
@@ -271,6 +301,56 @@ class ResultExportPage(QWidget):
         )
         root_layout.addWidget(
             self.status_label
+        )
+
+        package_group = QGroupBox(
+            "四、数据交换成果包（.ydresult）"
+        )
+        package_layout = QVBoxLayout(
+            package_group
+        )
+
+        self.result_package_panel = (
+            SurveyResultPackagePanel(
+                context_provider=(
+                    lambda: self.current_context
+                ),
+                scope_provider=(
+                    self._build_scope
+                ),
+                output_parent_provider=(
+                    lambda: (
+                        self.output_parent_edit
+                        .text()
+                        .strip()
+                    )
+                ),
+            )
+        )
+
+        package_layout.addWidget(
+            self.result_package_panel
+        )
+
+        root_layout.addWidget(
+            package_group
+        )
+
+        # Stage 11.3e: auto refresh .ydresult scope
+        self.department_combo.currentIndexChanged.connect(
+            self.result_package_panel.refresh_scope_summary
+        )
+        self.office_combo.currentIndexChanged.connect(
+            self.result_package_panel.refresh_scope_summary
+        )
+        self.canal_combo.currentIndexChanged.connect(
+            self.result_package_panel.refresh_scope_summary
+        )
+        self.form_combo.currentIndexChanged.connect(
+            self.result_package_panel.refresh_scope_summary
+        )
+        self.include_canal_descendants_check.toggled.connect(
+            self.result_package_panel.refresh_scope_summary
         )
 
         root_layout.addStretch()

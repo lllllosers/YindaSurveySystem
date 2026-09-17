@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pages.components.survey_task_receive_panel import SurveyTaskReceivePanel
+
 from pathlib import Path
 import re
 
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QLayout,
 )
 
 from database import (
@@ -96,7 +99,36 @@ class SurveyTaskPage(QWidget):
     # =========================================================
 
     def _init_ui(self):
-        root = QVBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        page_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(
+            True
+        )
+
+        self.scroll_content = QWidget()
+        self.scroll_area.setWidget(
+            self.scroll_content
+        )
+        page_layout.addWidget(
+            self.scroll_area
+        )
+
+        root = QVBoxLayout(
+            self.scroll_content
+        )
+
+        self.task_receive_panel = SurveyTaskReceivePanel()
+        root.addWidget(
+            self.task_receive_panel
+        )
+        root.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
         root.setContentsMargins(
             0,
             0,

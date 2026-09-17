@@ -7,6 +7,9 @@ from database import (
 from services.official_master_data import (
     seed_official_master_data,
 )
+from services.master_identity import (
+    synchronize_official_master_identities,
+)
 
 
 def initialize_application_database():
@@ -31,8 +34,15 @@ def initialize_application_database():
         seed_official_master_data()
     )
 
+    master_identity_result = (
+        synchronize_official_master_identities()
+    )
+
     return {
         "official_master_data": (
             master_data_result
+        ),
+        "official_master_identity": (
+            master_identity_result
         ),
     }
