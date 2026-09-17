@@ -89,6 +89,306 @@ def get_connection():
     return connection
 
 
+# =============================================================
+# 跨数据库稳定身份
+# =============================================================
+#
+# SQLite 自增 id 只在当前数据库内有效。
+# 任务包 / 结果包 / 多数据库合并必须使用稳定 UID。
+#
+# 这里为后续需要跨数据库传递的核心实体建立 UID：
+# - Project
+# - SurveyBatch
+# - OrganizationUnit
+# - CanalUnit
+# - EngineeringAsset
+# - SurveyRecord
+#
+# SurveyMedia 已经拥有 media_uid；
+# InspectionResult 使用
+# (survey_record_uid, item_code) 作为稳定业务身份，
+# 因此暂不额外增加独立 UID。
+# =============================================================
+
+_STABLE_IDENTITY_SPECS = (
+    (
+        "projects",
+        "project_uid",
+    ),
+    (
+        "survey_batches",
+        "survey_batch_uid",
+    ),
+    (
+        "organization_units",
+        "organization_unit_uid",
+    ),
+    (
+        "canal_units",
+        "canal_unit_uid",
+    ),
+    (
+        "engineering_assets",
+        "engineering_asset_uid",
+    ),
+    (
+        "survey_records",
+        "survey_record_uid",
+    ),
+)
+
+
+def _ensure_stable_identity_schema(
+    connection,
+):
+    """
+    对既有数据库执行可重复的稳定身份迁移。
+
+    兼容旧数据库：
+    1. 缺少 UID 列时通过 ALTER TABLE 增加；
+    2. 为历史记录回填 32 位随机十六进制 UID；
+    3. 建立唯一索引；
+    4. 为后续 INSERT 自动生成 UID；
+    5. UID 一旦生成后禁止修改。
+
+    不重建业务表，不改变现有整数主键和外键。
+    """
+
+    for (
+        table_name,
+        uid_column,
+    ) in _STABLE_IDENTITY_SPECS:
+        columns = {
+            row["name"]
+            for row in (
+                connection.execute(
+                    (
+                        "PRAGMA table_info("
+                        f"{table_name}"
+                        ")"
+                    )
+                ).fetchall()
+            )
+        }
+
+        if uid_column not in columns:
+            connection.execute(
+                (
+                    f"ALTER TABLE {table_name} "
+                    f"ADD COLUMN {uid_column} TEXT"
+                )
+            )
+
+        connection.execute(
+            (
+                f"UPDATE {table_name} "
+                f"SET {uid_column} = "
+                "lower(hex(randomblob(16))) "
+                f"WHERE {uid_column} IS NULL "
+                f"OR trim({uid_column}) = ''"
+            )
+        )
+
+        duplicate = connection.execute(
+            (
+                f"SELECT {uid_column}, "
+                "COUNT(*) AS count_value "
+                f"FROM {table_name} "
+                f"WHERE {uid_column} IS NOT NULL "
+                f"AND trim({uid_column}) <> '' "
+                f"GROUP BY {uid_column} "
+                "HAVING COUNT(*) > 1 "
+                "LIMIT 1"
+            )
+        ).fetchone()
+
+        if duplicate is not None:
+            raise RuntimeError(
+                (
+                    f"{table_name}.{uid_column} "
+                    "存在重复稳定 UID，"
+                    "数据库身份迁移已停止。"
+                )
+            )
+
+        index_name = (
+            f"uq_{table_name}_"
+            f"{uid_column}"
+        )
+
+        connection.execute(
+            (
+                "CREATE UNIQUE INDEX "
+                f"IF NOT EXISTS {index_name} "
+                f"ON {table_name} "
+                f"({uid_column})"
+            )
+        )
+
+        insert_trigger = (
+            f"trg_{table_name}_"
+            f"{uid_column}_insert"
+        )
+
+        immutable_trigger = (
+            f"trg_{table_name}_"
+            f"{uid_column}_immutable"
+        )
+
+        connection.executescript(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS
+                {insert_trigger}
+            AFTER INSERT ON {table_name}
+            FOR EACH ROW
+            WHEN
+                NEW.{uid_column} IS NULL
+                OR trim(NEW.{uid_column}) = ''
+            BEGIN
+                UPDATE {table_name}
+                SET
+                    {uid_column}
+                    = lower(
+                        hex(
+                            randomblob(16)
+                        )
+                    )
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS
+                {immutable_trigger}
+            BEFORE UPDATE OF {uid_column}
+            ON {table_name}
+            FOR EACH ROW
+            WHEN
+                OLD.{uid_column} IS NOT NULL
+                AND trim(
+                    OLD.{uid_column}
+                ) <> ''
+                AND OLD.{uid_column}
+                    IS NOT NEW.{uid_column}
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    '{uid_column} is immutable'
+                );
+            END;
+            """
+        )
+
+
+# =============================================================
+# 甲方正式组织机构 / 渠系主数据
+# =============================================================
+
+def _ensure_official_master_data_schema(
+    connection,
+):
+    """
+    为正式主数据增加可追踪、可排序、可重复初始化的字段。
+
+    不把名称本身当作永久身份：
+    - master_key：官方种子内部稳定键；
+    - sort_order：正式展示/后续任务范围排序；
+    - source_sequence：甲方新表 1~63 序号；
+    - management_note：甲方新表“备注”原文。
+
+    这些字段不替代 Stage 08 的跨数据库 UID。
+    """
+
+    organization_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(organization_units)"
+        ).fetchall()
+    }
+
+    if "master_key" not in organization_columns:
+        connection.execute(
+            """
+            ALTER TABLE organization_units
+            ADD COLUMN master_key TEXT
+            """
+        )
+
+    if "sort_order" not in organization_columns:
+        connection.execute(
+            """
+            ALTER TABLE organization_units
+            ADD COLUMN sort_order INTEGER
+            NOT NULL DEFAULT 0
+            """
+        )
+
+    canal_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(canal_units)"
+        ).fetchall()
+    }
+
+    if "master_key" not in canal_columns:
+        connection.execute(
+            """
+            ALTER TABLE canal_units
+            ADD COLUMN master_key TEXT
+            """
+        )
+
+    if "sort_order" not in canal_columns:
+        connection.execute(
+            """
+            ALTER TABLE canal_units
+            ADD COLUMN sort_order INTEGER
+            NOT NULL DEFAULT 0
+            """
+        )
+
+    connection.executescript(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            uq_organization_units_master_key
+        ON organization_units(master_key)
+        WHERE master_key IS NOT NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            uq_canal_units_master_key
+        ON canal_units(master_key)
+        WHERE master_key IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS
+            idx_organization_units_sort_order
+        ON organization_units(
+            sort_order,
+            id
+        );
+
+        CREATE INDEX IF NOT EXISTS
+            idx_canal_units_sort_order
+        ON canal_units(
+            sort_order,
+            id
+        );
+
+        CREATE TABLE IF NOT EXISTS
+            master_data_seed_history (
+                seed_key TEXT PRIMARY KEY,
+                source_description TEXT NOT NULL,
+                details_json TEXT NOT NULL
+                    DEFAULT '{}',
+                applied_at TEXT NOT NULL
+                    DEFAULT (
+                        datetime(
+                            'now',
+                            'localtime'
+                        )
+                    )
+            );
+        """
+    )
+
+
 def init_database():
     """
     初始化数据库。
@@ -534,6 +834,10 @@ def init_database():
             );
 
             """)
+
+        _ensure_stable_identity_schema(connection)
+
+        _ensure_official_master_data_schema(connection)
 
 
 def get_projects():

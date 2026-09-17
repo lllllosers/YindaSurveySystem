@@ -28,6 +28,10 @@ from database import (
     update_organization_unit,
 )
 
+from services.master_data_admin import (
+    get_organization_sort_order_map,
+)
+
 
 class OrganizationPage(QWidget):
     def __init__(self):
@@ -43,7 +47,9 @@ class OrganizationPage(QWidget):
 
         # 页面说明
         description = QLabel(
-            "维护基层处和水管所基础资料。"
+            "维护基层处和末级管理单位基础资料。"
+            "正式主数据按甲方确认顺序显示；"
+            "水管所、提灌所、水库管理所等统一作为末级管理单位维护。"
             "已被工程或调查数据引用的机构仍可修改名称和备注，"
             "但业务代码等关键归属信息将受到保护。"
         )
@@ -58,7 +64,7 @@ class OrganizationPage(QWidget):
         add_department_button = QPushButton("新增基层处")
         add_department_button.clicked.connect(self.add_department)
 
-        add_office_button = QPushButton("新增水管所")
+        add_office_button = QPushButton("新增管理单位")
         add_office_button.clicked.connect(self.add_water_office)
 
         self.edit_button = QPushButton("编辑选中")
@@ -122,7 +128,29 @@ class OrganizationPage(QWidget):
         """
         self.tree.clear()
 
-        departments = get_departments()
+        sort_order_map = (
+            get_organization_sort_order_map()
+        )
+
+        departments = list(
+            get_departments()
+        )
+
+        departments.sort(
+            key=lambda unit: (
+                (
+                    sort_order_map.get(
+                        int(unit["id"]),
+                        0,
+                    )
+                )
+                or (
+                    1000000
+                    + int(unit["id"])
+                ),
+                int(unit["id"]),
+            )
+        )
 
         for department in departments:
             department_item = QTreeWidgetItem(
@@ -146,13 +174,33 @@ class OrganizationPage(QWidget):
 
             self.tree.addTopLevelItem(department_item)
 
-            offices = get_water_offices(department["id"])
+            offices = list(
+                get_water_offices(
+                    department["id"]
+                )
+            )
+
+            offices.sort(
+                key=lambda unit: (
+                    (
+                        sort_order_map.get(
+                            int(unit["id"]),
+                            0,
+                        )
+                    )
+                    or (
+                        1000000
+                        + int(unit["id"])
+                    ),
+                    int(unit["id"]),
+                )
+            )
 
             for office in offices:
                 office_item = QTreeWidgetItem(
                     [
                         office["name"],
-                        "水管所",
+                        "管理单位",
                         office["business_code"] or "",
                         ("启用" if office["status"] == "active" else "停用"),
                     ]
@@ -226,7 +274,7 @@ class OrganizationPage(QWidget):
             QMessageBox.information(
                 self,
                 "请选择机构",
-                "请先在列表中选择一个基层处或水管所。",
+                "请先在列表中选择一个基层处或管理单位。",
             )
             return None
 
@@ -262,7 +310,7 @@ class OrganizationPage(QWidget):
         if unit_type == "department":
             dialog.setWindowTitle("编辑基层处")
         else:
-            dialog.setWindowTitle("编辑水管所")
+            dialog.setWindowTitle("编辑管理单位")
 
         dialog.resize(
             460,
@@ -644,7 +692,7 @@ class OrganizationPage(QWidget):
             return
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("新增水管所")
+        dialog.setWindowTitle("新增管理单位")
         dialog.resize(420, 300)
 
         layout = QVBoxLayout(dialog)

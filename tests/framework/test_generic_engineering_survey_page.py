@@ -64,6 +64,64 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     ):
         self.page.deleteLater()
 
+    def _set_isolated_test_ownership(
+        self,
+    ):
+        """
+        为只测试页面逻辑的用例建立固定归属。
+
+        必须阻断 QComboBox 信号，避免 addItem()
+        触发 department_changed()/office_changed()
+        后读取当前正式数据库，使单元测试结果依赖
+        用户本机已经初始化了哪些基础资料。
+        """
+
+        combos = (
+            self.page.department_combo,
+            self.page.office_combo,
+            self.page.canal_combo,
+        )
+
+        for combo in combos:
+            combo.blockSignals(True)
+
+        try:
+            self.page.department_combo.clear()
+            self.page.office_combo.clear()
+            self.page.canal_combo.clear()
+
+            self.page.department_combo.addItem(
+                "测试处",
+                {
+                    "id": 10,
+                    "business_code": "1",
+                },
+            )
+
+            self.page.office_combo.addItem(
+                "测试所",
+                {
+                    "id": 20,
+                    "business_code": "01",
+                },
+            )
+
+            self.page.canal_combo.addItem(
+                "测试干渠",
+                {
+                    "id": 30,
+                    "canal_level": "01",
+                },
+            )
+
+            self.page.department_combo.setCurrentIndex(0)
+            self.page.office_combo.setCurrentIndex(0)
+            self.page.canal_combo.setCurrentIndex(0)
+
+        finally:
+            for combo in combos:
+                combo.blockSignals(False)
+
     # =========================================================
     # 表单身份
     # =========================================================
@@ -498,29 +556,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             "batch_id": 2,
         }
 
-        self.page.department_combo.addItem(
-            "测试处",
-            {
-                "id": 10,
-                "business_code": "1",
-            },
-        )
-
-        self.page.office_combo.addItem(
-            "测试所",
-            {
-                "id": 20,
-                "business_code": "01",
-            },
-        )
-
-        self.page.canal_combo.addItem(
-            "测试干渠",
-            {
-                "id": 30,
-                "canal_level": "01",
-            },
-        )
+        self._set_isolated_test_ownership()
 
         self.page.update_business_code()
 
@@ -546,29 +582,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             "batch_id": 2,
         }
 
-        self.page.department_combo.addItem(
-            "测试处",
-            {
-                "id": 10,
-                "business_code": "1",
-            },
-        )
-
-        self.page.office_combo.addItem(
-            "测试所",
-            {
-                "id": 20,
-                "business_code": "01",
-            },
-        )
-
-        self.page.canal_combo.addItem(
-            "测试干渠",
-            {
-                "id": 30,
-                "canal_level": "01",
-            },
-        )
+        self._set_isolated_test_ownership()
 
         self.page.editing_record_id = 99
         self.page.editing_record_status = "completed"
