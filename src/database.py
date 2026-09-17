@@ -2103,6 +2103,8 @@ def get_engineering_survey_query_records(
             sr.id AS survey_record_id,
             sr.project_id,
             sr.survey_batch_id,
+            sr.organization_unit_id,
+            sr.canal_unit_id,
 
             sb.batch_name,
             sb.batch_code,
@@ -2276,6 +2278,16 @@ def get_engineering_survey_query_records(
                 "survey_batch_id": (
                     row[
                         "survey_batch_id"
+                    ]
+                ),
+                "organization_unit_id": (
+                    row[
+                        "organization_unit_id"
+                    ]
+                ),
+                "canal_unit_id": (
+                    row[
+                        "canal_unit_id"
                     ]
                 ),
                 "batch_name": (

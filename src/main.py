@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 from pages.basic_data_page import BasicDataPage
 from pages.data_query_page import DataQueryPage
+from pages.result_export_page import ResultExportPage
 from pages.survey_page import SurveyPage
 from pages.engineering_asset_page import EngineeringAssetPage
 from pages.project_batch_page import ProjectBatchPage
@@ -348,6 +349,7 @@ class MainWindow(QMainWindow):
         if page_name in (
             "调查录入",
             "工程台账",
+            "成果导出",
         ):
             if not self.has_active_survey_context():
                 QMessageBox.information(
@@ -400,6 +402,13 @@ class MainWindow(QMainWindow):
             self.data_query_page = DataQueryPage()
 
             self.content_layout.addWidget(self.data_query_page)
+
+        elif page_name == "成果导出":
+            self.result_export_page = ResultExportPage()
+
+            self.content_layout.addWidget(
+                self.result_export_page
+            )
 
         elif page_name == "基础资料":
             self.basic_data_page = BasicDataPage()
