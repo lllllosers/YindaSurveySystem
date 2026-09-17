@@ -21,17 +21,17 @@ from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
 
-from services.bridge_evaluation import (
-    BRIDGE_EVALUATION_ITEMS,
+from services.ditch_section_evaluation import (
+    DITCH_SECTION_EVALUATION_ITEMS,
 )
 
 
-FORM_2_12 = EngineeringFormDefinition(
-    form_code="form_2_12",
-    form_number="2.12",
-    form_name="桥梁工程状况调查表",
-    asset_type="bridge",
-    business_type_code="12",
+FORM_2_14 = EngineeringFormDefinition(
+    form_code="form_2_14",
+    form_number="2.14",
+    form_name='沟段工程状况调查表',
+    asset_type='ditch_section',
+    business_type_code='14',
     asset_name_field="asset_name",
     position=PositionDefinition.point(
         stake_field="stake",
@@ -39,115 +39,91 @@ FORM_2_12 = EngineeringFormDefinition(
     ),
     fields=(
         FieldDefinition(
-            key="asset_name",
-            label="名称",
-            input_type="text",
+            key='asset_name',
+            label='名称',
+            input_type='text',
             required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="stake",
-            label="桩号",
-            input_type="stake",
+            key='stake',
+            label='桩号',
+            input_type='stake',
             required=True,
             placeholder="例如：CH12+350",
         ),
         FieldDefinition(
-            key="design_flow",
-            label="设计流量",
-            input_type="decimal",
+            key='ditch_width',
+            label='沟道宽度',
+            input_type='decimal',
             required=True,
-            unit="m³/s",
         ),
         FieldDefinition(
-            key="structure_grade",
-            label="建筑物等级",
-            input_type="structure_grade",
+            key='has_flood_control_facility',
+            label='有无防洪设施',
+            input_type='choice',
             required=True,
-            placeholder="按原始资料填写",
+            choices=('有', '无'),
         ),
         FieldDefinition(
-            key="build_date",
-            label="建成年月",
-            input_type="month",
-            required=True,
-            placeholder="例如：201006",
-        ),
-        FieldDefinition(
-            key="renovation_date",
-            label="加固改造年月",
-            input_type="month",
+            key='flood_control_facility_type',
+            label='防洪设施类型',
+            input_type='text',
             required=False,
-            placeholder="例如：202109，可留空",
-        ),
-        FieldDefinition(
-            key="width_span",
-            label="宽*跨",
-            input_type="text",
-            required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="load_capacity",
-            label="承载重量",
-            input_type="decimal",
-            required=True,
-            unit="吨",
-        ),
-        FieldDefinition(
-            key="structure_form",
-            label="结构形式",
-            input_type="text",
-            required=True,
+            key='flood_control_build_time',
+            label='防洪设施建成时间',
+            input_type='text',
+            required=False,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="reinforced_concrete_strength",
-            label="钢筋混凝土强度",
-            input_type="concrete_strength",
-            required=True,
+            key='flood_control_renovation_time',
+            label='防洪设施改造时间',
+            input_type='text',
+            required=False,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="cover_thickness",
-            label="钢筋保护层厚度",
-            input_type="decimal",
-            required=True,
+            key='flood_control_capacity',
+            label='防洪能力',
+            input_type='text',
+            required=False,
+            placeholder="按原始资料填写",
         ),
     ),
     sections=(
         FormSectionDefinition(
-            title="二、工程基本信息",
+            title='二、沟段基本信息',
             rows=(
                 FieldRowDefinition(('asset_name',)),
                 FieldRowDefinition(('stake',)),
-                FieldRowDefinition(('design_flow',)),
-                FieldRowDefinition(('structure_grade',)),
-                FieldRowDefinition(('build_date',)),
-                FieldRowDefinition(('renovation_date',)),
-                FieldRowDefinition(('width_span',)),
-                FieldRowDefinition(('load_capacity',)),
+                FieldRowDefinition(('ditch_width',)),
             ),
         ),
         FormSectionDefinition(
-            title="三、结构参数",
+            title='三、防洪设施信息',
             rows=(
-                FieldRowDefinition(('structure_form',)),
-                FieldRowDefinition(('reinforced_concrete_strength',)),
-                FieldRowDefinition(('cover_thickness',)),
+                FieldRowDefinition(('has_flood_control_facility',)),
+                FieldRowDefinition(('flood_control_facility_type',)),
+                FieldRowDefinition(('flood_control_build_time',)),
+                FieldRowDefinition(('flood_control_renovation_time',)),
+                FieldRowDefinition(('flood_control_capacity',)),
             ),
         ),
     ),
     list_definition=(
         build_standard_engineering_list_definition(
-            new_button_text="新增桥梁调查",
+            new_button_text='新增沟段调查',
         )
     ),
     # =========================================================
     # 详细汇总导出
     # =========================================================
     summary_export_definition=SummaryExportDefinition(
-        sheet_name='桥梁调查汇总',
+        sheet_name='沟段调查汇总',
         columns=(
             SummaryColumnDefinition(
                 header='业务编号',
@@ -193,80 +169,56 @@ FORM_2_12 = EngineeringFormDefinition(
                 header='桩号',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='stake',
                 ),
             ),
             SummaryColumnDefinition(
-                header='设计流量',
-                width=16,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='design_flow',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='建筑物等级',
+                header='沟道宽度',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='structure_grade',
+                    source="record_data",
+                    key='ditch_width',
                 ),
             ),
             SummaryColumnDefinition(
-                header='建成年月',
+                header='有无防洪设施',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='build_date',
+                    source="record_data",
+                    key='has_flood_control_facility',
                 ),
             ),
             SummaryColumnDefinition(
-                header='加固改造年月',
-                width=16,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='renovation_date',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='宽*跨',
-                width=14,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='width_span',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='承载重量（吨）',
-                width=16,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='load_capacity',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='结构形式',
-                width=16,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='structure_form',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='钢筋混凝土强度',
+                header='防洪设施类型',
                 width=18,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='reinforced_concrete_strength',
+                    source="record_data",
+                    key='flood_control_facility_type',
                 ),
             ),
             SummaryColumnDefinition(
-                header='钢筋保护层厚度',
-                width=16,
+                header='防洪设施建成时间',
+                width=18,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='cover_thickness',
+                    source="record_data",
+                    key='flood_control_build_time',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='防洪设施改造时间',
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='flood_control_renovation_time',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='防洪能力',
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='flood_control_capacity',
                 ),
             ),
         ),
@@ -275,8 +227,8 @@ FORM_2_12 = EngineeringFormDefinition(
     # 正式原表导出
     # =========================================================
     original_form_export_definition=OriginalFormExportDefinition(
-        template_filename='form_2_12_V1.xlsx',
-        sheet_name='附表2.12',
+        template_filename='form_2_14_V1.xlsx',
+        sheet_name='附表2.14',
         field_bindings=(
             OriginalFormCellBinding(
                 cell='B5',
@@ -296,89 +248,67 @@ FORM_2_12 = EngineeringFormDefinition(
                 cell='J5',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='design_flow',
+                    key='ditch_width',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='B6',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='structure_grade',
+                    key='has_flood_control_facility',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='D6',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='build_date',
+                    key='flood_control_facility_type',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='F6',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='renovation_date',
+                    key='flood_control_build_time',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='H6',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='width_span',
+                    key='flood_control_renovation_time',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='J6',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='load_capacity',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='B7',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='structure_form',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='D7',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='reinforced_concrete_strength',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='F7',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='cover_thickness',
+                    key='flood_control_capacity',
                 ),
             ),
         ),
         evaluation_binding=OriginalFormEvaluationBinding(
             column="E",
-            start_row=9,
+            start_row=8,
         ),
         conclusion_binding=OriginalFormConclusionBinding(
-            survey_comment_cell='C19',
-            overall_grade_cell='J19',
-            survey_date_cell='J20',
+            survey_comment_cell='C14',
+            overall_grade_cell='J14',
+            survey_date_cell='J15',
         ),
         print_settings=OriginalFormPrintSettings(
-            print_area='A1:J21',
+            print_area='A1:J16',
         ),
-        output_filename_prefix='附表2.12_桥梁工程状况调查表',
-        fallback_asset_name='桥梁',
+        output_filename_prefix='附表2.14_沟段工程状况调查表',
+        fallback_asset_name='沟段',
     ),
     evaluation_items=tuple(
-        BRIDGE_EVALUATION_ITEMS
+        DITCH_SECTION_EVALUATION_ITEMS
     ),
     grade_options=(
         "A",
         "B",
         "C",
-        "D",
     ),
     evaluation_title="四、分项评价",
     conclusion_title="五、调查结论",

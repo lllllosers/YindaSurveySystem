@@ -17,11 +17,15 @@ if str(SRC_DIR) not in sys.path:
 
 import database
 
-from forms.engineering.form_2_7 import FORM_2_7
-from forms.engineering.form_2_8 import FORM_2_8
-from forms.engineering.form_2_9 import FORM_2_9
-from forms.engineering.form_2_12 import FORM_2_12
-from forms.engineering.form_2_13 import FORM_2_13
+from forms.engineering.form_2_10 import (
+    FORM_2_10,
+)
+from forms.engineering.form_2_11 import (
+    FORM_2_11,
+)
+from forms.engineering.form_2_14 import (
+    FORM_2_14,
+)
 
 from forms.engineering.persistence import (
     complete_engineering_record,
@@ -42,67 +46,66 @@ from tests.workflow_test_support import (
 )
 
 
-class BatchAWorkflowMixin:
+class BatchBWorkflowMixin:
     """
-    Batch A 五张新增工程调查表的统一生产级 workflow 合同。
+    Batch B 三张 A/B/C 三级评价工程调查表
+    的生产级 workflow 合同。
 
-    每张表都验证：
-    - 新增草稿；
-    - point / range 工程位置；
+    每张表验证：
+    - 新增草稿与 point 工程位置；
     - 同位置重复保护；
-    - 完成调查；
+    - A/B/C 完成调查；
     - completed 后继续修改；
-    - 当前批次 / DataQuery 共用查询结果；
+    - D 级明确拒绝；
+    - DataQuery 共用查询结果；
     - 详细汇总实际导出；
-    - 正式原表实际导出及全部声明式绑定。
+    - 正式原表实际导出。
     """
 
     DEFINITION = None
     ASSET_NAME = None
 
-    POINT_STAKE = "K70+500"
-    POINT_STAKE_VALUE = 70500.0
-
-    RANGE_START = "K70+100"
-    RANGE_START_VALUE = 70100.0
-    RANGE_END = "K70+900"
-    RANGE_END_VALUE = 70900.0
+    POINT_STAKE = "K80+500"
+    POINT_STAKE_VALUE = 80500.0
 
     def setUp(self):
         super().setUp()
 
         if self.DEFINITION is None:
             raise ValueError(
-                "Batch A workflow 必须配置 DEFINITION。"
+                "Batch B workflow 必须配置 DEFINITION。"
             )
 
         self.assertEqual(
             self.DEFINITION.form_code,
             self.FORM_CODE,
         )
+        self.assertEqual(
+            self.DEFINITION.position.kind,
+            "point",
+        )
+        self.assertEqual(
+            self.DEFINITION.grade_options,
+            (
+                "A",
+                "B",
+                "C",
+            ),
+        )
 
     # =========================================================
     # payload helpers
     # =========================================================
 
-    def _position(self):
-        if self.DEFINITION.position.kind == "point":
-            return {
-                "kind": "point",
-                "single_stake_text": self.POINT_STAKE,
-                "single_stake_value": self.POINT_STAKE_VALUE,
-            }
-
-        return {
-            "kind": "range",
-            "start_stake_text": self.RANGE_START,
-            "start_stake_value": self.RANGE_START_VALUE,
-            "end_stake_text": self.RANGE_END,
-            "end_stake_value": self.RANGE_END_VALUE,
-        }
-
-    def _record_data(self, *, asset_name=None):
-        asset_name = asset_name or self.ASSET_NAME
+    def _record_data(
+        self,
+        *,
+        asset_name=None,
+    ):
+        asset_name = (
+            asset_name
+            or self.ASSET_NAME
+        )
 
         result = {}
 
@@ -110,16 +113,14 @@ class BatchAWorkflowMixin:
             self.DEFINITION.fields,
             start=1,
         ):
-            if field.key == self.DEFINITION.asset_name_field:
+            if (
+                field.key
+                == self.DEFINITION.asset_name_field
+            ):
                 value = asset_name
 
             elif field.input_type == "stake":
-                if field.key == "start_stake":
-                    value = self.RANGE_START
-                elif field.key == "end_stake":
-                    value = self.RANGE_END
-                else:
-                    value = self.POINT_STAKE
+                value = self.POINT_STAKE
 
             elif field.input_type == "month":
                 value = (
@@ -129,13 +130,20 @@ class BatchAWorkflowMixin:
                 )
 
             elif field.input_type == "choice":
-                self.assertTrue(field.choices)
+                self.assertTrue(
+                    field.choices
+                )
                 value = field.choices[0]
 
             elif field.input_type == "integer":
-                value = index + 1
+                value = (
+                    index + 1
+                )
 
-            elif field.input_type == "signed_decimal":
+            elif (
+                field.input_type
+                == "signed_decimal"
+            ):
                 value = -(
                     1000.0
                     + index
@@ -170,12 +178,21 @@ class BatchAWorkflowMixin:
 
         return result
 
-    def _inspection_results(self, grade="B"):
+    def _inspection_results(
+        self,
+        grade="B",
+    ):
         return [
             {
-                "item_code": item["item_code"],
-                "category": item["category"],
-                "item_name": item["item_name"],
+                "item_code": (
+                    item["item_code"]
+                ),
+                "category": (
+                    item["category"]
+                ),
+                "item_name": (
+                    item["item_name"]
+                ),
                 "grade": grade,
                 "description": None,
                 "remark": None,
@@ -188,25 +205,47 @@ class BatchAWorkflowMixin:
         self,
         *,
         asset_name=None,
-        survey_comment="Batch A workflow 测试。",
+        grade="B",
+        overall_grade="B",
+        survey_comment=(
+            "Batch B workflow 测试。"
+        ),
     ):
-        asset_name = asset_name or self.ASSET_NAME
+        asset_name = (
+            asset_name
+            or self.ASSET_NAME
+        )
 
         return {
             "asset_name": asset_name,
-            "record_data": self._record_data(
-                asset_name=asset_name
+            "record_data": (
+                self._record_data(
+                    asset_name=asset_name
+                )
             ),
-            "position": self._position(),
+            "position": {
+                "kind": "point",
+                "single_stake_text": (
+                    self.POINT_STAKE
+                ),
+                "single_stake_value": (
+                    self.POINT_STAKE_VALUE
+                ),
+            },
             "inspection_results": (
-                self._inspection_results()
+                self._inspection_results(
+                    grade=grade
+                )
             ),
             "survey_date": "2026-09-17",
-            "overall_grade": "B",
+            "overall_grade": overall_grade,
             "survey_comment": survey_comment,
         }
 
-    def _business_code(self, sequence=1):
+    def _business_code(
+        self,
+        sequence=1,
+    ):
         return (
             "1-01-01-"
             f"{self.DEFINITION.business_type_code}"
@@ -218,7 +257,13 @@ class BatchAWorkflowMixin:
         *,
         sequence=1,
         asset_name=None,
+        payload=None,
     ):
+        if payload is None:
+            payload = self._payload(
+                asset_name=asset_name
+            )
+
         return create_engineering_record(
             self.DEFINITION,
             project_id=self.project_id,
@@ -226,14 +271,16 @@ class BatchAWorkflowMixin:
             form_version_id=int(
                 self.form_version["id"]
             ),
-            organization_unit_id=self.office_id,
+            organization_unit_id=(
+                self.office_id
+            ),
             canal_unit_id=self.canal_id,
-            business_code=self._business_code(
-                sequence
+            business_code=(
+                self._business_code(
+                    sequence
+                )
             ),
-            payload=self._payload(
-                asset_name=asset_name
-            ),
+            payload=payload,
         )
 
     @staticmethod
@@ -253,7 +300,10 @@ class BatchAWorkflowMixin:
                 for key in binding.keys
             ]
 
-        elif binding.source == "record_data":
+        elif (
+            binding.source
+            == "record_data"
+        ):
             values = [
                 record_data.get(key)
                 for key in binding.keys
@@ -273,7 +323,7 @@ class BatchAWorkflowMixin:
         return values[0]
 
     # =========================================================
-    # 1. 草稿 / 列表 / 重复保护
+    # 1. 草稿 / point / 查询 / 重复保护
     # =========================================================
 
     def test_draft_query_and_duplicate_protection(
@@ -282,7 +332,9 @@ class BatchAWorkflowMixin:
         result = self._create_draft()
 
         survey_record_id = int(
-            result["survey_record_id"]
+            result[
+                "survey_record_id"
+            ]
         )
 
         record = get_engineering_record(
@@ -292,7 +344,9 @@ class BatchAWorkflowMixin:
             ),
         )
 
-        self.assertIsNotNone(record)
+        self.assertIsNotNone(
+            record
+        )
         assert record is not None
 
         self.assertEqual(
@@ -307,12 +361,30 @@ class BatchAWorkflowMixin:
             record["asset_name"],
             self.ASSET_NAME,
         )
+        self.assertEqual(
+            record[
+                "single_stake_text"
+            ],
+            self.POINT_STAKE,
+        )
+        self.assertAlmostEqual(
+            float(
+                record[
+                    "single_stake_value"
+                ]
+            ),
+            self.POINT_STAKE_VALUE,
+        )
 
         records = (
             database
             .get_engineering_survey_query_records(
-                project_id=self.project_id,
-                survey_batch_id=self.batch_id,
+                project_id=(
+                    self.project_id
+                ),
+                survey_batch_id=(
+                    self.batch_id
+                ),
                 form_code=(
                     self.DEFINITION
                     .form_code
@@ -325,34 +397,20 @@ class BatchAWorkflowMixin:
             1,
         )
         self.assertEqual(
-            records[0]["record_status"],
+            records[0][
+                "record_status"
+            ],
             "draft",
         )
-
-        position_text = (
-            records[0][
-                "engineering_position"
-            ]
-            or ""
+        self.assertIn(
+            self.POINT_STAKE,
+            (
+                records[0][
+                    "engineering_position"
+                ]
+                or ""
+            ),
         )
-
-        if (
-            self.DEFINITION.position.kind
-            == "point"
-        ):
-            self.assertIn(
-                self.POINT_STAKE,
-                position_text,
-            )
-        else:
-            self.assertIn(
-                self.RANGE_START,
-                position_text,
-            )
-            self.assertIn(
-                self.RANGE_END,
-                position_text,
-            )
 
         with self.assertRaises(
             ValueError
@@ -375,7 +433,9 @@ class BatchAWorkflowMixin:
         result = self._create_draft()
 
         survey_record_id = int(
-            result["survey_record_id"]
+            result[
+                "survey_record_id"
+            ]
         )
 
         completion = (
@@ -407,15 +467,21 @@ class BatchAWorkflowMixin:
             )
         )
 
-        self.assertIsNotNone(completed)
+        self.assertIsNotNone(
+            completed
+        )
         assert completed is not None
 
         self.assertEqual(
-            completed["record_status"],
+            completed[
+                "record_status"
+            ],
             "completed",
         )
         self.assertEqual(
-            completed["overall_grade"],
+            completed[
+                "overall_grade"
+            ],
             "B",
         )
 
@@ -431,8 +497,10 @@ class BatchAWorkflowMixin:
             ),
             payload=self._payload(
                 asset_name=changed_name,
+                grade="C",
+                overall_grade="C",
                 survey_comment=(
-                    "completed 后修改成功。"
+                    "completed 后三级评价修改成功。"
                 ),
             ),
         )
@@ -444,11 +512,15 @@ class BatchAWorkflowMixin:
             ),
         )
 
-        self.assertIsNotNone(updated)
+        self.assertIsNotNone(
+            updated
+        )
         assert updated is not None
 
         self.assertEqual(
-            updated["record_status"],
+            updated[
+                "record_status"
+            ],
             "completed",
         )
         self.assertEqual(
@@ -456,45 +528,101 @@ class BatchAWorkflowMixin:
             changed_name,
         )
         self.assertEqual(
-            updated["survey_comment"],
-            "completed 后修改成功。",
+            updated[
+                "overall_grade"
+            ],
+            "C",
+        )
+        self.assertEqual(
+            updated[
+                "survey_comment"
+            ],
+            "completed 后三级评价修改成功。",
         )
 
-        records = (
+        inspections = (
             database
-            .get_engineering_survey_query_records(
-                project_id=self.project_id,
-                survey_batch_id=self.batch_id,
-                form_code=(
-                    self.DEFINITION
-                    .form_code
-                ),
+            .get_inspection_results(
+                survey_record_id
             )
         )
 
-        self.assertEqual(
-            len(records),
-            1,
+        self.assertTrue(
+            inspections
         )
-        self.assertEqual(
-            records[0]["overall_grade"],
-            "B",
-        )
-        self.assertEqual(
-            records[0]["record_status"],
-            "completed",
+        self.assertTrue(
+            all(
+                row["grade"] == "C"
+                for row in inspections
+            )
         )
 
     # =========================================================
-    # 3. 详细汇总实际导出
+    # 3. D 级必须被三级评价合同拒绝
+    # =========================================================
+
+    def test_grade_d_is_rejected(
+        self,
+    ):
+        payload = self._payload(
+            grade="D",
+            overall_grade="D",
+        )
+
+        result = self._create_draft(
+            payload=payload,
+        )
+
+        survey_record_id = int(
+            result[
+                "survey_record_id"
+            ]
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "评价等级无效|工程状况类别无效",
+        ):
+            complete_engineering_record(
+                self.DEFINITION,
+                survey_record_id=(
+                    survey_record_id
+                ),
+                payload=payload,
+            )
+
+        record = get_engineering_record(
+            self.DEFINITION,
+            survey_record_id=(
+                survey_record_id
+            ),
+        )
+
+        self.assertIsNotNone(
+            record
+        )
+        assert record is not None
+
+        self.assertEqual(
+            record[
+                "record_status"
+            ],
+            "draft",
+        )
+
+    # =========================================================
+    # 4. 详细汇总真实导出
     # =========================================================
 
     def test_summary_export_real_workbook(
         self,
     ):
         result = self._create_draft()
+
         survey_record_id = int(
-            result["survey_record_id"]
+            result[
+                "survey_record_id"
+            ]
         )
 
         complete_engineering_record(
@@ -508,8 +636,12 @@ class BatchAWorkflowMixin:
         records = (
             database
             .get_engineering_survey_query_records(
-                project_id=self.project_id,
-                survey_batch_id=self.batch_id,
+                project_id=(
+                    self.project_id
+                ),
+                survey_batch_id=(
+                    self.batch_id
+                ),
                 form_code=(
                     self.DEFINITION
                     .form_code
@@ -522,7 +654,8 @@ class BatchAWorkflowMixin:
                 self.temp_directory.name
             )
             / (
-                self.DEFINITION.form_code
+                self.DEFINITION
+                .form_code
                 + "_summary.xlsx"
             )
         )
@@ -555,6 +688,7 @@ class BatchAWorkflowMixin:
                 self.DEFINITION
                 .summary_export_definition
             )
+
             self.assertIsNotNone(
                 summary
             )
@@ -566,25 +700,20 @@ class BatchAWorkflowMixin:
 
             headers = {
                 cell.value: cell.column
-                for cell in worksheet[1]
+                for cell
+                in worksheet[1]
             }
 
-            self.assertIn(
+            for header in (
                 "业务编号",
-                headers,
-            )
-            self.assertIn(
                 "名称",
-                headers,
-            )
-            self.assertIn(
                 "工程状况类别",
-                headers,
-            )
-            self.assertIn(
                 "状态",
-                headers,
-            )
+            ):
+                self.assertIn(
+                    header,
+                    headers,
+                )
 
             self.assertEqual(
                 worksheet.cell(
@@ -631,6 +760,7 @@ class BatchAWorkflowMixin:
                     f"{item['category']}"
                     f"-{item['item_name']}"
                 )
+
                 self.assertIn(
                     header,
                     headers,
@@ -649,15 +779,18 @@ class BatchAWorkflowMixin:
             workbook.close()
 
     # =========================================================
-    # 4. 正式原表实际导出
+    # 5. 正式原表真实导出
     # =========================================================
 
     def test_original_form_real_export(
         self,
     ):
         result = self._create_draft()
+
         survey_record_id = int(
-            result["survey_record_id"]
+            result[
+                "survey_record_id"
+            ]
         )
 
         complete_engineering_record(
@@ -673,7 +806,9 @@ class BatchAWorkflowMixin:
             .original_form_export_definition
         )
 
-        self.assertIsNotNone(original)
+        self.assertIsNotNone(
+            original
+        )
         assert original is not None
 
         output = (
@@ -681,7 +816,8 @@ class BatchAWorkflowMixin:
                 self.temp_directory.name
             )
             / (
-                self.DEFINITION.form_code
+                self.DEFINITION
+                .form_code
                 + "_original.xlsx"
             )
         )
@@ -705,7 +841,9 @@ class BatchAWorkflowMixin:
             ),
         )
 
-        self.assertIsNotNone(record)
+        self.assertIsNotNone(
+            record
+        )
         assert record is not None
 
         workbook = load_workbook(
@@ -718,34 +856,11 @@ class BatchAWorkflowMixin:
                 original.sheet_name
             ]
 
-            # 顶部归属公共区。
-            self.assertEqual(
-                worksheet["B3"].value,
-                "处",
-            )
-            self.assertEqual(
-                worksheet["D3"].value,
-                "所",
-            )
-            self.assertEqual(
-                worksheet["F3"].value,
-                "干渠",
-            )
-            self.assertEqual(
-                worksheet["H3"].value,
-                "支渠",
-            )
-            self.assertEqual(
-                worksheet["I3"].value,
-                "编号：",
-            )
             self.assertEqual(
                 worksheet["J3"].value,
                 self._business_code(),
             )
 
-            # Definition 中声明的每一个正式原表字段
-            # 都必须真实写入模板指定单元格。
             for cell_binding in (
                 original.field_bindings
             ):
@@ -775,7 +890,6 @@ class BatchAWorkflowMixin:
                     ),
                 )
 
-            # 全部分项评价。
             start_row = (
                 original
                 .evaluation_binding
@@ -811,7 +925,7 @@ class BatchAWorkflowMixin:
                     conclusion
                     .survey_comment_cell
                 ].value,
-                "Batch A workflow 测试。",
+                "Batch B workflow 测试。",
             )
             self.assertEqual(
                 worksheet[
@@ -828,77 +942,83 @@ class BatchAWorkflowMixin:
                 "2026-09-17",
             )
 
-            self.assertEqual(
-                worksheet.print_area
-                .replace("$", ""),
-                (
-                    f"'{original.sheet_name}'!"
-                    f"{original.print_settings.print_area}"
-                ),
-            )
+            # 三级评价正式表情况描述不得出现 d 级。
+            for offset in range(
+                len(
+                    self.DEFINITION
+                    .evaluation_items
+                )
+            ):
+                row_number = (
+                    start_row + offset
+                )
+
+                description = (
+                    worksheet[
+                        f"F{row_number}"
+                    ].value
+                    or ""
+                )
+
+                self.assertIn(
+                    "a ",
+                    description,
+                )
+                self.assertIn(
+                    "b ",
+                    description,
+                )
+                self.assertIn(
+                    "c ",
+                    description,
+                )
+                self.assertNotIn(
+                    "d ",
+                    description,
+                )
 
         finally:
             workbook.close()
 
 
-class Form27WorkflowTestCase(
-    BatchAWorkflowMixin,
+class Form210WorkflowTestCase(
+    BatchBWorkflowMixin,
     EngineeringWorkflowTestCaseBase,
 ):
-    FORM_CODE = "form_2_7"
-    DEFINITION = FORM_2_7
+    FORM_CODE = "form_2_10"
+    DEFINITION = FORM_2_10
     TEST_DB_FILENAME = (
-        "test_form_2_7_batch_a.db"
+        "test_form_2_10_batch_b.db"
     )
-    ASSET_NAME = "测试跌水与陡坡"
+    ASSET_NAME = (
+        "测试标准断面量水设施"
+    )
 
 
-class Form28WorkflowTestCase(
-    BatchAWorkflowMixin,
+class Form211WorkflowTestCase(
+    BatchBWorkflowMixin,
     EngineeringWorkflowTestCaseBase,
 ):
-    FORM_CODE = "form_2_8"
-    DEFINITION = FORM_2_8
+    FORM_CODE = "form_2_11"
+    DEFINITION = FORM_2_11
     TEST_DB_FILENAME = (
-        "test_form_2_8_batch_a.db"
+        "test_form_2_11_batch_b.db"
     )
-    ASSET_NAME = "测试渠下涵"
+    ASSET_NAME = (
+        "测试堰槽量水设施"
+    )
 
 
-class Form29WorkflowTestCase(
-    BatchAWorkflowMixin,
+class Form214WorkflowTestCase(
+    BatchBWorkflowMixin,
     EngineeringWorkflowTestCaseBase,
 ):
-    FORM_CODE = "form_2_9"
-    DEFINITION = FORM_2_9
+    FORM_CODE = "form_2_14"
+    DEFINITION = FORM_2_14
     TEST_DB_FILENAME = (
-        "test_form_2_9_batch_a.db"
+        "test_form_2_14_batch_b.db"
     )
-    ASSET_NAME = "测试闸门及启闭设施"
-
-
-class Form212WorkflowTestCase(
-    BatchAWorkflowMixin,
-    EngineeringWorkflowTestCaseBase,
-):
-    FORM_CODE = "form_2_12"
-    DEFINITION = FORM_2_12
-    TEST_DB_FILENAME = (
-        "test_form_2_12_batch_a.db"
-    )
-    ASSET_NAME = "测试桥梁"
-
-
-class Form213WorkflowTestCase(
-    BatchAWorkflowMixin,
-    EngineeringWorkflowTestCaseBase,
-):
-    FORM_CODE = "form_2_13"
-    DEFINITION = FORM_2_13
-    TEST_DB_FILENAME = (
-        "test_form_2_13_batch_a.db"
-    )
-    ASSET_NAME = "测试砌石工程"
+    ASSET_NAME = "测试沟段"
 
 
 if __name__ == "__main__":

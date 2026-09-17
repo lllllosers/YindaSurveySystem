@@ -21,6 +21,8 @@ FieldType = Literal[
     "month",
     "stake",
     "choice",
+    "structure_grade",
+    "concrete_strength",
 ]
 
 PositionType = Literal[

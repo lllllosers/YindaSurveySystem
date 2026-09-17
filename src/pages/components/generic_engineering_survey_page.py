@@ -12,6 +12,7 @@ from PySide6.QtGui import (
 
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -44,6 +45,10 @@ from services.business_code import (
 from forms.engineering.models import (
     EngineeringFormDefinition,
     FieldRowDefinition,
+)
+
+from forms.engineering.grading import (
+    get_worst_grade,
 )
 
 from pages.components.engineering_field_runtime import (
@@ -1065,6 +1070,10 @@ class GenericEngineeringSurveyPage(QWidget):
         # 数据库回填不属于用户修改。
         self.is_dirty = False
 
+        self.reset_view_to_top(
+            focus_first=False
+        )
+
         return record
 
     # =========================================================
@@ -1164,10 +1173,22 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.survey_comment_edit.textChanged.connect(self._mark_dirty)
 
-        for button in self.overall_grade_buttons.values():
-            button.clicked.connect(self._mark_dirty)
+        for grade, button in self.overall_grade_buttons.items():
+            button.clicked.connect(
+                lambda checked=False,
+                selected_grade=grade:
+                self._handle_manual_overall_grade_clicked(
+                    selected_grade
+                )
+            )
 
-        self.evaluation_section.grade_changed.connect(self._mark_dirty)
+        self.auto_overall_grade_checkbox.clicked.connect(
+            self._handle_auto_overall_grade_clicked
+        )
+
+        self.evaluation_section.grade_changed.connect(
+            self._handle_evaluation_grade_changed
+        )
 
         self.department_combo.activated.connect(self._mark_dirty)
 
@@ -1242,6 +1263,32 @@ class GenericEngineeringSurveyPage(QWidget):
     # 连续录入
     # =========================================================
 
+    def reset_view_to_top(
+        self,
+        *,
+        focus_first=False,
+    ):
+        """
+        将工程调查录入页恢复到顶部。
+
+        新增、打开已有记录以及连续录入
+        均应从表单顶部开始，避免复用页面时
+        保留上一次的滚动位置。
+        """
+        vertical_bar = (
+            self.scroll_area
+            .verticalScrollBar()
+        )
+
+        vertical_bar.setValue(
+            vertical_bar.minimum()
+        )
+
+        if focus_first:
+            self.get_field_widget(
+                self.definition.asset_name_field
+            ).setFocus()
+
     def _focus_new_entry_start(
         self,
     ):
@@ -1250,12 +1297,9 @@ class GenericEngineeringSurveyPage(QWidget):
         - 回到表单顶部；
         - 聚焦工程名称字段。
         """
-
-        vertical_bar = self.scroll_area.verticalScrollBar()
-
-        vertical_bar.setValue(vertical_bar.minimum())
-
-        self.get_field_widget(self.definition.asset_name_field).setFocus()
+        self.reset_view_to_top(
+            focus_first=True
+        )
 
     def _ask_after_completion(
         self,
@@ -1493,6 +1537,19 @@ class GenericEngineeringSurveyPage(QWidget):
         # 工程状况类别
         # -------------------------
 
+        self.auto_overall_grade_checkbox = QCheckBox(
+            "自动按最差分项判定（可手动调整）"
+        )
+
+        self.auto_overall_grade_checkbox.setChecked(
+            True
+        )
+
+        self.auto_overall_grade_checkbox.setToolTip(
+            "默认按全部已选分项中的最差等级自动判定；"
+            "直接点击A/B/C/D可切换为人工判定。"
+        )
+
         self.overall_grade_widget = QWidget()
 
         grade_layout = QHBoxLayout(self.overall_grade_widget)
@@ -1538,6 +1595,11 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_comment_edit.setMinimumHeight(100)
 
         self.survey_comment_edit.setTabChangesFocus(True)
+
+        layout.addRow(
+            "判定方式：",
+            self.auto_overall_grade_checkbox,
+        )
 
         layout.addRow(
             "工程状况类别：",
@@ -1813,6 +1875,63 @@ class GenericEngineeringSurveyPage(QWidget):
     # 工程状况类别
     # =========================================================
 
+    def _get_worst_evaluation_grade(
+        self,
+    ):
+        results = (
+            self.collect_evaluation_results()
+        )
+
+        return get_worst_grade(
+            self.definition.grade_options,
+            (
+                result.get("grade")
+                for result in results
+            ),
+        )
+
+    def _sync_auto_overall_grade(
+        self,
+    ):
+        if not (
+            self.auto_overall_grade_checkbox
+            .isChecked()
+        ):
+            return
+
+        self.set_overall_grade(
+            self._get_worst_evaluation_grade()
+        )
+
+    def _handle_evaluation_grade_changed(
+        self,
+    ):
+        self._sync_auto_overall_grade()
+        self._mark_dirty()
+
+    def _handle_manual_overall_grade_clicked(
+        self,
+        grade,
+    ):
+        if (
+            self.auto_overall_grade_checkbox
+            .isChecked()
+        ):
+            self.auto_overall_grade_checkbox.setChecked(
+                False
+            )
+
+        self._mark_dirty()
+
+    def _handle_auto_overall_grade_clicked(
+        self,
+        checked=False,
+    ):
+        if checked:
+            self._sync_auto_overall_grade()
+
+        self._mark_dirty()
+
     def get_overall_grade(
         self,
     ):
@@ -1872,11 +1991,35 @@ class GenericEngineeringSurveyPage(QWidget):
         overall_grade=None,
         survey_comment=None,
     ):
-        self.survey_date_edit.setText(survey_date or "")
+        self.survey_date_edit.setText(
+            survey_date or ""
+        )
 
-        self.set_overall_grade(overall_grade)
+        worst_grade = (
+            self._get_worst_evaluation_grade()
+        )
 
-        self.survey_comment_edit.setPlainText(survey_comment or "")
+        use_auto = (
+            overall_grade is None
+            or overall_grade == worst_grade
+        )
+
+        self.auto_overall_grade_checkbox.setChecked(
+            use_auto
+        )
+
+        if use_auto:
+            self.set_overall_grade(
+                worst_grade
+            )
+        else:
+            self.set_overall_grade(
+                overall_grade
+            )
+
+        self.survey_comment_edit.setPlainText(
+            survey_comment or ""
+        )
 
     # =========================================================
     # 分项评价
@@ -1953,6 +2096,10 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.clear_overall_grade()
 
+        self.auto_overall_grade_checkbox.setChecked(
+            True
+        )
+
         self.survey_date_edit.clear()
 
         self.survey_comment_edit.clear()
@@ -1990,7 +2137,13 @@ class GenericEngineeringSurveyPage(QWidget):
         # 再进入新增状态。
         self.load_departments()
 
-        self.prepare_new(survey_date=survey_date)
+        self.prepare_new(
+            survey_date=survey_date
+        )
+
+        self.reset_view_to_top(
+            focus_first=True
+        )
 
     def prepare_new(
         self,

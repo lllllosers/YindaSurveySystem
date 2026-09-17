@@ -67,7 +67,7 @@ FORM_2_3 = EngineeringFormDefinition(
         FieldDefinition(
             key="structure_grade",
             label="建筑物等级",
-            input_type="text",
+            input_type="structure_grade",
             required=True,
             placeholder="按原始资料填写",
         ),

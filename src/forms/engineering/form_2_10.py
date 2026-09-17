@@ -17,152 +17,146 @@ from forms.engineering.extension_models import (
     ValueBindingDefinition,
 )
 
-from forms.engineering.formatters import (
-    format_stake_range_spaced,
-)
-
 from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
 
-from services.drop_steep_slope_evaluation import (
-    DROP_STEEP_SLOPE_EVALUATION_ITEMS,
+from services.standard_section_measurement_evaluation import (
+    STANDARD_SECTION_MEASUREMENT_EVALUATION_ITEMS,
 )
 
 
-FORM_2_7 = EngineeringFormDefinition(
-    form_code="form_2_7",
-    form_number="2.7",
-    form_name="跌水与陡坡工程状况调查表",
-    asset_type="drop_steep_slope",
-    business_type_code="07",
+FORM_2_10 = EngineeringFormDefinition(
+    form_code="form_2_10",
+    form_number="2.10",
+    form_name='标准断面量水设施工程状况调查表',
+    asset_type='standard_section_measurement_facility',
+    business_type_code='10',
     asset_name_field="asset_name",
-    position=PositionDefinition.range(
-        start_stake_field="start_stake",
-        start_stake_value_key="start_stake_value",
-        end_stake_field="end_stake",
-        end_stake_value_key="end_stake_value",
+    position=PositionDefinition.point(
+        stake_field="stake",
+        stake_value_key="stake_value",
     ),
     fields=(
         FieldDefinition(
-            key="asset_name",
-            label="名称",
-            input_type="text",
+            key='asset_name',
+            label='名称',
+            input_type='text',
             required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="start_stake",
-            label="起始桩号",
-            input_type="stake",
+            key='stake',
+            label='桩号',
+            input_type='stake',
             required=True,
             placeholder="例如：CH12+350",
         ),
         FieldDefinition(
-            key="end_stake",
-            label="终止桩号",
-            input_type="stake",
+            key='design_flow',
+            label='设计流量',
+            input_type='decimal',
             required=True,
-            placeholder="例如：CH12+350",
+            unit='m³/s',
         ),
         FieldDefinition(
-            key="design_flow",
-            label="设计流量",
-            input_type="decimal",
-            required=True,
-            unit="m³/s",
-        ),
-        FieldDefinition(
-            key="structure_grade",
-            label="建筑物等级",
+            key='structure_grade',
+            label='建筑物等级',
             input_type="structure_grade",
             required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="build_date",
-            label="建成年月",
-            input_type="month",
+            key='build_date',
+            label='建成年月',
+            input_type='month',
             required=True,
             placeholder="例如：201006",
         ),
         FieldDefinition(
-            key="renovation_date",
-            label="加固改造年月",
-            input_type="month",
+            key='renovation_date',
+            label='加固改造年月',
+            input_type='month',
             required=False,
             placeholder="例如：202109，可留空",
         ),
         FieldDefinition(
-            key="length",
-            label="长度",
-            input_type="decimal",
+            key='length',
+            label='长度',
+            input_type='decimal',
             required=True,
-            unit="m",
+            unit='m',
         ),
         FieldDefinition(
-            key="increased_flow",
-            label="加大流量",
-            input_type="decimal",
+            key='increased_flow',
+            label='加大流量',
+            input_type='decimal',
             required=True,
-            unit="m³/s",
+            unit='m³/s',
         ),
         FieldDefinition(
-            key="drop_height",
-            label="跌差",
-            input_type="decimal",
-            required=True,
-            unit="m",
-        ),
-        FieldDefinition(
-            key="drop_tongue_width",
-            label="跌舌宽",
-            input_type="decimal",
-            required=True,
-            unit="m",
-        ),
-        FieldDefinition(
-            key="main_structure_material",
-            label="主构建筑材料",
-            input_type="text",
+            key='section_form',
+            label='断面形式',
+            input_type='text',
             required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="concrete_strength",
-            label="混凝土强度",
-            input_type="concrete_strength",
+            key='channel_depth',
+            label='渠深',
+            input_type='decimal',
+            required=True,
+            unit='m',
+        ),
+        FieldDefinition(
+            key='bottom_width',
+            label='渠底宽',
+            input_type='decimal',
+            required=True,
+            unit='m',
+        ),
+        FieldDefinition(
+            key='top_width',
+            label='渠口宽',
+            input_type='decimal',
+            required=True,
+            unit='m',
+        ),
+        FieldDefinition(
+            key='longitudinal_slope',
+            label='纵坡',
+            input_type='text',
             required=True,
             placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="cover_thickness",
-            label="钢筋保护层厚度",
-            input_type="decimal",
+            key='measurement_facility_type',
+            label='量水设施类型',
+            input_type='text',
             required=True,
+            placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="stilling_pool_depth",
-            label="消力池深",
-            input_type="decimal",
+            key='lining_type',
+            label='衬砌类型',
+            input_type='text',
             required=True,
-            unit="m",
+            placeholder="按原始资料填写",
         ),
         FieldDefinition(
-            key="stilling_pool_length",
-            label="消力池长",
-            input_type="decimal",
+            key='measurement_section_length',
+            label='测流段长度',
+            input_type='decimal',
             required=True,
-            unit="m",
+            unit='m',
         ),
     ),
     sections=(
         FormSectionDefinition(
-            title="二、工程基本信息",
+            title='二、工程基本信息',
             rows=(
                 FieldRowDefinition(('asset_name',)),
-                FieldRowDefinition(('start_stake',)),
-                FieldRowDefinition(('end_stake',)),
+                FieldRowDefinition(('stake',)),
                 FieldRowDefinition(('design_flow',)),
                 FieldRowDefinition(('structure_grade',)),
                 FieldRowDefinition(('build_date',)),
@@ -172,28 +166,29 @@ FORM_2_7 = EngineeringFormDefinition(
             ),
         ),
         FormSectionDefinition(
-            title="三、结构参数",
+            title='三、量水设施参数',
             rows=(
-                FieldRowDefinition(('drop_height',)),
-                FieldRowDefinition(('drop_tongue_width',)),
-                FieldRowDefinition(('main_structure_material',)),
-                FieldRowDefinition(('concrete_strength',)),
-                FieldRowDefinition(('cover_thickness',)),
-                FieldRowDefinition(('stilling_pool_depth',)),
-                FieldRowDefinition(('stilling_pool_length',)),
+                FieldRowDefinition(('section_form',)),
+                FieldRowDefinition(('channel_depth',)),
+                FieldRowDefinition(('bottom_width',)),
+                FieldRowDefinition(('top_width',)),
+                FieldRowDefinition(('longitudinal_slope',)),
+                FieldRowDefinition(('measurement_facility_type',)),
+                FieldRowDefinition(('lining_type',)),
+                FieldRowDefinition(('measurement_section_length',)),
             ),
         ),
     ),
     list_definition=(
         build_standard_engineering_list_definition(
-            new_button_text="新增跌水与陡坡调查",
+            new_button_text='新增标准断面量水设施调查',
         )
     ),
     # =========================================================
     # 详细汇总导出
     # =========================================================
     summary_export_definition=SummaryExportDefinition(
-        sheet_name='跌水与陡坡调查汇总',
+        sheet_name='标准断面量水设施调查汇总',
         columns=(
             SummaryColumnDefinition(
                 header='业务编号',
@@ -236,26 +231,18 @@ FORM_2_7 = EngineeringFormDefinition(
                 ),
             ),
             SummaryColumnDefinition(
-                header='起始桩号',
+                header='桩号',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='start_stake',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='终止桩号',
-                width=14,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='end_stake',
+                    source="record_data",
+                    key='stake',
                 ),
             ),
             SummaryColumnDefinition(
                 header='设计流量（m³/s）',
                 width=16,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='design_flow',
                 ),
             ),
@@ -263,7 +250,7 @@ FORM_2_7 = EngineeringFormDefinition(
                 header='建筑物等级',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='structure_grade',
                 ),
             ),
@@ -271,7 +258,7 @@ FORM_2_7 = EngineeringFormDefinition(
                 header='建成年月',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='build_date',
                 ),
             ),
@@ -279,7 +266,7 @@ FORM_2_7 = EngineeringFormDefinition(
                 header='加固改造年月',
                 width=16,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='renovation_date',
                 ),
             ),
@@ -287,7 +274,7 @@ FORM_2_7 = EngineeringFormDefinition(
                 header='长度（m）',
                 width=12,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='length',
                 ),
             ),
@@ -295,64 +282,72 @@ FORM_2_7 = EngineeringFormDefinition(
                 header='加大流量（m³/s）',
                 width=16,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
+                    source="record_data",
                     key='increased_flow',
                 ),
             ),
             SummaryColumnDefinition(
-                header='跌差（m）',
-                width=12,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='drop_height',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='跌舌宽（m）',
-                width=12,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='drop_tongue_width',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='主构建筑材料',
-                width=18,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='main_structure_material',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='混凝土强度',
-                width=14,
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='concrete_strength',
-                ),
-            ),
-            SummaryColumnDefinition(
-                header='钢筋保护层厚度',
+                header='断面形式',
                 width=16,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='cover_thickness',
+                    source="record_data",
+                    key='section_form',
                 ),
             ),
             SummaryColumnDefinition(
-                header='消力池深（m）',
-                width=14,
+                header='渠深（m）',
+                width=12,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='stilling_pool_depth',
+                    source="record_data",
+                    key='channel_depth',
                 ),
             ),
             SummaryColumnDefinition(
-                header='消力池长（m）',
+                header='渠底宽（m）',
                 width=14,
                 binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='stilling_pool_length',
+                    source="record_data",
+                    key='bottom_width',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='渠口宽（m）',
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='top_width',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='纵坡',
+                width=14,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='longitudinal_slope',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='量水设施类型',
+                width=18,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='measurement_facility_type',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='衬砌类型',
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='lining_type',
+                ),
+            ),
+            SummaryColumnDefinition(
+                header='测流段长度（m）',
+                width=16,
+                binding=ValueBindingDefinition.single(
+                    source="record_data",
+                    key='measurement_section_length',
                 ),
             ),
         ),
@@ -361,8 +356,8 @@ FORM_2_7 = EngineeringFormDefinition(
     # 正式原表导出
     # =========================================================
     original_form_export_definition=OriginalFormExportDefinition(
-        template_filename='form_2_7_V1.xlsx',
-        sheet_name='附表2.7',
+        template_filename='form_2_10_V1.xlsx',
+        sheet_name='附表2.10',
         field_bindings=(
             OriginalFormCellBinding(
                 cell='B5',
@@ -373,10 +368,9 @@ FORM_2_7 = EngineeringFormDefinition(
             ),
             OriginalFormCellBinding(
                 cell='H5',
-                binding=ValueBindingDefinition.composite(
+                binding=ValueBindingDefinition.single(
                     source='record_data',
-                    keys=('start_stake', 'end_stake'),
-                    formatter=format_stake_range_spaced,
+                    key='stake',
                 ),
             ),
             OriginalFormCellBinding(
@@ -425,49 +419,56 @@ FORM_2_7 = EngineeringFormDefinition(
                 cell='B7',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='drop_height',
+                    key='section_form',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='D7',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='drop_tongue_width',
+                    key='channel_depth',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='F7',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='main_structure_material',
+                    key='bottom_width',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='H7',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='concrete_strength',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='J7',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='cover_thickness',
+                    key='top_width',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='B8',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='stilling_pool_depth',
+                    key='longitudinal_slope',
                 ),
             ),
             OriginalFormCellBinding(
                 cell='D8',
                 binding=ValueBindingDefinition.single(
                     source='record_data',
-                    key='stilling_pool_length',
+                    key='measurement_facility_type',
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell='F8',
+                binding=ValueBindingDefinition.single(
+                    source='record_data',
+                    key='lining_type',
+                ),
+            ),
+            OriginalFormCellBinding(
+                cell='H8',
+                binding=ValueBindingDefinition.single(
+                    source='record_data',
+                    key='measurement_section_length',
                 ),
             ),
         ),
@@ -476,24 +477,23 @@ FORM_2_7 = EngineeringFormDefinition(
             start_row=10,
         ),
         conclusion_binding=OriginalFormConclusionBinding(
-            survey_comment_cell='C20',
-            overall_grade_cell='J20',
-            survey_date_cell='J21',
+            survey_comment_cell='C22',
+            overall_grade_cell='J22',
+            survey_date_cell='J23',
         ),
         print_settings=OriginalFormPrintSettings(
-            print_area='A1:J22',
+            print_area='A1:J24',
         ),
-        output_filename_prefix='附表2.7_跌水与陡坡工程状况调查表',
-        fallback_asset_name='跌水与陡坡',
+        output_filename_prefix='附表2.10_标准断面量水设施工程状况调查表',
+        fallback_asset_name='标准断面量水设施',
     ),
     evaluation_items=tuple(
-        DROP_STEEP_SLOPE_EVALUATION_ITEMS
+        STANDARD_SECTION_MEASUREMENT_EVALUATION_ITEMS
     ),
     grade_options=(
         "A",
         "B",
         "C",
-        "D",
     ),
     evaluation_title="四、分项评价",
     conclusion_title="五、调查结论",

@@ -42,6 +42,18 @@ from forms.engineering.form_2_13 import (
     FORM_2_13,
 )
 
+from forms.engineering.form_2_10 import (
+    FORM_2_10,
+)
+
+from forms.engineering.form_2_11 import (
+    FORM_2_11,
+)
+
+from forms.engineering.form_2_14 import (
+    FORM_2_14,
+)
+
 from forms.engineering.models import (
     EngineeringFormDefinition,
 )
@@ -60,7 +72,7 @@ _ENGINEERING_FORM_DEFINITIONS: tuple[
     EngineeringFormDefinition,
     ...,
 ] = (
-        FORM_2_1,
+    FORM_2_1,
     FORM_2_2,
     FORM_2_3,
     FORM_2_4,
@@ -69,8 +81,11 @@ _ENGINEERING_FORM_DEFINITIONS: tuple[
     FORM_2_7,
     FORM_2_8,
     FORM_2_9,
+    FORM_2_10,
+    FORM_2_11,
     FORM_2_12,
     FORM_2_13,
+    FORM_2_14,
 )
 
 
@@ -100,6 +115,10 @@ def _validate_registry(
         (
             "business_type_code",
             "business_type_code",
+        ),
+        (
+            "asset_type",
+            "asset_type",
         ),
     )
 
@@ -134,6 +153,12 @@ _ENGINEERING_FORM_BY_CODE = {
     in _ENGINEERING_FORM_DEFINITIONS
 }
 
+_ENGINEERING_FORM_BY_ASSET_TYPE = {
+    definition.asset_type: definition
+    for definition
+    in _ENGINEERING_FORM_DEFINITIONS
+}
+
 
 def get_engineering_form_definition(
     form_code: str,
@@ -161,6 +186,56 @@ def get_engineering_form_definitions() -> tuple[
     """
 
     return _ENGINEERING_FORM_DEFINITIONS
+
+
+
+def get_engineering_asset_type_display_name(
+    asset_type: str | None,
+) -> str:
+    """
+    将 EngineeringAsset.asset_type
+    转换为 Registry 中正式 Definition
+    对应的中文工程类型名称。
+
+    不再在工程台账、详情等页面分别维护
+    英文代码 -> 中文名称字典。
+    """
+    value = str(
+        asset_type or ""
+    ).strip()
+
+    if not value:
+        return ""
+
+    definition = (
+        _ENGINEERING_FORM_BY_ASSET_TYPE
+        .get(value)
+    )
+
+    if definition is None:
+        return value
+
+    name = (
+        definition.form_name.strip()
+    )
+
+    for suffix in (
+        "工程状况调查表",
+        "状况调查表",
+        "调查表",
+    ):
+        if name.endswith(
+            suffix
+        ):
+            name = name[
+                :-len(suffix)
+            ].strip()
+            break
+
+    return (
+        name
+        or definition.form_name
+    )
 
 def get_engineering_grade_options(
     form_code: str | None = None,

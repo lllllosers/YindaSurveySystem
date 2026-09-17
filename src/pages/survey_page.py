@@ -1,9 +1,12 @@
 from functools import partial
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -177,35 +180,97 @@ class SurveyPage(QWidget):
     def create_engineering_home_page(
         self,
     ):
+        """
+        工程调查入口页。
+
+        页面头部固定，只让附表2入口列表滚动。
+        这样 Registry 表单数量增加时，
+        不会通过 sizeHint 把主窗口向下撑出屏幕。
+        """
         page = QWidget()
 
         layout = QVBoxLayout(page)
 
         layout.setSpacing(16)
 
-        back_button = QPushButton("返回调查分类")
+        back_button = QPushButton(
+            "返回调查分类"
+        )
 
-        back_button.clicked.connect(self.open_home)
+        back_button.clicked.connect(
+            self.open_home
+        )
 
         layout.addWidget(back_button)
 
-        title = QLabel("工程现状调查")
+        title = QLabel(
+            "工程现状调查"
+        )
 
-        title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
+        title.setStyleSheet(
+            "font-size: 20px; "
+            "font-weight: bold;"
+        )
 
         layout.addWidget(title)
 
-        description = QLabel("附表2系列工程设施现状调查与评价。")
+        description = QLabel(
+            "附表2系列工程设施现状调查与评价。"
+        )
 
         description.setWordWrap(True)
 
-        description.setStyleSheet("color: #607080; " "font-size: 14px;")
+        description.setStyleSheet(
+            "color: #607080; "
+            "font-size: 14px;"
+        )
 
         layout.addWidget(description)
 
         # =====================================================
-        # 根据注册表生成工程调查入口
+        # 工程调查入口独立滚动区
         # =====================================================
+
+        self.engineering_home_scroll_area = (
+            QScrollArea()
+        )
+
+        self.engineering_home_scroll_area.setWidgetResizable(
+            True
+        )
+
+        self.engineering_home_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        self.engineering_home_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self.engineering_home_scroll_area.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+
+        self.engineering_home_scroll_area.setMinimumHeight(
+            260
+        )
+
+        entry_container = QWidget()
+
+        entry_layout = QVBoxLayout(
+            entry_container
+        )
+
+        entry_layout.setContentsMargins(
+            4,
+            4,
+            12,
+            4,
+        )
+
+        entry_layout.setSpacing(10)
+
+        self.engineering_form_buttons = []
 
         for definition in (
             get_engineering_form_definitions()
@@ -225,21 +290,25 @@ class SurveyPage(QWidget):
                 )
             )
 
-            layout.addWidget(button)
+            entry_layout.addWidget(
+                button
+            )
 
-        registry_note = QLabel(
-            "当前可用调查表由工程调查 Registry 自动生成。"
-        )
+            self.engineering_form_buttons.append(
+                button
+            )
 
-        registry_note.setStyleSheet(
-            "color: #7a8793;"
+
+        entry_layout.addStretch()
+
+        self.engineering_home_scroll_area.setWidget(
+            entry_container
         )
 
         layout.addWidget(
-            registry_note
+            self.engineering_home_scroll_area,
+            1,
         )
-
-        layout.addStretch()
 
         return page
 

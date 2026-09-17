@@ -15,12 +15,9 @@ from database import (
     get_engineering_asset_history,
 )
 
-ASSET_TYPE_NAMES = {
-    "lined_channel_section": "防渗衬砌渠道",
-    "sluice_gate": "水闸",
-    "aqueduct": "渡槽（座槽）",
-}
-
+from forms.engineering.registry import (
+    get_engineering_asset_type_display_name,
+)
 
 CANAL_LEVEL_NAMES = {
     "01": "干渠",
@@ -216,11 +213,11 @@ class EngineeringAssetDetailDialog(QDialog):
             self.asset_name_label.setText("未找到工程对象")
             return
 
-        asset_type_text = ASSET_TYPE_NAMES.get(
-            asset["asset_type"],
-            asset["asset_type"],
+        asset_type_text = (
+            get_engineering_asset_type_display_name(
+                asset["asset_type"]
+            )
         )
-
         canal_level_text = CANAL_LEVEL_NAMES.get(
             asset["canal_level"],
             asset["canal_level"] or "",

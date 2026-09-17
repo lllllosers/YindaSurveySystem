@@ -68,7 +68,7 @@ FORM_2_2 = EngineeringFormDefinition(
         FieldDefinition(
             key="structure_grade",
             label="建筑物等级",
-            input_type="text",
+            input_type="structure_grade",
             required=True,
             placeholder="按原始资料填写",
         ),
@@ -126,14 +126,14 @@ FORM_2_2 = EngineeringFormDefinition(
         FieldDefinition(
             key="concrete_strength",
             label="混凝土强度",
-            input_type="text",
+            input_type="concrete_strength",
             required=True,
             placeholder="例如：C30",
         ),
         FieldDefinition(
             key=("reinforced_concrete_strength"),
             label="钢筋混凝土强度",
-            input_type="text",
+            input_type="concrete_strength",
             required=True,
             placeholder="按原始资料填写",
         ),

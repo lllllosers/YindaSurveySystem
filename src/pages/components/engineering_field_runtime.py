@@ -9,6 +9,10 @@ from PySide6.QtWidgets import (
 from forms.engineering.models import (
     FieldDefinition,
 )
+from forms.engineering.value_normalizers import (
+    normalize_concrete_strength,
+    normalize_structure_grade,
+)
 
 from pages.components.survey_input_fields import (
     create_month_edit,
@@ -73,6 +77,18 @@ class EngineeringFieldRuntime:
         if input_type == "text":
             return get_optional_text(self.widget)
 
+        if input_type == "structure_grade":
+            return normalize_structure_grade(
+                self.widget.text(),
+                self.definition.label,
+            )
+
+        if input_type == "concrete_strength":
+            return normalize_concrete_strength(
+                self.widget.text(),
+                self.definition.label,
+            )
+
         if input_type in (
             "decimal",
             "signed_decimal",
@@ -130,6 +146,24 @@ class EngineeringFieldRuntime:
         因此不会被 dirty tracking
         错误判断为用户修改。
         """
+
+        if self.definition.input_type == "structure_grade":
+            normalized = normalize_structure_grade(
+                value,
+                self.definition.label,
+            )
+
+            self.widget.setText(normalized or "")
+            return
+
+        if self.definition.input_type == "concrete_strength":
+            normalized = normalize_concrete_strength(
+                value,
+                self.definition.label,
+            )
+
+            self.widget.setText(normalized or "")
+            return
 
         if self.definition.input_type == "choice":
             if value is None:
@@ -203,6 +237,24 @@ class EngineeringFieldRuntime:
         self.widget.textEdited.connect(callback)
 
 
+def _normalize_domain_edit(
+    widget,
+    normalizer,
+    field_name,
+):
+    try:
+        normalized = normalizer(
+            widget.text(),
+            field_name,
+        )
+    except ValueError:
+        return
+
+    widget.setText(
+        normalized or ""
+    )
+
+
 def _placeholder(
     definition: FieldDefinition,
     default: str | None,
@@ -245,6 +297,48 @@ def create_engineering_field_runtime(
 
         if placeholder:
             widget.setPlaceholderText(placeholder)
+
+    elif input_type == "structure_grade":
+        widget = QLineEdit()
+
+        placeholder = _placeholder(
+            definition,
+            "只需输入数字，例如：3；离开输入框后自动显示为3级",
+        )
+
+        if placeholder:
+            widget.setPlaceholderText(placeholder)
+
+        widget.editingFinished.connect(
+            lambda target=widget,
+            field_name=definition.label:
+            _normalize_domain_edit(
+                target,
+                normalize_structure_grade,
+                field_name,
+            )
+        )
+
+    elif input_type == "concrete_strength":
+        widget = QLineEdit()
+
+        placeholder = _placeholder(
+            definition,
+            "输入30、c30或C30均可；自动统一为C30",
+        )
+
+        if placeholder:
+            widget.setPlaceholderText(placeholder)
+
+        widget.editingFinished.connect(
+            lambda target=widget,
+            field_name=definition.label:
+            _normalize_domain_edit(
+                target,
+                normalize_concrete_strength,
+                field_name,
+            )
+        )
 
     elif input_type == "stake":
         widget = QLineEdit()

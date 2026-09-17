@@ -210,7 +210,7 @@ FORM_2_1 = EngineeringFormDefinition(
         FieldDefinition(
             key="concrete_strength",
             label="混凝土强度",
-            input_type="text",
+            input_type="concrete_strength",
             required=True,
             placeholder="例如：C20、C25",
         ),

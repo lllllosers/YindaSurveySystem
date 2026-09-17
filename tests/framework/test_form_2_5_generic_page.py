@@ -187,6 +187,12 @@ class Form25GenericPageTestCase(
             elif field.key == "renovation_date":
                 value = ""
 
+            elif field.input_type == "structure_grade":
+                value = "3"
+
+            elif field.input_type == "concrete_strength":
+                value = "c30"
+
             elif field.input_type == "text":
                 value = "测试"
 

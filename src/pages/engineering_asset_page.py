@@ -14,16 +14,13 @@ from database import (
     get_engineering_assets,
 )
 
+from forms.engineering.registry import (
+    get_engineering_asset_type_display_name,
+)
+
 from pages.engineering_asset_detail_dialog import (
     EngineeringAssetDetailDialog,
 )
-
-ASSET_TYPE_NAMES = {
-    "lined_channel_section": "防渗衬砌渠道",
-    "sluice_gate": "水闸",
-    "aqueduct": "渡槽（座槽）",
-}
-
 
 class EngineeringAssetPage(QWidget):
     def __init__(self):
@@ -114,11 +111,11 @@ class EngineeringAssetPage(QWidget):
         self.table.setRowCount(len(assets))
 
         for row_index, asset in enumerate(assets):
-            asset_type_text = ASSET_TYPE_NAMES.get(
-                asset["asset_type"],
-                asset["asset_type"],
+            asset_type_text = (
+                get_engineering_asset_type_display_name(
+                    asset["asset_type"]
+                )
             )
-
             if asset["single_stake_text"]:
                 stake_text = asset["single_stake_text"]
             elif asset["start_stake_text"] or asset["end_stake_text"]:
