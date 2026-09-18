@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from database import (
+    get_canal_unit,
     get_current_context,
     get_current_form_version,
     get_departments,
@@ -314,6 +315,9 @@ class GenericEngineeringSurveyPage(QWidget):
             "任务分管范围："
         )
         self.task_scope_combo = QComboBox()
+        self.task_scope_combo.setPlaceholderText(
+            "请选择任务分管范围"
+        )
         self.task_scope_label.hide()
         self.task_scope_combo.hide()
 
@@ -724,12 +728,22 @@ class GenericEngineeringSurveyPage(QWidget):
                     dict(scope),
                 )
 
-            if (
+            scope_count = (
                 self.task_scope_combo.count()
-                > 0
-            ):
+            )
+
+            if scope_count == 1:
+                # 唯一 scope 无歧义，自动选中。
                 self.task_scope_combo.setCurrentIndex(
                     0
+                )
+
+            elif scope_count > 1:
+                # 同一物理渠道存在多个任务 scope 时
+                # 不根据顺序、桩号或其他信息猜测，
+                # 必须由录入人员明确选择。
+                self.task_scope_combo.setCurrentIndex(
+                    -1
                 )
         else:
             self.task_scope_label.hide()
@@ -739,6 +753,88 @@ class GenericEngineeringSurveyPage(QWidget):
             False
         )
         self.update_business_code()
+
+    def _restore_loaded_canal_identity(
+        self,
+        record,
+    ):
+        """
+        恢复既有调查记录固定的物理 CanalUnit。
+
+        已有 EngineeringAsset / SurveyRecord 的渠系身份
+        不应依赖当前 live CanalManagementScope。
+
+        正常情况下 office_changed() 能从当前/历史 scope
+        列出目标渠道；如果管理关系后来被调整或该渠道
+        原本只存在于任务冻结范围中，则直接按记录保存的
+        canal_id 读取物理 CanalUnit 并补入只读下拉框。
+
+        这里只恢复既有记录身份，不授予新增调查权限。
+        """
+
+        canal_id = record.get(
+            "canal_id"
+        )
+
+        if canal_id is None:
+            raise ValueError(
+                "该调查记录所属渠系已不存在或不可用。"
+            )
+
+        if self._set_combo_by_id(
+            self.canal_combo,
+            canal_id,
+        ):
+            return
+
+        canal = get_canal_unit(
+            canal_id
+        )
+
+        if canal is None:
+            raise ValueError(
+                "该调查记录所属渠系已不存在或不可用。"
+            )
+
+        self.canal_combo.blockSignals(
+            True
+        )
+
+        try:
+            self.canal_combo.addItem(
+                str(
+                    canal[
+                        "name"
+                    ]
+                    or ""
+                ),
+                {
+                    "id": int(
+                        canal[
+                            "id"
+                        ]
+                    ),
+                    "canal_level": (
+                        canal[
+                            "canal_level"
+                        ]
+                    ),
+                },
+            )
+
+            self.canal_combo.setCurrentIndex(
+                self.canal_combo.count()
+                - 1
+            )
+
+        finally:
+            self.canal_combo.blockSignals(
+                False
+            )
+
+        # 统一刷新 scope / 编号显示。
+        # editing_record_id 已设置，因此不会重算业务编号。
+        self.canal_changed()
 
     def _show_loaded_task_scope(
         self,
@@ -1495,11 +1591,9 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.office_changed()
 
-        if not self._set_combo_by_id(
-            self.canal_combo,
-            record.get("canal_id"),
-        ):
-            raise ValueError("该调查记录所属渠系" "已不存在或不可用。")
+        self._restore_loaded_canal_identity(
+            record
+        )
 
         self._show_loaded_task_scope(
             record
