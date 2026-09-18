@@ -172,15 +172,13 @@ class StableIdentityTestCase(
                     """
                     INSERT INTO canal_units (
                         name,
-                        canal_level,
-                        organization_unit_id
+                        canal_level
                     )
-                    VALUES (?, ?, ?)
+                    VALUES (?, ?)
                     """,
                     (
                         "测试支渠",
                         "03",
-                        office_id,
                     ),
                 )
             )

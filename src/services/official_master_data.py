@@ -937,40 +937,19 @@ def _seed_office(
     return int(cursor.lastrowid), "created"
 
 
-def _canal_reference_count(
-    connection,
-    canal_id,
-):
-    asset_count = connection.execute(
-        """
-        SELECT COUNT(*) AS count_value
-        FROM engineering_assets
-        WHERE canal_unit_id = ?
-        """,
-        (canal_id,),
-    ).fetchone()["count_value"]
-
-    survey_count = connection.execute(
-        """
-        SELECT COUNT(*) AS count_value
-        FROM survey_records
-        WHERE canal_unit_id = ?
-        """,
-        (canal_id,),
-    ).fetchone()["count_value"]
-
-    return (
-        int(asset_count)
-        + int(survey_count)
-    )
-
-
 def _seed_canal(
     connection,
     spec,
     canal_ids,
-    organization_ids,
 ):
+    """
+    写入/接管物理 CanalUnit。
+
+    OFFICIAL_CANALS 中的 organization_master_key
+    只作为后续正式 CanalManagementScope 的事实来源，
+    不再写入 CanalUnit 中的旧管理归属字段。
+    """
+
     existing_id = (
         _one_id_by_master_key(
             connection,
@@ -980,32 +959,27 @@ def _seed_canal(
     )
 
     if existing_id is not None:
-        return existing_id, "existing"
+        return (
+            existing_id,
+            "existing",
+        )
 
     parent_id = None
 
-    if spec["parent_master_key"]:
+    if spec[
+        "parent_master_key"
+    ]:
         parent_id = canal_ids[
-            spec["parent_master_key"]
-        ]
-
-    organization_id = None
-
-    if spec["organization_master_key"]:
-        organization_id = (
-            organization_ids[
-                spec[
-                    "organization_master_key"
-                ]
+            spec[
+                "parent_master_key"
             ]
-        )
+        ]
 
     candidates = _rows(
         connection,
         """
         SELECT
             id,
-            organization_unit_id,
             description
         FROM canal_units
         WHERE name = ?
@@ -1036,40 +1010,15 @@ def _seed_canal(
 
     if candidates:
         row = candidates[0]
-        canal_id = int(row["id"])
-
-        current_org_id = (
-            int(row["organization_unit_id"])
-            if (
-                row["organization_unit_id"]
-                is not None
-            )
-            else None
+        canal_id = int(
+            row["id"]
         )
-
-        if (
-            current_org_id
-            != organization_id
-            and _canal_reference_count(
-                connection,
-                canal_id,
-            )
-            > 0
-        ):
-            raise ValueError(
-                "正式渠系匹配到已有业务数据，"
-                "但管理单位与甲方新表不一致："
-                f"{spec['name']}。"
-                "为避免改写既有调查归属，"
-                "本次初始化已停止。"
-            )
 
         connection.execute(
             """
             UPDATE canal_units
             SET
                 master_key = ?,
-                organization_unit_id = ?,
                 status = 'active',
                 sort_order = ?,
                 description = ?,
@@ -1080,18 +1029,28 @@ def _seed_canal(
             WHERE id = ?
             """,
             (
-                spec["master_key"],
-                organization_id,
-                spec["sort_order"],
+                spec[
+                    "master_key"
+                ],
+                spec[
+                    "sort_order"
+                ],
                 _set_description_if_empty(
-                    row["description"],
-                    spec["description"],
+                    row[
+                        "description"
+                    ],
+                    spec[
+                        "description"
+                    ],
                 ),
                 canal_id,
             ),
         )
 
-        return canal_id, "adopted"
+        return (
+            canal_id,
+            "adopted",
+        )
 
     cursor = connection.execute(
         """
@@ -1099,14 +1058,13 @@ def _seed_canal(
             parent_id,
             name,
             canal_level,
-            organization_unit_id,
             status,
             description,
             master_key,
             sort_order
         )
         VALUES (
-            ?, ?, ?, ?,
+            ?, ?, ?,
             'active', ?,
             ?, ?
         )
@@ -1114,15 +1072,25 @@ def _seed_canal(
         (
             parent_id,
             spec["name"],
-            spec["canal_level"],
-            organization_id,
-            spec["description"],
-            spec["master_key"],
-            spec["sort_order"],
+            spec[
+                "canal_level"
+            ],
+            spec[
+                "description"
+            ],
+            spec[
+                "master_key"
+            ],
+            spec[
+                "sort_order"
+            ],
         ),
     )
 
-    return int(cursor.lastrowid), "created"
+    return (
+        int(cursor.lastrowid),
+        "created",
+    )
 
 
 def seed_official_master_data():
@@ -1132,7 +1100,7 @@ def seed_official_master_data():
     规则：
     - 新表名称优先；
     - 编码对照表用于组织业务代码；
-    - 5 个干渠/分干渠的管理单位保持 NULL；
+    - CanalUnit 不写入管理单位；管理关系由正式 CanalManagementScope 单独生成；
     - 新表备注直接写入渠道 description；
     - 渠道层级以新表所在列为准，不根据名称猜测；
     - 首次导入可接管能够唯一匹配的既有基础资料；
@@ -1210,7 +1178,6 @@ def seed_official_master_data():
                     connection,
                     spec,
                     canal_ids,
-                    organization_ids,
                 )
             )
 

@@ -181,42 +181,6 @@ class OfficialMasterDataTestCase(
             names,
         )
 
-    def test_major_canals_have_blank_management(
-        self,
-    ):
-        seed_official_master_data()
-
-        with database.get_connection() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    master_key,
-                    organization_unit_id
-                FROM canal_units
-                WHERE master_key IN (
-                    'CANAL-G01',
-                    'CANAL-G02',
-                    'CANAL-G03',
-                    'CANAL-G04',
-                    'CANAL-G05'
-                )
-                ORDER BY master_key
-                """
-            ).fetchall()
-
-        self.assertEqual(
-            len(rows),
-            5,
-        )
-
-        self.assertTrue(
-            all(
-                row["organization_unit_id"]
-                is None
-                for row in rows
-            )
-        )
-
     def test_hierarchy_and_source_column_level_are_preserved(
         self,
     ):

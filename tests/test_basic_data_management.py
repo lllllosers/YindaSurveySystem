@@ -1,3 +1,4 @@
+import inspect
 import gc
 import sys
 import tempfile
@@ -16,6 +17,11 @@ if str(SRC_DIR) not in sys.path:
 
 
 import database
+from services.canal_management_scope import (
+    RANGE_MODE_WHOLE,
+    create_canal_management_scope,
+    ensure_canal_management_scope_schema,
+)
 
 
 class BasicDataManagementTestCase(unittest.TestCase):
@@ -65,7 +71,7 @@ class BasicDataManagementTestCase(unittest.TestCase):
         canal_id = database.create_canal_unit(
             name="测试渠道",
             canal_level="01",
-            organization_unit_id=office_id,
+
         )
 
         return (
@@ -230,7 +236,7 @@ class BasicDataManagementTestCase(unittest.TestCase):
             name="修改后的渠道名称",
             canal_level="01",
             parent_id=None,
-            organization_unit_id=office_id,
+
             description="名称允许修改",
         )
 
@@ -247,7 +253,7 @@ class BasicDataManagementTestCase(unittest.TestCase):
                 name="修改后的渠道名称",
                 canal_level="02",
                 parent_id=None,
-                organization_unit_id=office_id,
+
             )
 
         database.set_canal_unit_status(
@@ -272,7 +278,7 @@ class BasicDataManagementTestCase(unittest.TestCase):
             name="测试子渠道",
             canal_level="03",
             parent_id=parent_canal_id,
-            organization_unit_id=office_id,
+
         )
 
         with self.assertRaises(ValueError):
@@ -281,6 +287,87 @@ class BasicDataManagementTestCase(unittest.TestCase):
         database.delete_canal_unit(child_canal_id)
 
         self.assertIsNone(database.get_canal_unit(child_canal_id))
+
+    def test_canal_api_exposes_only_physical_structure_fields(
+        self,
+    ):
+        self.assertNotIn(
+            "organization_unit_id",
+            inspect.signature(
+                database.create_canal_unit
+            ).parameters,
+        )
+        self.assertNotIn(
+            "organization_unit_id",
+            inspect.signature(
+                database.update_canal_unit
+            ).parameters,
+        )
+        self.assertFalse(
+            hasattr(
+                database,
+                "get_canal_units_for_organization",
+            )
+        )
+    def test_organization_usage_is_driven_by_management_scope(
+        self,
+    ):
+        (
+            _,
+            _,
+            office_id,
+            canal_id,
+        ) = self.create_base_data()
+
+        before = (
+            database.get_organization_unit_usage(
+                office_id
+            )
+        )
+
+        self.assertNotIn(
+            "canal_count",
+            before,
+        )
+        self.assertEqual(
+            before[
+                "management_scope_count"
+            ],
+            0,
+        )
+
+        ensure_canal_management_scope_schema()
+
+        create_canal_management_scope(
+            canal_unit_id=canal_id,
+            organization_unit_id=office_id,
+            range_mode=RANGE_MODE_WHOLE,
+        )
+
+        after = (
+            database.get_organization_unit_usage(
+                office_id
+            )
+        )
+
+        self.assertEqual(
+            after[
+                "management_scope_count"
+            ],
+            1,
+        )
+        self.assertFalse(
+            after[
+                "can_delete"
+            ]
+        )
+
+        with self.assertRaises(
+            ValueError
+        ):
+            database.delete_organization_unit(
+                office_id
+            )
 
 
 if __name__ == "__main__":

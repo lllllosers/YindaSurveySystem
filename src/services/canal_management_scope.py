@@ -203,122 +203,15 @@ def _create_schema(connection):
     )
 
 
-def _migrate_legacy_assignments(connection):
-    rows = connection.execute(
-        """
-        SELECT
-            canal.id AS canal_unit_id,
-            canal.master_key AS canal_master_key,
-            canal.sort_order AS canal_sort_order,
-            office.id AS organization_unit_id,
-            office.master_key AS organization_master_key
-        FROM canal_units AS canal
-        JOIN organization_units AS office
-          ON office.id = canal.organization_unit_id
-        WHERE canal.organization_unit_id IS NOT NULL
-          AND office.unit_type = 'water_office'
-        ORDER BY canal.sort_order, canal.id
-        """
-    ).fetchall()
-
-    migrated = 0
-    existing = 0
-
-    for row in rows:
-        canal_id = int(row["canal_unit_id"])
-        office_id = int(row["organization_unit_id"])
-        canal_key = _clean_text(row["canal_master_key"])
-        office_key = _clean_text(row["organization_master_key"])
-
-        if canal_key and office_key:
-            master_key = _scope_master_key(canal_key, office_key)
-            uid = deterministic_master_uid(
-                "canal_management_scope",
-                master_key,
-            )
-
-            current = connection.execute(
-                """
-                SELECT
-                    management_scope_uid,
-                    canal_unit_id,
-                    organization_unit_id,
-                    range_mode
-                FROM canal_management_scopes
-                WHERE master_key = ?
-                """,
-                (master_key,),
-            ).fetchone()
-
-            if current is not None:
-                if (
-                    current["management_scope_uid"] != uid
-                    or int(current["canal_unit_id"]) != canal_id
-                    or int(current["organization_unit_id"]) != office_id
-                    or current["range_mode"] != RANGE_MODE_WHOLE
-                ):
-                    raise RuntimeError(
-                        "正式渠道管理范围稳定身份与现有数据冲突。"
-                    )
-                existing += 1
-                continue
-        else:
-            master_key = None
-            current = connection.execute(
-                """
-                SELECT id
-                FROM canal_management_scopes
-                WHERE canal_unit_id = ?
-                  AND organization_unit_id = ?
-                  AND range_mode = 'whole'
-                LIMIT 1
-                """,
-                (canal_id, office_id),
-            ).fetchone()
-
-            if current is not None:
-                existing += 1
-                continue
-
-            uid = uuid4().hex
-
-        connection.execute(
-            """
-            INSERT INTO canal_management_scopes (
-                management_scope_uid,
-                master_key,
-                canal_unit_id,
-                organization_unit_id,
-                range_mode,
-                sort_order,
-                status
-            )
-            VALUES (?, ?, ?, ?, 'whole', ?, 'active')
-            """,
-            (
-                uid,
-                master_key,
-                canal_id,
-                office_id,
-                int(row["canal_sort_order"] or 0),
-            ),
-        )
-        migrated += 1
-
-    return {
-        "legacy_assignment_count": len(rows),
-        "migrated_count": migrated,
-        "already_present_count": existing,
-    }
-
-
 def ensure_canal_management_scope_schema():
     """
-    Stage 14.0 渠道分段管理基础模型。
+    建立渠道管理范围 schema。
 
-    canal_units.organization_unit_id 暂时保留作为旧版兼容字段；
-    新功能不得再把它作为唯一事实源。
+    CanalManagementScope 是渠道管理关系的唯一运行事实源。
+    本函数只负责 schema，不再读取或迁移
+    canal_units.organization_unit_id。
     """
+
     with database.get_connection() as connection:
         existed = (
             connection.execute(
@@ -332,8 +225,9 @@ def ensure_canal_management_scope_schema():
             is not None
         )
 
-        _create_schema(connection)
-        migration = _migrate_legacy_assignments(connection)
+        _create_schema(
+            connection
+        )
 
         total = int(
             connection.execute(
@@ -346,7 +240,6 @@ def ensure_canal_management_scope_schema():
 
     return {
         "table_created": not existed,
-        **migration,
         "total_scope_count": total,
     }
 

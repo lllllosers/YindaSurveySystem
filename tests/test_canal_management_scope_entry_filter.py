@@ -120,7 +120,7 @@ class CanalManagementScopeEntryFilterTestCase(
             )
         }
 
-    def test_entry_filter_uses_management_scope_not_legacy_column(
+    def test_official_scope_drives_entry_filter(
         self,
     ):
         office_id = (
@@ -141,78 +141,6 @@ class CanalManagementScopeEntryFilterTestCase(
             canal_id,
             self._managed_ids(
                 office_id
-            ),
-        )
-
-        # 故意清空旧兼容字段。
-        # 新调查渠道筛选仍必须由 CanalManagementScope 得出。
-        with database.get_connection() as connection:
-            connection.execute(
-                """
-                UPDATE canal_units
-                SET organization_unit_id = NULL
-                WHERE id = ?
-                """,
-                (
-                    canal_id,
-                ),
-            )
-
-        self.assertIn(
-            canal_id,
-            self._managed_ids(
-                office_id
-            ),
-        )
-
-    def test_wrong_legacy_assignment_does_not_change_new_fact_source(
-        self,
-    ):
-        correct_office_id = (
-            self._id_by_master_key(
-                "organization_units",
-                "ORG-D01-O03",
-            )
-        )
-
-        other_office_id = (
-            self._id_by_master_key(
-                "organization_units",
-                "ORG-D01-O01",
-            )
-        )
-
-        canal_id = (
-            self._id_by_master_key(
-                "canal_units",
-                "CANAL-S001",
-            )
-        )
-
-        with database.get_connection() as connection:
-            connection.execute(
-                """
-                UPDATE canal_units
-                SET organization_unit_id = ?
-                WHERE id = ?
-                """,
-                (
-                    other_office_id,
-                    canal_id,
-                ),
-            )
-
-        self.assertIn(
-            canal_id,
-            self._managed_ids(
-                correct_office_id
-            ),
-        )
-
-        self.assertNotIn(
-            canal_id,
-            self._managed_ids(
-                other_office_id
             ),
         )
 

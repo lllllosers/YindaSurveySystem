@@ -368,7 +368,7 @@ class DatabaseCoreTestCase(unittest.TestCase):
             name="测试干渠",
             canal_level="01",
             parent_id=None,
-            organization_unit_id=office_id,
+
             description="自动测试",
         )
 

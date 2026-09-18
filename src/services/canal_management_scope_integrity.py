@@ -94,8 +94,8 @@ def check_canal_management_scope_integrity():
     """
     检查 Stage 14 的渠道管理关系模型。
 
-    这里不再把 canal_units.organization_unit_id
-    作为新模型事实来源；旧字段只用于兼容一致性提示。
+    CanalManagementScope 是渠道管理关系的唯一事实源。
+    物理 CanalUnit 不参与管理归属一致性判断。
     """
 
     issues = []
@@ -128,8 +128,6 @@ def check_canal_management_scope_integrity():
                         AS canal_name,
                     canal.master_key
                         AS canal_master_key,
-                    canal.organization_unit_id
-                        AS legacy_organization_unit_id,
                     office.name
                         AS organization_name,
                     office.master_key
@@ -310,36 +308,6 @@ def check_canal_management_scope_integrity():
                     ),
                     scope_id,
                 )
-
-        legacy_id = row[
-            "legacy_organization_unit_id"
-        ]
-
-        # 旧字段只做迁移期一致性提示。
-        # whole 表示整条渠道归属，与旧模型语义相同。
-        if (
-            mode == "whole"
-            and legacy_id is not None
-            and int(
-                legacy_id
-            )
-            != int(
-                row[
-                    "organization_unit_id"
-                ]
-            )
-        ):
-            _issue(
-                issues,
-                SEVERITY_WARNING,
-                "LEGACY_ASSIGNMENT_DIVERGED",
-                (
-                    f"渠道“{row['canal_name']}”"
-                    "的兼容管理单位字段"
-                    "与新管理范围不一致。"
-                ),
-                scope_id,
-            )
 
     for spec in expected_specs:
         master_key = (

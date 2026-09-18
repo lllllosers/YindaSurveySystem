@@ -561,9 +561,6 @@ class OrganizationPage(QWidget):
             if usage["child_count"]:
                 reasons.append(f"下属机构 " f"{usage['child_count']} 个")
 
-            if usage["canal_count"]:
-                reasons.append(f"兼容管理渠系 " f"{usage['canal_count']} 个")
-
             if usage.get("management_scope_count"):
                 reasons.append(
                     f"渠道管理范围 "

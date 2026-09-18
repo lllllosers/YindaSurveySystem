@@ -739,9 +739,7 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=(level_combo.currentData()),
                 parent_id=(parent_combo.currentData()),
-                # 旧 organization_unit_id 仅保留兼容值，
-                # 渠道管理事实由 CanalManagementScope 维护。
-                organization_unit_id=(canal["organization_unit_id"]),
+
                 description=(description_edit.toPlainText()),
             )
 
@@ -1001,7 +999,7 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=level_combo.currentData(),
                 parent_id=parent_combo.currentData(),
-                organization_unit_id=None,
+
                 description=(description_edit.toPlainText()),
             )
 

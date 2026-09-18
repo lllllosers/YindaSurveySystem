@@ -649,7 +649,7 @@ def init_database():
                     REFERENCES form_definitions(id)
             );
 
-            
+
             CREATE TABLE IF NOT EXISTS engineering_assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -1670,8 +1670,10 @@ def get_organization_unit_usage(
     """
     获取组织机构引用情况。
 
-    基层处的业务引用同时包括
-    其直属水管所产生的工程和调查记录。
+    渠道管理关系只读取 CanalManagementScope。
+    canal_units.organization_unit_id 已退出运行事实模型。
+    基层处的业务引用同时包括直属末级管理单位产生的
+    工程和调查记录。
     """
 
     with get_connection() as connection:
@@ -1687,7 +1689,9 @@ def get_organization_unit_usage(
         ).fetchone()
 
         if unit is None:
-            raise ValueError("没有找到指定组织机构。")
+            raise ValueError(
+                "没有找到指定组织机构。"
+            )
 
         child_count = connection.execute(
             """
@@ -1698,35 +1702,31 @@ def get_organization_unit_usage(
             (unit_id,),
         ).fetchone()[0]
 
-        canal_count = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM canal_units
-            WHERE organization_unit_id = ?
-            """,
-            (unit_id,),
-        ).fetchone()[0]
-
-        scope_table_exists = connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name = 'canal_management_scopes'
-            """
-        ).fetchone() is not None
+        scope_table_exists = (
+            connection.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name = 'canal_management_scopes'
+                """
+            ).fetchone()
+            is not None
+        )
 
         management_scope_count = 0
 
         if scope_table_exists:
-            management_scope_count = connection.execute(
-                """
-                SELECT COUNT(*)
-                FROM canal_management_scopes
-                WHERE organization_unit_id = ?
-                """,
-                (unit_id,),
-            ).fetchone()[0]
+            management_scope_count = (
+                connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM canal_management_scopes
+                    WHERE organization_unit_id = ?
+                    """,
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
         asset_count = connection.execute(
             """
@@ -1750,27 +1750,31 @@ def get_organization_unit_usage(
         descendant_survey_count = 0
 
         if unit["unit_type"] == "department":
-            descendant_asset_count = connection.execute(
-                """
+            descendant_asset_count = (
+                connection.execute(
+                    """
                     SELECT COUNT(*)
                     FROM engineering_assets AS ea
                     JOIN organization_units AS ou
-                        ON ea.organization_unit_id = ou.id
+                      ON ea.organization_unit_id = ou.id
                     WHERE ou.parent_id = ?
                     """,
-                (unit_id,),
-            ).fetchone()[0]
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
-            descendant_survey_count = connection.execute(
-                """
+            descendant_survey_count = (
+                connection.execute(
+                    """
                     SELECT COUNT(*)
                     FROM survey_records AS sr
                     JOIN organization_units AS ou
-                        ON sr.organization_unit_id = ou.id
+                      ON sr.organization_unit_id = ou.id
                     WHERE ou.parent_id = ?
                     """,
-                (unit_id,),
-            ).fetchone()[0]
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
         business_reference_count = (
             asset_count
@@ -1780,18 +1784,32 @@ def get_organization_unit_usage(
         )
 
         return {
-            "child_count": int(child_count),
-            "canal_count": int(canal_count),
-            "management_scope_count": int(management_scope_count),
-            "asset_count": int(asset_count),
-            "survey_count": int(survey_count),
-            "descendant_asset_count": int(descendant_asset_count),
-            "descendant_survey_count": int(descendant_survey_count),
-            "business_reference_count": int(business_reference_count),
-            "business_code_locked": (business_reference_count > 0),
+            "child_count": int(
+                child_count
+            ),
+            "management_scope_count": int(
+                management_scope_count
+            ),
+            "asset_count": int(
+                asset_count
+            ),
+            "survey_count": int(
+                survey_count
+            ),
+            "descendant_asset_count": int(
+                descendant_asset_count
+            ),
+            "descendant_survey_count": int(
+                descendant_survey_count
+            ),
+            "business_reference_count": int(
+                business_reference_count
+            ),
+            "business_code_locked": (
+                business_reference_count > 0
+            ),
             "can_delete": (
                 child_count == 0
-                and canal_count == 0
                 and management_scope_count == 0
                 and asset_count == 0
                 and survey_count == 0
@@ -1986,36 +2004,48 @@ def delete_organization_unit(
     """
     物理删除未被使用的组织机构。
 
-    已存在下属机构、管理渠系、
+    已存在下属机构、渠道管理范围、
     工程台账或调查记录时禁止删除。
     """
 
-    usage = get_organization_unit_usage(unit_id)
+    usage = get_organization_unit_usage(
+        unit_id
+    )
 
     if not usage["can_delete"]:
         reasons = []
 
         if usage["child_count"]:
-            reasons.append(f"下属机构 {usage['child_count']} 个")
-
-        if usage["canal_count"]:
-            reasons.append(f"兼容管理渠系 {usage['canal_count']} 个")
-
-        if usage["management_scope_count"]:
             reasons.append(
-                f"渠道管理范围 {usage['management_scope_count']} 条"
+                f"下属机构 {usage['child_count']} 个"
+            )
+
+        if usage[
+            "management_scope_count"
+        ]:
+            reasons.append(
+                "渠道管理范围 "
+                f"{usage['management_scope_count']} 条"
             )
 
         if usage["asset_count"]:
-            reasons.append(f"工程对象 {usage['asset_count']} 个")
+            reasons.append(
+                f"工程对象 {usage['asset_count']} 个"
+            )
 
         if usage["survey_count"]:
-            reasons.append(f"调查记录 {usage['survey_count']} 条")
+            reasons.append(
+                f"调查记录 {usage['survey_count']} 条"
+            )
 
-        reason_text = "、".join(reasons)
+        reason_text = "、".join(
+            reasons
+        )
 
         raise ValueError(
-            "该组织机构不能物理删除，" f"当前存在：{reason_text}。" "请改为停用。"
+            "该组织机构不能物理删除，"
+            f"当前存在：{reason_text}。"
+            "请改为停用。"
         )
 
     with get_connection() as connection:
@@ -2096,36 +2126,49 @@ def get_canal_lineage(
 
 def get_canal_units():
     """
-    获取全部渠系。
+    获取全部物理渠系。
+
+    渠道管理单位不再从 canal_units 读取；
+    管理关系统一由 CanalManagementScope 提供。
     """
+
     with get_connection() as connection:
-        return connection.execute("""
-            SELECT
-                c.*,
-                o.name AS organization_name
-            FROM canal_units AS c
-            LEFT JOIN organization_units AS o
-                ON c.organization_unit_id = o.id
-            ORDER BY c.id
-            """).fetchall()
+        return connection.execute(
+            """
+            SELECT *
+            FROM canal_units
+            ORDER BY id
+            """
+        ).fetchall()
 
 
 def create_canal_unit(
     name,
     canal_level,
     parent_id=None,
-    organization_unit_id=None,
     description=None,
 ):
     """
-    新增渠系。
+    新增物理渠系。
+
+    CanalUnit 只描述渠道实体和层级；
+    管理单位/分管范围必须通过 CanalManagementScope 维护。
     """
 
     if not name or not name.strip():
-        raise ValueError("渠道名称不能为空。")
+        raise ValueError(
+            "渠道名称不能为空。"
+        )
 
-    if canal_level not in ("01", "02", "03", "04"):
-        raise ValueError("无效的渠道层级。")
+    if canal_level not in (
+        "01",
+        "02",
+        "03",
+        "04",
+    ):
+        raise ValueError(
+            "无效的渠道层级。"
+        )
 
     with get_connection() as connection:
         cursor = connection.execute(
@@ -2134,17 +2177,19 @@ def create_canal_unit(
                 parent_id,
                 name,
                 canal_level,
-                organization_unit_id,
                 description
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
             """,
             (
                 parent_id,
                 name.strip(),
                 canal_level,
-                organization_unit_id,
-                description.strip() if description else None,
+                (
+                    description.strip()
+                    if description
+                    else None
+                ),
             ),
         )
 
@@ -2260,23 +2305,33 @@ def update_canal_unit(
     name,
     canal_level,
     parent_id=None,
-    organization_unit_id=None,
     description=None,
 ):
     """
-    修改渠系。
+    修改物理渠系。
 
     已产生工程/调查数据后：
     - 名称、备注允许修改；
-    - 渠道层级、上级渠道、管理单位锁定。
+    - 渠道层级、上级渠道锁定。
+
+    管理单位/分管范围不属于 CanalUnit 编辑职责，
+    统一由 CanalManagementScope 维护。
     """
 
-    name = str(name or "").strip()
+    name = str(
+        name or ""
+    ).strip()
 
-    description = str(description).strip() if description is not None else ""
+    description = (
+        str(description).strip()
+        if description is not None
+        else ""
+    )
 
     if not name:
-        raise ValueError("渠道名称不能为空。")
+        raise ValueError(
+            "渠道名称不能为空。"
+        )
 
     if canal_level not in (
         "01",
@@ -2284,45 +2339,71 @@ def update_canal_unit(
         "03",
         "04",
     ):
-        raise ValueError("无效的渠道层级。")
+        raise ValueError(
+            "无效的渠道层级。"
+        )
 
-    current = get_canal_unit(canal_unit_id)
-
-    if current is None:
-        raise ValueError("没有找到指定渠系。")
-
-    if parent_id == canal_unit_id:
-        raise ValueError("渠道不能把自己设为上级渠道。")
-
-    usage = get_canal_unit_usage(canal_unit_id)
-
-    structure_changed = (
-        canal_level != current["canal_level"]
-        or parent_id != current["parent_id"]
-        or organization_unit_id != current["organization_unit_id"]
+    current = get_canal_unit(
+        canal_unit_id
     )
 
-    if structure_changed and usage["structure_locked"]:
+    if current is None:
+        raise ValueError(
+            "没有找到指定渠系。"
+        )
+
+    if parent_id == canal_unit_id:
+        raise ValueError(
+            "渠道不能把自己设为上级渠道。"
+        )
+
+    usage = get_canal_unit_usage(
+        canal_unit_id
+    )
+
+    structure_changed = (
+        canal_level
+        != current["canal_level"]
+        or parent_id
+        != current["parent_id"]
+    )
+
+    if (
+        structure_changed
+        and usage["structure_locked"]
+    ):
         raise ValueError(
             "该渠系已经产生工程或调查数据，"
-            "渠道层级、上级渠道和管理单位"
-            "不能再修改。"
+            "渠道层级和上级渠道不能再修改。"
         )
 
     with get_connection() as connection:
-        # 上级渠道必须存在，
-        # 同时防止形成循环引用。
         current_parent_id = parent_id
         visited_ids = set()
 
-        while current_parent_id is not None:
-            if current_parent_id == canal_unit_id:
-                raise ValueError("渠系层级不能形成循环引用。")
+        while (
+            current_parent_id
+            is not None
+        ):
+            if (
+                current_parent_id
+                == canal_unit_id
+            ):
+                raise ValueError(
+                    "渠系层级不能形成循环引用。"
+                )
 
-            if current_parent_id in visited_ids:
-                raise ValueError("渠系层级存在循环引用。")
+            if (
+                current_parent_id
+                in visited_ids
+            ):
+                raise ValueError(
+                    "渠系层级存在循环引用。"
+                )
 
-            visited_ids.add(current_parent_id)
+            visited_ids.add(
+                current_parent_id
+            )
 
             parent = connection.execute(
                 """
@@ -2332,26 +2413,19 @@ def update_canal_unit(
                 FROM canal_units
                 WHERE id = ?
                 """,
-                (current_parent_id,),
+                (
+                    current_parent_id,
+                ),
             ).fetchone()
 
             if parent is None:
-                raise ValueError("上级渠道不存在。")
+                raise ValueError(
+                    "上级渠道不存在。"
+                )
 
-            current_parent_id = parent["parent_id"]
-
-        if organization_unit_id is not None:
-            organization = connection.execute(
-                """
-                SELECT id
-                FROM organization_units
-                WHERE id = ?
-                """,
-                (organization_unit_id,),
-            ).fetchone()
-
-            if organization is None:
-                raise ValueError("管理单位不存在。")
+            current_parent_id = (
+                parent["parent_id"]
+            )
 
         connection.execute(
             """
@@ -2360,7 +2434,6 @@ def update_canal_unit(
                 parent_id = ?,
                 name = ?,
                 canal_level = ?,
-                organization_unit_id = ?,
                 description = ?,
                 updated_at = datetime(
                     'now',
@@ -2372,7 +2445,6 @@ def update_canal_unit(
                 parent_id,
                 name,
                 canal_level,
-                organization_unit_id,
                 description or None,
                 canal_unit_id,
             ),
@@ -2467,25 +2539,6 @@ def delete_canal_unit(
             """,
             (canal_unit_id,),
         )
-
-
-def get_canal_units_for_organization(
-    organization_unit_id,
-):
-    """
-    获取某个管理单位下启用的渠系。
-    """
-    with get_connection() as connection:
-        return connection.execute(
-            """
-            SELECT *
-            FROM canal_units
-            WHERE organization_unit_id = ?
-            AND status = 'active'
-            ORDER BY id
-            """,
-            (organization_unit_id,),
-        ).fetchall()
 
 
 def get_engineering_business_codes(

@@ -183,13 +183,8 @@ def check_master_data_integrity():
     - 组织代码缺失/重复；
     - 管理单位父级无效；
     - 渠系父子层级无效或出现循环；
-    - 支渠/分支渠没有管理单位；
-    - 渠系指向的管理单位不是末级管理单位；
     - 正式排序值缺失或重复；
     - 同一父渠系下出现同层级同名重复节点。
-
-    提示：
-    - 干渠/分干渠管理单位为空是当前确认口径，属于正常状态。
     """
 
     issues = []
@@ -236,7 +231,6 @@ def check_master_data_integrity():
                     parent_id,
                     name,
                     canal_level,
-                    organization_unit_id,
                     status,
                     canal_unit_uid,
                     master_key,
@@ -733,66 +727,6 @@ def check_master_data_integrity():
                     entity_type="canal_unit",
                     entity_id=canal_id,
                 )
-
-        management_id = canal[
-            "organization_unit_id"
-        ]
-
-        if level in (
-            "03",
-            "04",
-        ):
-            if management_id is None:
-                _append_issue(
-                    issues,
-                    SEVERITY_ERROR,
-                    "CANAL_MANAGEMENT_MISSING",
-                    (
-                        f"渠系“{canal['name']}”"
-                        "缺少管理单位。"
-                    ),
-                    entity_type="canal_unit",
-                    entity_id=canal_id,
-                )
-            else:
-                organization = (
-                    organizations_by_id.get(
-                        int(management_id)
-                    )
-                )
-
-                if (
-                    organization is None
-                    or organization[
-                        "unit_type"
-                    ]
-                    != "water_office"
-                ):
-                    _append_issue(
-                        issues,
-                        SEVERITY_ERROR,
-                        "CANAL_MANAGEMENT_INVALID",
-                        (
-                            f"渠系“{canal['name']}”"
-                            "没有指向有效的末级管理单位。"
-                        ),
-                        entity_type="canal_unit",
-                        entity_id=canal_id,
-                    )
-
-        elif management_id is None:
-            _append_issue(
-                issues,
-                SEVERITY_INFO,
-                "TRUNK_MANAGEMENT_BLANK",
-                (
-                    f"骨干渠“{canal['name']}”"
-                    "管理单位暂为空，"
-                    "符合当前确认口径，后续可人工补充。"
-                ),
-                entity_type="canal_unit",
-                entity_id=canal_id,
-            )
 
         sibling_key = (
             int(parent_id)

@@ -21,8 +21,8 @@ OFFICIAL_CANAL_MANAGEMENT_SCOPE_VERSION = (
 )
 
 OFFICIAL_CANAL_MANAGEMENT_SCOPE_SOURCE = (
-    "由已确认正式渠系主数据中的既有末级管理单位归属"
-    "迁移形成；骨干干渠/分干渠分段管理关系待甲方确认后补充"
+    "由 OFFICIAL_CANALS 中已确认的 organization_master_key "
+    "直接生成；骨干干渠/分干渠分段管理关系待甲方确认后补充"
 )
 
 
@@ -54,8 +54,7 @@ def get_confirmed_official_scope_specs():
       OFFICIAL_SEGMENT_SCOPE_SPECS 显式补充。
 
     注意：
-    canal_units.organization_unit_id 仍作为 V0.7 兼容字段保留，
-    但新功能应读取 canal_management_scopes。
+    物理 CanalUnit 不承载管理归属；正式关系直接写入 canal_management_scopes。
     """
 
     specs = []

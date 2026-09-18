@@ -111,49 +111,22 @@ class MasterDataIntegrityTestCase(
             },
         )
 
-        # 当前确认口径下，5 条骨干渠管理单位允许为空。
-        info_codes = [
-            issue.code
-            for issue in report.issues
-            if issue.severity == "info"
-        ]
-
-        self.assertEqual(
-            info_codes.count(
-                "TRUNK_MANAGEMENT_BLANK"
-            ),
-            5,
-        )
-
-    def test_missing_branch_management_is_error(
-        self,
-    ):
-        with database.get_connection() as connection:
-            connection.execute(
-                """
-                UPDATE canal_units
-                SET organization_unit_id = NULL
-                WHERE master_key = ?
-                """,
-                ("CANAL-S001",),
-            )
-
-        report = (
-            check_master_data_integrity()
-        )
-
         codes = {
             issue.code
             for issue in report.issues
-            if issue.severity == "error"
         }
 
-        self.assertIn(
+        self.assertNotIn(
             "CANAL_MANAGEMENT_MISSING",
             codes,
         )
-        self.assertFalse(
-            report.passed
+        self.assertNotIn(
+            "CANAL_MANAGEMENT_INVALID",
+            codes,
+        )
+        self.assertNotIn(
+            "TRUNK_MANAGEMENT_BLANK",
+            codes,
         )
 
     def test_invalid_branch_parent_is_error(

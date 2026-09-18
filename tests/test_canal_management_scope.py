@@ -59,45 +59,14 @@ class CanalManagementScopeTestCase(unittest.TestCase):
                 INSERT INTO canal_units (
                     name,
                     canal_level,
-                    organization_unit_id,
                     status,
                     sort_order
                 )
-                VALUES (?, '01', NULL, 'active', 99000)
+                VALUES (?, '01', 'active', 99000)
                 """,
                 (name,),
             )
             return int(cursor.lastrowid)
-
-    def test_legacy_assignments_are_migrated_as_whole(self):
-        with database.get_connection() as connection:
-            legacy = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS value
-                    FROM canal_units
-                    WHERE organization_unit_id IS NOT NULL
-                    """
-                ).fetchone()["value"]
-            )
-            scopes = int(
-                connection.execute(
-                    "SELECT COUNT(*) AS value FROM canal_management_scopes"
-                ).fetchone()["value"]
-            )
-            non_whole = int(
-                connection.execute(
-                    """
-                    SELECT COUNT(*) AS value
-                    FROM canal_management_scopes
-                    WHERE range_mode != 'whole'
-                    """
-                ).fetchone()["value"]
-            )
-
-        self.assertGreater(legacy, 0)
-        self.assertEqual(scopes, legacy)
-        self.assertEqual(non_whole, 0)
 
     def test_official_scope_has_deterministic_uid(self):
         with database.get_connection() as connection:
@@ -134,14 +103,23 @@ class CanalManagementScopeTestCase(unittest.TestCase):
             [],
         )
 
-    def test_schema_migration_is_idempotent(self):
-        first = ensure_canal_management_scope_schema()
-        second = ensure_canal_management_scope_schema()
-        self.assertEqual(first["migrated_count"], 0)
-        self.assertEqual(second["migrated_count"], 0)
+    def test_scope_schema_is_idempotent(
+        self,
+    ):
+        first = (
+            ensure_canal_management_scope_schema()
+        )
+        second = (
+            ensure_canal_management_scope_schema()
+        )
+
         self.assertEqual(
-            first["total_scope_count"],
-            second["total_scope_count"],
+            first[
+                "total_scope_count"
+            ],
+            second[
+                "total_scope_count"
+            ],
         )
 
     def test_segment_unknown_does_not_guess_by_stake(self):

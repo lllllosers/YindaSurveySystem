@@ -55,39 +55,11 @@ def ensure_survey_task_workspace_schema():
     """
     建立“已接收调查任务”本地工作区。
 
-    Stage 14.4.2 起，任务权限事实保存为
+    任务权限事实保存为
     survey_task_workspace_scopes 的冻结快照。
-
-    旧 survey_task_workspace_canals 属于测试阶段合同：
-    - 不迁移；
-    - 检测到后直接作废旧 task workspace；
-    - 删除旧关系表；
-    - 旧 .ydtask 需要重新生成并重新接收。
+    当前运行时只维护这一套 workspace scope 合同。
     """
     with database.get_connection() as connection:
-        legacy_table = connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name = 'survey_task_workspace_canals'
-            """
-        ).fetchone()
-
-        if legacy_table is not None:
-            # 旧任务包已经明确不兼容。
-            # workspace 只保存任务上下文，不删除调查业务数据。
-            connection.execute(
-                """
-                DELETE FROM survey_task_workspaces
-                """
-            )
-            connection.execute(
-                """
-                DROP TABLE survey_task_workspace_canals
-                """
-            )
-
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS
@@ -1237,7 +1209,6 @@ def receive_survey_task_package(
     接收新的 management-scope .ydtask，
     并建立本机冻结分管范围工作区。
 
-    不兼容旧 selected_canal_uids 任务合同。
     不创建 EngineeringAsset / SurveyRecord。
     """
     ensure_survey_task_workspace_schema()

@@ -347,18 +347,6 @@ class SurveyTaskWorkspaceTestCase(
             source["scope_uids"][0],
         )
 
-        with database.get_connection() as connection:
-            legacy = connection.execute(
-                """
-                SELECT 1
-                FROM sqlite_master
-                WHERE type = 'table'
-                  AND name =
-                    'survey_task_workspace_canals'
-                """
-            ).fetchone()
-
-        self.assertIsNone(legacy)
 
     def test_same_physical_canal_keeps_two_scope_snapshots(
         self,
