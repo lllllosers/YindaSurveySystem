@@ -18,9 +18,15 @@ from PySide6.QtWidgets import (
 )
 
 from database import (
-    delete_engineering_survey_record,
     get_current_context,
     get_engineering_survey_query_records,
+)
+
+from pages.components.survey_media_dialog import (
+    SurveyMediaDialog,
+)
+from services.engineering_record_delete import (
+    delete_engineering_survey_record_with_media,
 )
 
 from forms.engineering.formatters import (
@@ -142,6 +148,9 @@ class EngineeringSurveyListPage(QWidget):
         export_button = QPushButton("导出结果")
         export_button.clicked.connect(self.export_original_excel)
 
+        media_button = QPushButton("影像资料")
+        media_button.clicked.connect(self.manage_selected_media)
+
         delete_button = QPushButton("删除选中记录")
         delete_button.clicked.connect(self.delete_selected_record)
 
@@ -149,6 +158,7 @@ class EngineeringSurveyListPage(QWidget):
         button_layout.addWidget(new_button)
         button_layout.addWidget(refresh_button)
         button_layout.addWidget(export_button)
+        button_layout.addWidget(media_button)
         button_layout.addWidget(delete_button)
         button_layout.addStretch()
 
@@ -604,6 +614,60 @@ class EngineeringSurveyListPage(QWidget):
         return None
 
     # =========================================================
+    # 影像资料
+    # =========================================================
+
+    def manage_selected_media(self):
+        selected_record = (
+            self._get_selected_record()
+        )
+
+        if selected_record is None:
+            QMessageBox.warning(
+                self,
+                "未选择记录",
+                (
+                    "请先在列表中选择一条调查记录，"
+                    "再管理影像资料。"
+                ),
+            )
+            return
+
+        dialog = SurveyMediaDialog(
+            survey_record_id=int(
+                selected_record[
+                    "survey_record_id"
+                ]
+            ),
+            form_code=self.FORM_CODE,
+            record_summary={
+                "business_code": (
+                    selected_record[
+                        "business_code"
+                    ]
+                ),
+                "asset_name": (
+                    selected_record[
+                        "asset_name"
+                    ]
+                ),
+                "canal_name": (
+                    selected_record[
+                        "canal_name"
+                    ]
+                ),
+                "engineering_position": (
+                    selected_record[
+                        "engineering_position"
+                    ]
+                ),
+            },
+            parent=self,
+        )
+
+        dialog.exec()
+
+    # =========================================================
     # 删除
     # =========================================================
 
@@ -621,7 +685,7 @@ class EngineeringSurveyListPage(QWidget):
         可以在子类中覆盖本方法。
         """
 
-        return delete_engineering_survey_record(
+        return delete_engineering_survey_record_with_media(
             survey_record_id=(survey_record_id),
             form_code=self.FORM_CODE,
         )

@@ -1,9 +1,7 @@
 import sys
 from database import (
-    create_initial_forms,
     get_current_context,
     get_survey_readiness,
-    init_database,
 )
 from PySide6.QtCore import (
     QLibraryInfo,
@@ -23,9 +21,14 @@ from PySide6.QtWidgets import (
 )
 from pages.basic_data_page import BasicDataPage
 from pages.data_query_page import DataQueryPage
+from pages.result_export_page import ResultExportPage
 from pages.survey_page import SurveyPage
+from pages.survey_task_page import SurveyTaskPage
 from pages.engineering_asset_page import EngineeringAssetPage
 from pages.project_batch_page import ProjectBatchPage
+from services.application_bootstrap import (
+    initialize_application_database,
+)
 from services.database_backup import (
     create_database_backup,
 )
@@ -81,6 +84,8 @@ class MainWindow(QMainWindow):
         nav_items = [
             "首页",
             "调查录入",
+
+            "调查任务",
             "工程台账",
             "数据查询",
             "成果导出",
@@ -337,6 +342,11 @@ class MainWindow(QMainWindow):
 
     def change_page(self, page_name):
 
+        # 页面切换前重新读取数据库中的当前上下文。
+        # 任务接收、项目切换等操作可能已经改变 active 状态，
+        # MainWindow 不能依赖启动时缓存。
+        self.refresh_current_context()
+
         # 已经在当前模块时不重复销毁和创建页面。
         if page_name == self.current_page_name:
             return
@@ -348,6 +358,7 @@ class MainWindow(QMainWindow):
         if page_name in (
             "调查录入",
             "工程台账",
+            "成果导出",
         ):
             if not self.has_active_survey_context():
                 QMessageBox.information(
@@ -391,6 +402,27 @@ class MainWindow(QMainWindow):
 
             self.content_layout.addWidget(self.survey_page)
 
+
+        elif page_name == "调查任务":
+
+
+            self.survey_task_page = SurveyTaskPage()
+
+            self.survey_task_page.context_changed.connect(
+                self.refresh_current_context
+            )
+
+
+
+            self.content_layout.addWidget(
+
+
+                self.survey_task_page
+
+
+            )
+
+
         elif page_name == "工程台账":
             self.engineering_asset_page = EngineeringAssetPage()
 
@@ -400,6 +432,13 @@ class MainWindow(QMainWindow):
             self.data_query_page = DataQueryPage()
 
             self.content_layout.addWidget(self.data_query_page)
+
+        elif page_name == "成果导出":
+            self.result_export_page = ResultExportPage()
+
+            self.content_layout.addWidget(
+                self.result_export_page
+            )
 
         elif page_name == "基础资料":
             self.basic_data_page = BasicDataPage()
@@ -512,8 +551,24 @@ def main():
     # 初始化正式运行所需数据库结构
     # =========================
 
-    init_database()
-    create_initial_forms()
+    bootstrap_result = (
+        initialize_application_database()
+    )
+
+    master_data_result = (
+        bootstrap_result[
+            "official_master_data"
+        ]
+    )
+
+    if master_data_result.get(
+        "applied"
+    ):
+        print(
+            "正式基础资料已自动初始化："
+            "组织机构 25 个，"
+            "渠系节点 68 个。"
+        )
 
     app = QApplication(sys.argv)
 

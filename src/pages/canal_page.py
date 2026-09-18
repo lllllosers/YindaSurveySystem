@@ -29,6 +29,10 @@ from database import (
     update_canal_unit,
 )
 
+from services.master_data_admin import (
+    get_canal_sort_order_map,
+)
+
 CANAL_LEVEL_NAMES = {
     "01": "干渠",
     "02": "分干渠",
@@ -51,6 +55,8 @@ class CanalPage(QWidget):
 
         description = QLabel(
             "维护干渠、分干渠、支渠和分支渠基础资料。"
+            "正式主数据按甲方确认顺序显示；"
+            "甲方基础表中的说明统一使用渠道“备注”字段维护。"
             "已被工程或调查数据引用的渠系仍可修改名称和备注，"
             "但渠道层级、上级渠道和管理单位将受到保护。"
         )
@@ -93,7 +99,7 @@ class CanalPage(QWidget):
         root_layout.addLayout(button_layout)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(4)
+        self.tree.setColumnCount(5)
 
         self.tree.itemSelectionChanged.connect(self.update_action_buttons)
 
@@ -104,13 +110,15 @@ class CanalPage(QWidget):
                 "渠道名称",
                 "渠道层级",
                 "管理单位",
+                "备注",
                 "状态",
             ]
         )
 
-        self.tree.setColumnWidth(0, 300)
-        self.tree.setColumnWidth(1, 120)
+        self.tree.setColumnWidth(0, 280)
+        self.tree.setColumnWidth(1, 100)
         self.tree.setColumnWidth(2, 220)
+        self.tree.setColumnWidth(3, 300)
 
         root_layout.addWidget(self.tree, 1)
 
@@ -122,7 +130,29 @@ class CanalPage(QWidget):
         """
         self.tree.clear()
 
-        canals = get_canal_units()
+        sort_order_map = (
+            get_canal_sort_order_map()
+        )
+
+        canals = list(
+            get_canal_units()
+        )
+
+        canals.sort(
+            key=lambda canal: (
+                (
+                    sort_order_map.get(
+                        int(canal["id"]),
+                        0,
+                    )
+                )
+                or (
+                    1000000
+                    + int(canal["id"])
+                ),
+                int(canal["id"]),
+            )
+        )
 
         item_map: dict[int, QTreeWidgetItem] = {}
 
@@ -133,6 +163,10 @@ class CanalPage(QWidget):
             canal_level = str(canal["canal_level"] or "")
             organization_name = str(canal["organization_name"] or "")
             status = str(canal["status"] or "")
+
+            description = str(
+                canal["description"] or ""
+            )
 
             item = QTreeWidgetItem()
 
@@ -156,6 +190,11 @@ class CanalPage(QWidget):
 
             item.setText(
                 3,
+                description,
+            )
+
+            item.setText(
+                4,
                 "启用" if status == "active" else "停用",
             )
 
