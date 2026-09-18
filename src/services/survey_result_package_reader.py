@@ -73,6 +73,18 @@ class SurveyResultPackageInspection:
             if name:
                 lines.append(f"成果名称：{name}")
 
+            source_task_uids = self.result.get(
+                "source_task_uids"
+            )
+            if isinstance(
+                source_task_uids,
+                list,
+            ):
+                lines.append(
+                    "来源任务："
+                    f"{len(source_task_uids)} 个（自动识别）"
+                )
+
             counts = self.result.get("counts")
             if isinstance(counts, dict):
                 lines.append(
@@ -115,6 +127,141 @@ def _require_text(value, issues, code, message, *, path=""):
         )
         return None
     return value.strip()
+
+
+def _read_source_task_uids(
+    document,
+    issues,
+    *,
+    path,
+):
+    """
+    读取成果包来源任务集合。
+
+    新格式：
+        source_task_uids = [...]
+        source_task_uid 仅作为单来源兼容字段。
+
+    旧格式：
+        只有 source_task_uid。
+
+    返回：
+        (uids, has_multi_source_contract)
+    """
+
+    if not isinstance(
+        document,
+        dict,
+    ):
+        return (
+            (),
+            False,
+        )
+
+    if "source_task_uids" not in document:
+        legacy = document.get(
+            "source_task_uid"
+        )
+
+        if legacy is None:
+            return (
+                (),
+                False,
+            )
+
+        legacy_uid = _require_text(
+            legacy,
+            issues,
+            "SOURCE_TASK_UID_INVALID",
+            "source_task_uid 必须是非空字符串或 null。",
+            path=path,
+        )
+
+        return (
+            (
+                (legacy_uid,)
+                if legacy_uid
+                else ()
+            ),
+            False,
+        )
+
+    raw_values = document.get(
+        "source_task_uids"
+    )
+
+    if not isinstance(
+        raw_values,
+        list,
+    ):
+        _append(
+            issues,
+            "SOURCE_TASK_UIDS_INVALID",
+            "source_task_uids 必须是数组。",
+            path=path,
+        )
+        return (
+            (),
+            True,
+        )
+
+    values = []
+
+    for raw_value in raw_values:
+        value = _require_text(
+            raw_value,
+            issues,
+            "SOURCE_TASK_UIDS_ITEM_INVALID",
+            "source_task_uids 中的任务 UID 必须是非空字符串。",
+            path=path,
+        )
+
+        if not value:
+            continue
+
+        if value in values:
+            _append(
+                issues,
+                "SOURCE_TASK_UIDS_DUPLICATE",
+                "source_task_uids 包含重复任务 UID。",
+                path=path,
+            )
+            continue
+
+        values.append(
+            value
+        )
+
+    values = sorted(
+        values
+    )
+
+    expected_single = (
+        values[0]
+        if len(values) == 1
+        else None
+    )
+
+    if (
+        document.get(
+            "source_task_uid"
+        )
+        != expected_single
+    ):
+        _append(
+            issues,
+            "SOURCE_TASK_UID_COMPATIBILITY_MISMATCH",
+            (
+                "source_task_uid 与 source_task_uids "
+                "的单来源兼容规则不一致。"
+            ),
+            path=path,
+        )
+
+    return (
+        tuple(values),
+        True,
+    )
 
 
 def _read_items(package_path, logical_path, issues):
@@ -371,15 +518,41 @@ def inspect_survey_result_package(package_path):
             "manifest 与 result.json 的 survey_batch_uid 不一致。",
         )
 
+    (
+        manifest_source_task_uids,
+        manifest_has_task_set,
+    ) = _read_source_task_uids(
+        manifest,
+        issues,
+        path="manifest.json",
+    )
+
+    (
+        result_source_task_uids,
+        result_has_task_set,
+    ) = _read_source_task_uids(
+        result_document,
+        issues,
+        path="result.json",
+    )
+
     if (
-        manifest.get("source_task_uid")
-        != result_document.get("source_task_uid")
+        set(manifest_source_task_uids)
+        != set(result_source_task_uids)
     ):
         _append(
             issues,
-            "SOURCE_TASK_UID_MISMATCH",
-            "manifest 与 result.json 的 source_task_uid 不一致。",
+            "SOURCE_TASK_UIDS_MISMATCH",
+            (
+                "manifest 与 result.json 的 "
+                "source_task_uids 不一致。"
+            ),
         )
+
+    has_source_task_set_contract = (
+        manifest_has_task_set
+        or result_has_task_set
+    )
 
     # 工程对象
     asset_by_uid = {}
@@ -418,6 +591,7 @@ def inspect_survey_result_package(package_path):
     # 调查记录
     record_by_uid = {}
     referenced_asset_uids = set()
+    record_source_task_uids = set()
 
     for item in records:
         uid = _require_text(
@@ -441,6 +615,24 @@ def inspect_survey_result_package(package_path):
             continue
 
         record_by_uid[uid] = item
+
+        raw_source_task_uid = item.get(
+            "source_task_uid"
+        )
+
+        if raw_source_task_uid is not None:
+            record_source_task_uid = _require_text(
+                raw_source_task_uid,
+                issues,
+                "RESULT_RECORD_SOURCE_TASK_UID_INVALID",
+                "调查记录 source_task_uid 必须是非空字符串或 null。",
+                path="data/survey_records.json",
+            )
+
+            if record_source_task_uid:
+                record_source_task_uids.add(
+                    record_source_task_uid
+                )
 
         if project_uid and item.get("project_uid") != project_uid:
             _append(
@@ -530,6 +722,21 @@ def inspect_survey_result_package(package_path):
                 "调查记录缺少表单 version_code。",
                 path="data/survey_records.json",
             )
+
+    if (
+        has_source_task_set_contract
+        and record_source_task_uids
+        != set(result_source_task_uids)
+    ):
+        _append(
+            issues,
+            "RESULT_RECORD_SOURCE_TASK_SET_MISMATCH",
+            (
+                "result.json 的来源任务集合与调查记录实际 "
+                "source_task_uid 集合不一致。"
+            ),
+            path="data/survey_records.json",
+        )
 
     if set(asset_by_uid) != referenced_asset_uids:
         _append(

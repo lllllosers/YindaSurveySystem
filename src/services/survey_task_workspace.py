@@ -836,7 +836,8 @@ def get_current_task_workspace():
                 stw.received_at,
                 p.name AS project_name,
                 sb.batch_name,
-                ou.name AS organization_name
+                ou.name AS organization_name,
+                ou.parent_id AS department_id
             FROM survey_task_workspaces AS stw
             JOIN projects AS p
               ON p.id = stw.project_id

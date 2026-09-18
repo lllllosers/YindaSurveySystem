@@ -50,6 +50,7 @@ from services.engineering_result_preflight import (
 )
 from services.survey_scope import SurveyScope
 from pages.components.survey_result_package_panel import SurveyResultPackagePanel
+from pages.components.survey_result_receive_panel import SurveyResultReceivePanel
 
 
 class BatchExportWorker(QObject):
@@ -334,6 +335,31 @@ class ResultExportPage(QWidget):
 
         root_layout.addWidget(
             package_group
+        )
+
+        receive_group = QGroupBox(
+            "五、接收下级成果包（.ydresult）"
+        )
+        receive_layout = QVBoxLayout(
+            receive_group
+        )
+
+        self.result_receive_panel = (
+            SurveyResultReceivePanel()
+        )
+
+        receive_layout.addWidget(
+            self.result_receive_panel
+        )
+
+        self.result_receive_panel.result_imported.connect(
+            lambda result: (
+                self.result_package_panel.refresh_scope_summary()
+            )
+        )
+
+        root_layout.addWidget(
+            receive_group
         )
 
         # Stage 11.3e: auto refresh .ydresult scope

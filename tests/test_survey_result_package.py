@@ -251,6 +251,18 @@ class SurveyResultPackageTestCase(
 
             connection.execute(
                 """
+                UPDATE survey_records
+                SET source_task_uid = ?
+                WHERE id = ?
+                """,
+                (
+                    "task-demo-001",
+                    self.record_id,
+                ),
+            )
+
+            connection.execute(
+                """
                 INSERT INTO inspection_results (
                     survey_record_id,
                     item_code,
@@ -343,9 +355,6 @@ class SurveyResultPackageTestCase(
                     ),
                     result_name=(
                         "通远水管所调查成果"
-                    ),
-                    source_task_uid=(
-                        "task-demo-001"
                     ),
                     creator="测试人员",
                     notes="Stage 11.1 测试",
@@ -464,6 +473,14 @@ class SurveyResultPackageTestCase(
                     "source_task_uid"
                 ],
                 "task-demo-001",
+            )
+            self.assertEqual(
+                manifest[
+                    "source_task_uids"
+                ],
+                [
+                    "task-demo-001",
+                ],
             )
 
             paths = {

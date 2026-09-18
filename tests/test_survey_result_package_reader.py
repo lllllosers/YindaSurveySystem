@@ -176,6 +176,18 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
 
             connection.execute(
                 """
+                UPDATE survey_records
+                SET source_task_uid = ?
+                WHERE id = ?
+                """,
+                (
+                    "task-001",
+                    self.record_id,
+                ),
+            )
+
+            connection.execute(
+                """
                 INSERT INTO inspection_results (
                     survey_record_id,
                     item_code,
@@ -213,7 +225,6 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
                 survey_record_ids=(self.record_id,),
                 output_path=self.package_path,
                 result_name="测试调查成果",
-                source_task_uid="task-001",
             )
         )
 
@@ -309,6 +320,12 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
         self.assertEqual(
             loaded.result["result_name"],
             "测试调查成果",
+        )
+        self.assertEqual(
+            loaded.result["source_task_uids"],
+            [
+                "task-001",
+            ],
         )
 
     def test_tampered_media_is_rejected(self):

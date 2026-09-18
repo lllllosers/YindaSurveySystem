@@ -5,7 +5,10 @@ from pages.components.survey_task_receive_panel import SurveyTaskReceivePanel
 from pathlib import Path
 import re
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import (
+    Signal,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -81,6 +84,8 @@ class SurveyTaskPage(QWidget):
     - 不创建 SurveyRecord；
     - 不包含调查结果和影像。
     """
+
+    context_changed = Signal()
 
     def __init__(
         self,
@@ -373,10 +378,19 @@ class SurveyTaskPage(QWidget):
         self.inspect_button.clicked.connect(
             self.inspect_existing_package
         )
+        self.task_receive_panel.task_received.connect(
+            self._task_received
+        )
 
     # =========================================================
     # 当前上下文
     # =========================================================
+
+    def _task_received(self):
+        # Stage 12.2c：接收任务后，项目/批次已经在数据库中设为当前。
+        # 页面自身和 MainWindow 都必须立即刷新，不能继续使用旧缓存。
+        self.reload_context()
+        self.context_changed.emit()
 
     def reload_context(self):
         self.current_context = (

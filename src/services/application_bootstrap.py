@@ -10,6 +10,12 @@ from services.official_master_data import (
 from services.master_identity import (
     synchronize_official_master_identities,
 )
+from services.survey_task_record_scope import (
+    ensure_survey_task_record_scope_schema,
+)
+from services.survey_result_import import (
+    ensure_survey_result_import_schema,
+)
 
 
 def initialize_application_database():
@@ -38,11 +44,25 @@ def initialize_application_database():
         synchronize_official_master_identities()
     )
 
+    task_record_scope_result = (
+        ensure_survey_task_record_scope_schema()
+    )
+
+    result_import_result = (
+        ensure_survey_result_import_schema()
+    )
+
     return {
         "official_master_data": (
             master_data_result
         ),
         "official_master_identity": (
             master_identity_result
+        ),
+        "survey_task_record_scope": (
+            task_record_scope_result
+        ),
+        "survey_result_import": (
+            result_import_result
         ),
     }

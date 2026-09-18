@@ -342,6 +342,11 @@ class MainWindow(QMainWindow):
 
     def change_page(self, page_name):
 
+        # 页面切换前重新读取数据库中的当前上下文。
+        # 任务接收、项目切换等操作可能已经改变 active 状态，
+        # MainWindow 不能依赖启动时缓存。
+        self.refresh_current_context()
+
         # 已经在当前模块时不重复销毁和创建页面。
         if page_name == self.current_page_name:
             return
@@ -402,6 +407,10 @@ class MainWindow(QMainWindow):
 
 
             self.survey_task_page = SurveyTaskPage()
+
+            self.survey_task_page.context_changed.connect(
+                self.refresh_current_context
+            )
 
 
 

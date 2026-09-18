@@ -37,7 +37,6 @@ class SurveyResultExportRequest:
     survey_record_ids: tuple[int, ...]
     output_path: Path
     result_name: str = ""
-    source_task_uid: str | None = None
     creator: str = ""
     notes: str = ""
 
@@ -175,11 +174,6 @@ def _normalize_request(
                 request.result_name
             )
         ),
-        "source_task_uid": (
-            _optional_text(
-                request.source_task_uid
-            )
-        ),
         "creator": (
             _optional_text(
                 request.creator
@@ -284,6 +278,7 @@ def _load_export_context(
                 SELECT
                     sr.id,
                     sr.survey_record_uid,
+                    sr.source_task_uid,
                     sr.project_id,
                     p.project_uid,
                     sr.survey_batch_id,
@@ -1053,6 +1048,13 @@ def _serialize_records(
                         "调查记录",
                     )
                 ),
+                "source_task_uid": (
+                    _optional_text(
+                        row[
+                            "source_task_uid"
+                        ]
+                    )
+                ),
                 "project_uid": (
                     _require_uid(
                         row[
@@ -1278,6 +1280,28 @@ def export_survey_result_package(
         )
     )
 
+    source_task_uids = tuple(
+        sorted(
+            {
+                str(
+                    item[
+                        "source_task_uid"
+                    ]
+                ).strip()
+                for item in records
+                if item.get(
+                    "source_task_uid"
+                )
+            }
+        )
+    )
+
+    source_task_uid = (
+        source_task_uids[0]
+        if len(source_task_uids) == 1
+        else None
+    )
+
     inspections = (
         _serialize_inspections(
             context
@@ -1326,9 +1350,10 @@ def export_survey_result_package(
             result_name
         ),
         "source_task_uid": (
-            normalized[
-                "source_task_uid"
-            ]
+            source_task_uid
+        ),
+        "source_task_uids": list(
+            source_task_uids
         ),
         "project": {
             "project_uid": (
@@ -1464,9 +1489,10 @@ def export_survey_result_package(
             result_uid
         ),
         "source_task_uid": (
-            normalized[
-                "source_task_uid"
-            ]
+            source_task_uid
+        ),
+        "source_task_uids": list(
+            source_task_uids
         ),
         "project_uid": (
             project_uid

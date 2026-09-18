@@ -42,6 +42,10 @@ from services.business_code import (
     suggest_next_sequence,
 )
 
+from services.survey_task_workspace import (
+    get_current_task_workspace,
+)
+
 from forms.engineering.models import (
     EngineeringFormDefinition,
     FieldRowDefinition,
@@ -122,6 +126,12 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.current_context = None
         self.form_version = None
+
+        # 当前“新增记录”使用的任务范围快照。
+        # 只在 initialize_new_record() 时读取一次，
+        # 避免下拉级联过程反复读取全局数据库；
+        # 打开既有记录时不使用当前任务过滤。
+        self._entry_task_workspace = None
 
         self.editing_record_id = None
         self.editing_record_status = None
@@ -341,33 +351,72 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.canal_combo.currentIndexChanged.connect(self.update_business_code)
 
+
     def load_departments(
         self,
     ):
         """
-        加载启用基层处，
-        并级联刷新水管所、渠系和业务编号。
+        加载启用基层处。
+
+        如果当前数据库已经接收并激活 .ydtask，
+        新增调查只展示任务所属基层处。
+        没有当前任务时保持原有集中录入行为。
         """
 
         self.department_combo.blockSignals(True)
 
         self.department_combo.clear()
 
+        task_workspace = (
+            self._entry_task_workspace
+        )
+
+        allowed_department_id = (
+            int(
+                task_workspace[
+                    "department_id"
+                ]
+            )
+            if (
+                task_workspace
+                and task_workspace.get(
+                    "department_id"
+                )
+                is not None
+            )
+            else None
+        )
+
         for department in get_departments():
             if department["status"] != "active":
+                continue
+
+            if (
+                allowed_department_id
+                is not None
+                and int(
+                    department["id"]
+                )
+                != allowed_department_id
+            ):
                 continue
 
             self.department_combo.addItem(
                 department["name"],
                 {
                     "id": department["id"],
-                    "business_code": (department["business_code"]),
+                    "business_code": (
+                        department[
+                            "business_code"
+                        ]
+                    ),
                 },
             )
 
         self.department_combo.blockSignals(False)
 
         self.department_changed()
+
 
     def department_changed(
         self,
@@ -376,7 +425,10 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.office_combo.clear()
 
-        department_data = self.department_combo.currentData()
+        department_data = (
+            self.department_combo
+            .currentData()
+        )
 
         if not department_data:
             self.office_combo.blockSignals(False)
@@ -386,23 +438,54 @@ class GenericEngineeringSurveyPage(QWidget):
 
             return
 
-        offices = get_water_offices(department_data["id"])
+        task_workspace = (
+            self._entry_task_workspace
+        )
+
+        allowed_office_id = (
+            int(
+                task_workspace[
+                    "organization_unit_id"
+                ]
+            )
+            if task_workspace
+            else None
+        )
+
+        offices = get_water_offices(
+            department_data["id"]
+        )
 
         for office in offices:
             if office["status"] != "active":
+                continue
+
+            if (
+                allowed_office_id
+                is not None
+                and int(
+                    office["id"]
+                )
+                != allowed_office_id
+            ):
                 continue
 
             self.office_combo.addItem(
                 office["name"],
                 {
                     "id": office["id"],
-                    "business_code": (office["business_code"]),
+                    "business_code": (
+                        office[
+                            "business_code"
+                        ]
+                    ),
                 },
             )
 
         self.office_combo.blockSignals(False)
 
         self.office_changed()
+
 
     def office_changed(
         self,
@@ -411,7 +494,10 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.canal_combo.clear()
 
-        office_data = self.office_combo.currentData()
+        office_data = (
+            self.office_combo
+            .currentData()
+        )
 
         if not office_data:
             self.canal_combo.blockSignals(False)
@@ -420,14 +506,51 @@ class GenericEngineeringSurveyPage(QWidget):
 
             return
 
-        canals = get_canal_units_for_organization(office_data["id"])
+        task_workspace = (
+            self._entry_task_workspace
+        )
+
+        allowed_canal_ids = None
+
+        if task_workspace:
+            allowed_canal_ids = {
+                int(
+                    item["id"]
+                )
+                for item in (
+                    task_workspace.get(
+                        "canals"
+                    )
+                    or ()
+                )
+            }
+
+        canals = (
+            get_canal_units_for_organization(
+                office_data["id"]
+            )
+        )
 
         for canal in canals:
+            if (
+                allowed_canal_ids
+                is not None
+                and int(
+                    canal["id"]
+                )
+                not in allowed_canal_ids
+            ):
+                continue
+
             self.canal_combo.addItem(
                 canal["name"],
                 {
                     "id": canal["id"],
-                    "canal_level": (canal["canal_level"]),
+                    "canal_level": (
+                        canal[
+                            "canal_level"
+                        ]
+                    ),
                 },
             )
 
@@ -981,6 +1104,11 @@ class GenericEngineeringSurveyPage(QWidget):
         已建立 EngineeringAsset 的
         归属和业务编号保持锁定。
         """
+
+        # 已有记录的工程归属已经由 EngineeringAsset 固定。
+        # 即使当前另有接收任务，也必须能够正确回填并查看
+        # 该记录，因此打开已有记录时不套用当前任务下拉过滤。
+        self._entry_task_workspace = None
 
         bundle = load_engineering_record_bundle(
             self.definition,
@@ -2117,6 +2245,12 @@ class GenericEngineeringSurveyPage(QWidget):
         与单纯构造 QWidget 不同，
         本方法开始读取实际业务上下文。
         """
+
+        # 新增记录进入页面时固定一次当前任务范围。
+        # 后续基层处/管理单位/渠系级联只读取该快照。
+        self._entry_task_workspace = (
+            get_current_task_workspace()
+        )
 
         self.current_context = get_current_context()
 

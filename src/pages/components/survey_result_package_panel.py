@@ -34,9 +34,6 @@ from services.survey_result_package import (
 from services.survey_result_package_reader import (
     inspect_survey_result_package,
 )
-from services.survey_task_package_reader import (
-    inspect_survey_task_package,
-)
 
 
 _INVALID_FILENAME_CHARS = re.compile(
@@ -94,9 +91,10 @@ class SurveyResultPackagePanel(QWidget):
     成果导出页中的 .ydresult 数据交换面板。
 
     直接复用父页面现有 SurveyScope：
-    - 上方“基层处 / 管理单位 / 渠系 / 调查表”决定成果包范围；
+    - 上方筛选范围决定成果包范围；
     - 只取 completed 工程调查记录；
-    - 可选关联一个 .ydtask；
+    - 任务来源从 SurveyRecord.source_task_uid 自动汇总；
+    - 用户不再手动关联 .ydtask；
     - 不执行数据库导入。
     """
 
@@ -120,9 +118,6 @@ class SurveyResultPackagePanel(QWidget):
             output_parent_provider
         )
 
-        self._source_task_uid = None
-        self._source_task_info = None
-
         self._export_thread = None
         self._export_worker = None
 
@@ -139,9 +134,9 @@ class SurveyResultPackagePanel(QWidget):
         root.setSpacing(10)
 
         description = QLabel(
-            "数据交换成果包（.ydresult）用于把当前成果范围中的已完成工程调查记录、"
+            "数据交换成果包（.ydresult）用于把当前范围中的已完成工程调查记录、"
             "工程对象、分项评价和托管影像打包移交。"
-            "本功能只生成/检查成果包，不执行跨数据库导入。"
+            "任务来源由调查记录自动追踪，无需手动关联 .ydtask。"
         )
         description.setWordWrap(True)
         description.setStyleSheet(
@@ -183,64 +178,15 @@ class SurveyResultPackagePanel(QWidget):
 
         root.addLayout(form)
 
-        task_row = QHBoxLayout()
-
-        self.task_value_label = QLabel(
-            "未关联来源任务（当前集中录入可不关联）"
-        )
-        self.task_value_label.setWordWrap(
-            True
-        )
-        self.task_value_label.setStyleSheet(
-            "color: #607080;"
-        )
-
-        self.choose_task_button = QPushButton(
-            "关联来源任务（可选）"
-        )
-        self.clear_task_button = QPushButton(
-            "清除关联"
-        )
-        self.clear_task_button.setEnabled(
-            False
-        )
-
-        self.choose_task_button.clicked.connect(
-            self.choose_source_task
-        )
-        self.clear_task_button.clicked.connect(
-            self.clear_source_task
-        )
-
-        task_row.addWidget(
-            self.task_value_label,
-            1,
-        )
-        task_row.addWidget(
-            self.choose_task_button
-        )
-        task_row.addWidget(
-            self.clear_task_button
-        )
-
-        root.addLayout(task_row)
-
-        scope_row = QHBoxLayout()
-
         self.scope_summary_label = QLabel(
             "当前范围尚未检查。"
         )
         self.scope_summary_label.setWordWrap(
             True
         )
-
-
-        scope_row.addWidget(
-            self.scope_summary_label,
-            1,
+        root.addWidget(
+            self.scope_summary_label
         )
-
-        root.addLayout(scope_row)
 
         action_row = QHBoxLayout()
 
@@ -469,238 +415,6 @@ class SurveyResultPackagePanel(QWidget):
             return ()
 
     # =========================================================
-    # optional task link
-    # =========================================================
-
-    def choose_source_task(self):
-        selected_path, _ = (
-            QFileDialog.getOpenFileName(
-                self,
-                "关联调查任务包",
-                "",
-                (
-                    "调查任务包 (*.ydtask);;"
-                    "所有文件 (*)"
-                ),
-            )
-        )
-
-        if not selected_path:
-            return None
-
-        inspection = (
-            inspect_survey_task_package(
-                selected_path
-            )
-        )
-
-        if not inspection.valid:
-            QMessageBox.warning(
-                self,
-                "任务包检查未通过",
-                inspection.format_text(),
-            )
-            return None
-
-        try:
-            identity = (
-                self._current_local_identity()
-            )
-
-            manifest = (
-                inspection.manifest
-                or {}
-            )
-
-            if (
-                manifest.get(
-                    "project_uid"
-                )
-                != identity[
-                    "project_uid"
-                ]
-            ):
-                raise ValueError(
-                    "所选任务包不属于当前项目。"
-                )
-
-            if (
-                manifest.get(
-                    "survey_batch_uid"
-                )
-                != identity[
-                    "survey_batch_uid"
-                ]
-            ):
-                raise ValueError(
-                    "所选任务包不属于当前调查批次。"
-                )
-
-            task = inspection.task or {}
-
-            self._source_task_uid = (
-                manifest.get(
-                    "task_uid"
-                )
-            )
-            self._source_task_info = {
-                "path": str(
-                    selected_path
-                ),
-                "task": task,
-            }
-
-            task_name = (
-                task.get(
-                    "task_name"
-                )
-                or self._source_task_uid
-                or "已关联任务"
-            )
-
-            self.task_value_label.setText(
-                (
-                    "已关联："
-                    f"{task_name}"
-                )
-            )
-            self.clear_task_button.setEnabled(
-                True
-            )
-
-            self.status_label.setText(
-                "任务包关联成功。"
-            )
-
-            return self._source_task_uid
-
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "无法关联任务包",
-                str(error),
-            )
-            return None
-
-    def clear_source_task(self):
-        self._source_task_uid = None
-        self._source_task_info = None
-
-        self.task_value_label.setText(
-            "未关联来源任务（当前集中录入可不关联）"
-        )
-        self.clear_task_button.setEnabled(
-            False
-        )
-        self.status_label.setText(
-            "已清除任务包关联。"
-        )
-
-    def _validate_linked_task_scope(
-        self,
-        record_ids,
-    ):
-        if not self._source_task_info:
-            return
-
-        task = (
-            self._source_task_info[
-                "task"
-            ]
-        )
-
-        assignment = (
-            task.get(
-                "assignment"
-            )
-            if isinstance(
-                task,
-                dict,
-            )
-            else None
-        )
-        scope = (
-            task.get(
-                "scope"
-            )
-            if isinstance(
-                task,
-                dict,
-            )
-            else None
-        )
-
-        if not isinstance(
-            assignment,
-            dict,
-        ) or not isinstance(
-            scope,
-            dict,
-        ):
-            raise ValueError(
-                "已关联任务包缺少任务范围信息。"
-            )
-
-        office_uid = (
-            assignment.get(
-                "organization_unit_uid"
-            )
-        )
-        selected_canal_uids = set(
-            scope.get(
-                "selected_canal_uids"
-            )
-            or []
-        )
-
-        placeholders = ",".join(
-            "?"
-            for _ in record_ids
-        )
-
-        with database.get_connection() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT
-                    sr.id,
-                    ou.organization_unit_uid,
-                    cu.canal_unit_uid
-                FROM survey_records AS sr
-                LEFT JOIN organization_units AS ou
-                  ON ou.id = sr.organization_unit_id
-                LEFT JOIN canal_units AS cu
-                  ON cu.id = sr.canal_unit_id
-                WHERE sr.id IN (
-                    {placeholders}
-                )
-                """,
-                record_ids,
-            ).fetchall()
-
-        for row in rows:
-            if (
-                office_uid
-                and row[
-                    "organization_unit_uid"
-                ]
-                != office_uid
-            ):
-                raise ValueError(
-                    "当前成果范围包含不属于已关联任务管理单位的调查记录。"
-                )
-
-            if (
-                selected_canal_uids
-                and row[
-                    "canal_unit_uid"
-                ]
-                not in selected_canal_uids
-            ):
-                raise ValueError(
-                    "当前成果范围包含不在已关联任务渠系范围内的调查记录。"
-                )
-
-    # =========================================================
     # export / inspect
     # =========================================================
 
@@ -735,7 +449,7 @@ class SurveyResultPackagePanel(QWidget):
 
     def export_current_scope(self):
         if self._export_thread is not None:
-            return
+            return None
 
         try:
             identity = (
@@ -756,10 +470,6 @@ class SurveyResultPackagePanel(QWidget):
                 raise ValueError(
                     "当前成果范围没有已完成工程调查记录。"
                 )
-
-            self._validate_linked_task_scope(
-                record_ids
-            )
 
             result_name = (
                 self.result_name_edit
@@ -812,9 +522,6 @@ class SurveyResultPackagePanel(QWidget):
                     ),
                     result_name=(
                         result_name
-                    ),
-                    source_task_uid=(
-                        self._source_task_uid
                     ),
                     creator=(
                         self.creator_edit
