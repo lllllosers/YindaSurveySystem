@@ -3,13 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import require_permission
 from app.db.session import get_db
+from app.models.auth import User
 from app.schemas.project import SurveyBatchRead, SurveyBatchUpdate
 from app.services import project_service
 
 
 router = APIRouter(prefix="/survey-batches", tags=["Survey Batches"])
 DbSession = Annotated[Session, Depends(get_db)]
+BatchWriter = Annotated[User, Depends(require_permission("batches.write"))]
 
 
 def require_batch(db: Session, survey_batch_uid: str):
@@ -19,30 +22,26 @@ def require_batch(db: Session, survey_batch_uid: str):
     return batch
 
 
-@router.patch(
-    "/{survey_batch_uid}",
-    response_model=SurveyBatchRead,
-)
+@router.patch("/{survey_batch_uid}", response_model=SurveyBatchRead)
 def patch_batch(
     survey_batch_uid: str,
     payload: SurveyBatchUpdate,
+    _: BatchWriter,
     db: DbSession,
 ):
     batch = require_batch(db, survey_batch_uid)
-
     try:
         return project_service.update_batch(db, batch, payload)
-    except project_service.DuplicateBatchCodeError as exc:
+    except (project_service.DuplicateBatchCodeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.delete(
-    "/{survey_batch_uid}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_batch(survey_batch_uid: str, db: DbSession):
+@router.delete("/{survey_batch_uid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_batch(
+    survey_batch_uid: str,
+    _: BatchWriter,
+    db: DbSession,
+):
     batch = require_batch(db, survey_batch_uid)
     project_service.delete_batch(db, batch)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

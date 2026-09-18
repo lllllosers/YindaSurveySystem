@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useRoute } from "vue-router";
+import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   DataAnalysis,
   Document,
@@ -7,9 +8,29 @@ import {
   Management,
   Operation,
   Setting,
+  UserFilled,
 } from "@element-plus/icons-vue";
 
+import { useAuthStore } from "../stores/auth";
+
 const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+
+const roleLabel = computed(() => {
+  const labels = {
+    admin: "系统管理员",
+    manager: "管理人员",
+    reviewer: "审核人员",
+    viewer: "只读人员",
+  } as const;
+  return auth.user ? labels[auth.user.role] : "";
+});
+
+async function logout() {
+  await auth.logout();
+  await router.replace("/login");
+}
 </script>
 
 <template>
@@ -51,6 +72,10 @@ const route = useRoute();
           <el-icon><Files /></el-icon>
           <span>成果中心</span>
         </el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/users">
+          <el-icon><UserFilled /></el-icon>
+          <span>用户与权限</span>
+        </el-menu-item>
         <el-menu-item index="/settings" disabled>
           <el-icon><Setting /></el-icon>
           <span>系统设置</span>
@@ -64,7 +89,24 @@ const route = useRoute();
           <div class="page-title">引大入秦灌区现状调查数据中心</div>
           <div class="page-subtitle">experiment/web-hybrid</div>
         </div>
-        <el-tag type="info" effect="plain">Stage 02.1</el-tag>
+
+        <el-dropdown>
+          <div class="user-menu">
+            <div class="user-avatar">
+              {{ auth.user?.display_name?.slice(0, 1) ?? "用" }}
+            </div>
+            <div class="user-meta">
+              <span class="user-name">{{ auth.user?.display_name }}</span>
+              <span class="user-role">{{ roleLabel }}</span>
+            </div>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item disabled>{{ auth.user?.username }}</el-dropdown-item>
+              <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </el-header>
 
       <el-main class="content">

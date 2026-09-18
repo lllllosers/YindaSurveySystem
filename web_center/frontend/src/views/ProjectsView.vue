@@ -20,6 +20,9 @@ import {
   type SurveyBatch,
   type SurveyBatchPayload,
 } from "../api/projects";
+import { useAuthStore } from "../stores/auth";
+
+const auth = useAuthStore();
 
 const loadingProjects = ref(false);
 const loadingBatches = ref(false);
@@ -276,7 +279,7 @@ onMounted(() => refreshProjects());
         Web 中心主数据入口。稳定 UID 用于后续 .ydtask / .ydresult 跨数据库交换。
       </p>
     </div>
-    <el-button type="primary" @click="openCreateProject">
+    <el-button v-if="auth.hasPermission('projects.write')" type="primary" @click="openCreateProject">
       新建项目
     </el-button>
   </div>
@@ -323,10 +326,10 @@ onMounted(() => refreshProjects());
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click.stop="openEditProject(row)">
+          <el-button v-if="auth.hasPermission('projects.write')" link type="primary" @click.stop="openEditProject(row)">
             编辑
           </el-button>
-          <el-button link type="danger" @click.stop="removeProject(row)">
+          <el-button v-if="auth.hasPermission('projects.write')" link type="danger" @click.stop="removeProject(row)">
             删除
           </el-button>
         </template>
@@ -394,10 +397,10 @@ onMounted(() => refreshProjects());
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEditBatch(row)">
+          <el-button v-if="auth.hasPermission('batches.write')" link type="primary" @click="openEditBatch(row)">
             编辑
           </el-button>
-          <el-button link type="danger" @click="removeBatch(row)">
+          <el-button v-if="auth.hasPermission('batches.write')" link type="danger" @click="removeBatch(row)">
             删除
           </el-button>
         </template>
