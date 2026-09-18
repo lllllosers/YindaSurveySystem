@@ -73,11 +73,11 @@ class SurveyTaskEntryScopeUiTestCase(
         "generic_engineering_survey_page."
         "get_departments"
     )
-    def test_cached_task_scope_snapshot_filters_canals(
+    def test_task_snapshot_keeps_exact_scope_choice(
         self,
         mock_departments,
         mock_offices,
-        mock_canals,
+        mock_live_canals,
         mock_codes,
     ):
         mock_departments.return_value = [
@@ -86,92 +86,115 @@ class SurveyTaskEntryScopeUiTestCase(
                 "name": "任务基层处",
                 "business_code": "1",
                 "status": "active",
-            },
-            {
-                "id": 11,
-                "name": "任务外基层处",
-                "business_code": "2",
-                "status": "active",
-            },
+            }
         ]
-
         mock_offices.return_value = [
             {
                 "id": 20,
                 "name": "任务水管所",
                 "business_code": "01",
                 "status": "active",
-            },
-            {
-                "id": 21,
-                "name": "任务外水管所",
-                "business_code": "02",
-                "status": "active",
-            },
-        ]
-
-        mock_canals.return_value = [
-            {
-                "id": 30,
-                "name": "任务渠系",
-                "canal_level": "03",
-            },
-            {
-                "id": 31,
-                "name": "任务外渠系",
-                "canal_level": "03",
-            },
+            }
         ]
 
         self.page.current_context = {
             "project_id": 1,
             "batch_id": 2,
         }
-
         self.page._entry_task_workspace = {
             "department_id": 10,
             "organization_unit_id": 20,
             "management_scopes": (
                 {
-                    "management_scope_uid": (
-                        "scope-task-001"
-                    ),
+                    "management_scope_uid": "scope-a",
                     "canal_unit_id": 30,
+                    "canal_name": "总干渠",
+                    "canal_level": "01",
+                    "range_mode": "segment_unknown",
+                    "description": "第一分管段",
+                },
+                {
+                    "management_scope_uid": "scope-b",
+                    "canal_unit_id": 30,
+                    "canal_name": "总干渠",
+                    "canal_level": "01",
+                    "range_mode": "segment_known",
+                    "start_stake_text": "K10+000",
+                    "start_stake_value": 10000.0,
+                    "end_stake_text": "K20+000",
+                    "end_stake_value": 20000.0,
+                    "description": "第二分管段",
+                },
+                {
+                    "management_scope_uid": "scope-c",
+                    "canal_unit_id": 31,
+                    "canal_name": "通远支渠",
+                    "canal_level": "03",
+                    "range_mode": "whole",
+                    "description": "",
                 },
             ),
         }
 
         self.page.load_departments()
 
-        self.assertEqual(
-            self.page.department_combo.count(),
-            1,
-        )
-        self.assertEqual(
-            self.page.office_combo.count(),
-            1,
-        )
+        mock_live_canals.assert_not_called()
+
         self.assertEqual(
             self.page.canal_combo.count(),
-            1,
-        )
-        self.assertEqual(
-            self.page.department_combo.currentData()[
-                "id"
-            ],
-            10,
-        )
-        self.assertEqual(
-            self.page.office_combo.currentData()[
-                "id"
-            ],
-            20,
+            2,
         )
         self.assertEqual(
             self.page.canal_combo.currentData()[
                 "id"
             ],
             30,
+        )
+        self.assertEqual(
+            self.page.task_scope_combo.count(),
+            2,
+        )
+        self.assertIn(
+            "边界未知",
+            self.page.task_scope_combo.itemText(
+                0
+            ),
+        )
+        self.assertIn(
+            "K10+000～K20+000",
+            self.page.task_scope_combo.itemText(
+                1
+            ),
+        )
+
+        self.page.task_scope_combo.setCurrentIndex(
+            1
+        )
+
+        ownership = (
+            self.page.collect_ownership_data()
+        )
+
+        self.assertEqual(
+            ownership[
+                "management_scope_uid"
+            ],
+            "scope-b",
+        )
+
+        self.page.canal_combo.setCurrentIndex(
+            1
+        )
+
+        self.assertEqual(
+            self.page.task_scope_combo.count(),
+            1,
+        )
+        self.assertEqual(
+            self.page.task_scope_combo.currentData()[
+                "management_scope_uid"
+            ],
+            "scope-c",
         )
 
 

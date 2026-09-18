@@ -9,19 +9,16 @@ from services.survey_task_workspace import (
 
 def ensure_survey_task_record_scope_schema():
     """
-    Stage 14.4.2 过渡约束：
+    将任务来源精确落实到 SurveyRecord。
 
-    workspace 的任务权限事实已经切换到
-    survey_task_workspace_scopes。
-
-    本阶段 SurveyRecord 尚只有 source_task_uid，
-    因而数据库先按“任务 scope 所映射的 CanalUnit”
-    约束新增/修改。Stage 14.4.3 再增加
-    source_management_scope_uid，将记录精确绑定到
-    某一个分管段。
+    Stage 14.4.3：
+    - source_task_uid 保存来源任务；
+    - source_management_scope_uid 保存来源分管范围；
+    - 当前任务新增记录必须精确属于一个 workspace scope；
+    - 同一物理渠道有多个 scope 时必须显式选择；
+    - 两个来源 UID 写入后不可修改；
+    - 没有当前任务时保持集中录入行为。
     """
-    # 先移除可能仍引用旧 workspace_canals 的触发器，
-    # 再允许 workspace schema 删除测试阶段旧表。
     with database.get_connection() as connection:
         connection.executescript(
             """
@@ -33,6 +30,8 @@ def ensure_survey_task_record_scope_schema():
                 trg_survey_records_task_scope_update;
             DROP TRIGGER IF EXISTS
                 trg_survey_records_source_task_uid_immutable;
+            DROP TRIGGER IF EXISTS
+                trg_survey_records_source_management_scope_uid_immutable;
             """
         )
 
@@ -54,12 +53,36 @@ def ensure_survey_task_record_scope_schema():
                 """
             )
 
+        if (
+            "source_management_scope_uid"
+            not in columns
+        ):
+            connection.execute(
+                """
+                ALTER TABLE survey_records
+                ADD COLUMN
+                    source_management_scope_uid TEXT
+                """
+            )
+
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS
                 idx_survey_records_source_task_uid
             ON survey_records(
                 source_task_uid,
+                id
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_survey_records_source_scope_uid
+            ON survey_records(
+                source_task_uid,
+                source_management_scope_uid,
                 id
             )
             """
@@ -88,19 +111,10 @@ def ensure_survey_task_record_scope_schema():
                               = NEW.survey_batch_id
                           AND stw.organization_unit_id
                               = NEW.organization_unit_id
-                          AND EXISTS (
-                              SELECT 1
-                              FROM survey_task_workspace_scopes
-                                  AS stws
-                              WHERE stws.task_workspace_id
-                                  = stw.id
-                                AND stws.canal_unit_id
-                                  = NEW.canal_unit_id
-                          )
                     )
                     THEN RAISE(
                         ABORT,
-                        'survey record is outside current task scope'
+                        'survey record is outside current task context'
                     )
                 END;
 
@@ -122,32 +136,112 @@ def ensure_survey_task_record_scope_schema():
                         'survey record source task does not match current task'
                     )
                 END;
+
+                SELECT CASE
+                    WHEN
+                        NEW.source_management_scope_uid
+                            IS NOT NULL
+                        AND trim(
+                            NEW.source_management_scope_uid
+                        ) <> ''
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM survey_task_workspaces
+                                AS stw
+                            JOIN survey_task_workspace_scopes
+                                AS stws
+                              ON stws.task_workspace_id
+                                = stw.id
+                            WHERE stw.is_current = 1
+                              AND stws.management_scope_uid
+                                = NEW.source_management_scope_uid
+                              AND stws.canal_unit_id
+                                = NEW.canal_unit_id
+                        )
+                    THEN RAISE(
+                        ABORT,
+                        'survey record management scope does not match current task canal'
+                    )
+                END;
+
+                SELECT CASE
+                    WHEN
+                        (
+                            NEW.source_management_scope_uid
+                                IS NULL
+                            OR trim(
+                                NEW.source_management_scope_uid
+                            ) = ''
+                        )
+                        AND (
+                            SELECT COUNT(*)
+                            FROM survey_task_workspaces
+                                AS stw
+                            JOIN survey_task_workspace_scopes
+                                AS stws
+                              ON stws.task_workspace_id
+                                = stw.id
+                            WHERE stw.is_current = 1
+                              AND stws.canal_unit_id
+                                = NEW.canal_unit_id
+                        ) <> 1
+                    THEN RAISE(
+                        ABORT,
+                        'survey record management scope is required or ambiguous'
+                    )
+                END;
             END;
 
             CREATE TRIGGER
                 trg_survey_records_task_source_insert
             AFTER INSERT ON survey_records
             FOR EACH ROW
-            WHEN
-                (
-                    NEW.source_task_uid IS NULL
-                    OR trim(
-                        NEW.source_task_uid
-                    ) = ''
-                )
-                AND EXISTS (
-                    SELECT 1
-                    FROM survey_task_workspaces
-                    WHERE is_current = 1
-                )
+            WHEN EXISTS (
+                SELECT 1
+                FROM survey_task_workspaces
+                WHERE is_current = 1
+            )
             BEGIN
                 UPDATE survey_records
-                SET source_task_uid = (
-                    SELECT task_uid
-                    FROM survey_task_workspaces
-                    WHERE is_current = 1
-                    LIMIT 1
-                )
+                SET
+                    source_task_uid = CASE
+                        WHEN
+                            NEW.source_task_uid IS NULL
+                            OR trim(
+                                NEW.source_task_uid
+                            ) = ''
+                        THEN (
+                            SELECT task_uid
+                            FROM survey_task_workspaces
+                            WHERE is_current = 1
+                            LIMIT 1
+                        )
+                        ELSE NEW.source_task_uid
+                    END,
+                    source_management_scope_uid = CASE
+                        WHEN
+                            NEW.source_management_scope_uid
+                                IS NULL
+                            OR trim(
+                                NEW.source_management_scope_uid
+                            ) = ''
+                        THEN (
+                            SELECT
+                                stws.management_scope_uid
+                            FROM survey_task_workspaces
+                                AS stw
+                            JOIN survey_task_workspace_scopes
+                                AS stws
+                              ON stws.task_workspace_id
+                                = stw.id
+                            WHERE stw.is_current = 1
+                              AND stws.canal_unit_id
+                                = NEW.canal_unit_id
+                            LIMIT 1
+                        )
+                        ELSE
+                            NEW.source_management_scope_uid
+                    END
                 WHERE id = NEW.id;
             END;
 
@@ -167,9 +261,27 @@ def ensure_survey_task_record_scope_schema():
                 ) <> ''
             BEGIN
                 SELECT CASE
+                    WHEN
+                        OLD.source_management_scope_uid
+                            IS NULL
+                        OR trim(
+                            OLD.source_management_scope_uid
+                        ) = ''
+                    THEN RAISE(
+                        ABORT,
+                        'task sourced record has no management scope'
+                    )
+                END;
+
+                SELECT CASE
                     WHEN NOT EXISTS (
                         SELECT 1
-                        FROM survey_task_workspaces AS stw
+                        FROM survey_task_workspaces
+                            AS stw
+                        JOIN survey_task_workspace_scopes
+                            AS stws
+                          ON stws.task_workspace_id
+                            = stw.id
                         WHERE stw.task_uid
                               = OLD.source_task_uid
                           AND stw.project_id
@@ -178,19 +290,14 @@ def ensure_survey_task_record_scope_schema():
                               = NEW.survey_batch_id
                           AND stw.organization_unit_id
                               = NEW.organization_unit_id
-                          AND EXISTS (
-                              SELECT 1
-                              FROM survey_task_workspace_scopes
-                                  AS stws
-                              WHERE stws.task_workspace_id
-                                  = stw.id
-                                AND stws.canal_unit_id
-                                  = NEW.canal_unit_id
-                          )
+                          AND stws.management_scope_uid
+                              = OLD.source_management_scope_uid
+                          AND stws.canal_unit_id
+                              = NEW.canal_unit_id
                     )
                     THEN RAISE(
                         ABORT,
-                        'task sourced record cannot leave assigned scope'
+                        'task sourced record cannot leave assigned management scope'
                     )
                 END;
             END;
@@ -213,12 +320,34 @@ def ensure_survey_task_record_scope_schema():
                     'source_task_uid is immutable'
                 );
             END;
+
+            CREATE TRIGGER
+                trg_survey_records_source_management_scope_uid_immutable
+            BEFORE UPDATE OF source_management_scope_uid
+            ON survey_records
+            FOR EACH ROW
+            WHEN
+                OLD.source_management_scope_uid
+                    IS NOT NULL
+                AND trim(
+                    OLD.source_management_scope_uid
+                ) <> ''
+                AND OLD.source_management_scope_uid
+                    IS NOT NEW.source_management_scope_uid
+            BEGIN
+                SELECT RAISE(
+                    ABORT,
+                    'source_management_scope_uid is immutable'
+                );
+            END;
             """
         )
 
     return {
         "ready": True,
         "source_task_uid_column": True,
+        "source_management_scope_uid_column": True,
         "scope_guard": True,
+        "exact_scope_guard": True,
         "workspace_scope_snapshot": True,
     }

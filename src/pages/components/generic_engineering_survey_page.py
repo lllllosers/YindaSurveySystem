@@ -47,6 +47,7 @@ from services.canal_management_scope import (
 
 from services.survey_task_workspace import (
     get_current_task_workspace,
+    get_task_workspace_scope_snapshot,
 )
 
 from forms.engineering.models import (
@@ -297,48 +298,59 @@ class GenericEngineeringSurveyPage(QWidget):
     def _build_ownership_section(
         self,
     ):
-        group = QGroupBox("一、归属与编号")
-
+        group = QGroupBox(
+            "一、归属与编号"
+        )
         layout = QFormLayout(group)
-
-        self._setup_form_layout(layout)
+        self._setup_form_layout(
+            layout
+        )
 
         self.department_combo = QComboBox()
-
         self.office_combo = QComboBox()
-
         self.canal_combo = QComboBox()
 
-        self.business_code_edit = QLineEdit()
+        self.task_scope_label = QLabel(
+            "任务分管范围："
+        )
+        self.task_scope_combo = QComboBox()
+        self.task_scope_label.hide()
+        self.task_scope_combo.hide()
 
-        self.business_code_edit.setReadOnly(True)
-
+        self.business_code_edit = (
+            QLineEdit()
+        )
+        self.business_code_edit.setReadOnly(
+            True
+        )
         self.business_code_edit.setPlaceholderText(
-            ("选择基层处、水管所和渠系后" "自动生成")
+            "选择基层处、水管所和渠系后自动生成"
         )
 
         layout.addRow(
             "所属基层处：",
             self.department_combo,
         )
-
         layout.addRow(
             "所属水管所：",
             self.office_combo,
         )
-
         layout.addRow(
             "所属渠系：",
             self.canal_combo,
         )
-
+        layout.addRow(
+            self.task_scope_label,
+            self.task_scope_combo,
+        )
         layout.addRow(
             "业务编号：",
             self.business_code_edit,
         )
 
-        self.form_layout.addWidget(group)
-
+        self.form_layout.addWidget(
+            group
+        )
         self.ownership_group = group
 
     # =========================================================
@@ -348,11 +360,18 @@ class GenericEngineeringSurveyPage(QWidget):
     def _connect_ownership_signals(
         self,
     ):
-        self.department_combo.currentIndexChanged.connect(self.department_changed)
-
-        self.office_combo.currentIndexChanged.connect(self.office_changed)
-
-        self.canal_combo.currentIndexChanged.connect(self.update_business_code)
+        self.department_combo.currentIndexChanged.connect(
+            self.department_changed
+        )
+        self.office_combo.currentIndexChanged.connect(
+            self.office_changed
+        )
+        self.canal_combo.currentIndexChanged.connect(
+            self.canal_changed
+        )
+        self.task_scope_combo.currentIndexChanged.connect(
+            self.update_business_code
+        )
 
 
     def load_departments(
@@ -493,7 +512,9 @@ class GenericEngineeringSurveyPage(QWidget):
     def office_changed(
         self,
     ):
-        self.canal_combo.blockSignals(True)
+        self.canal_combo.blockSignals(
+            True
+        )
         self.canal_combo.clear()
 
         office_data = (
@@ -505,6 +526,9 @@ class GenericEngineeringSurveyPage(QWidget):
             self.canal_combo.blockSignals(
                 False
             )
+            self.task_scope_combo.clear()
+            self.task_scope_label.hide()
+            self.task_scope_combo.hide()
             self.business_code_edit.clear()
             return
 
@@ -512,61 +536,285 @@ class GenericEngineeringSurveyPage(QWidget):
             self._entry_task_workspace
         )
 
-        allowed_canal_ids = None
-
         if task_workspace:
-            allowed_canal_ids = {
-                int(
-                    item[
+            seen_canal_ids = set()
+
+            for scope in (
+                task_workspace.get(
+                    "management_scopes"
+                )
+                or ()
+            ):
+                canal_id = int(
+                    scope[
                         "canal_unit_id"
                     ]
                 )
-                for item in (
-                    task_workspace.get(
-                        "management_scopes"
-                    )
-                    or ()
-                )
-            }
 
-        # 新增调查的管理关系来自 CanalManagementScope；
-        # 当前任务存在时，再与任务下发时冻结的 scope snapshot
-        # 所映射的 CanalUnit 求交集。
-        canals = (
-            get_managed_canals_for_organization(
-                office_data["id"],
-                active_only=(
-                    self.editing_record_id
-                    is None
-                ),
+                if (
+                    canal_id
+                    in seen_canal_ids
+                ):
+                    continue
+
+                seen_canal_ids.add(
+                    canal_id
+                )
+
+                self.canal_combo.addItem(
+                    str(
+                        scope.get(
+                            "canal_name"
+                        )
+                        or ""
+                    ),
+                    {
+                        "id": canal_id,
+                        "canal_level": (
+                            scope.get(
+                                "canal_level"
+                            )
+                        ),
+                    },
+                )
+
+        else:
+            canals = (
+                get_managed_canals_for_organization(
+                    office_data["id"],
+                    active_only=(
+                        self.editing_record_id
+                        is None
+                    ),
+                )
             )
+
+            for canal in canals:
+                self.canal_combo.addItem(
+                    canal["name"],
+                    {
+                        "id": canal["id"],
+                        "canal_level": (
+                            canal[
+                                "canal_level"
+                            ]
+                        ),
+                    },
+                )
+
+        self.canal_combo.blockSignals(
+            False
+        )
+        self.canal_changed()
+
+    @staticmethod
+    def _format_task_scope_text(
+        scope,
+    ):
+        mode = str(
+            scope.get(
+                "range_mode"
+            )
+            or ""
         )
 
-        for canal in canals:
-            if (
-                allowed_canal_ids
-                is not None
-                and int(
-                    canal["id"]
+        if mode == "whole":
+            text = "全渠"
+        elif (
+            mode
+            == "segment_unknown"
+        ):
+            text = (
+                "分管段（边界未知）"
+            )
+        else:
+            start = (
+                scope.get(
+                    "start_stake_text"
                 )
-                not in allowed_canal_ids
-            ):
-                continue
-
-            self.canal_combo.addItem(
-                canal["name"],
-                {
-                    "id": canal["id"],
-                    "canal_level": (
-                        canal[
-                            "canal_level"
-                        ]
-                    ),
-                },
+                or scope.get(
+                    "start_stake_value"
+                )
+                or "?"
+            )
+            end = (
+                scope.get(
+                    "end_stake_text"
+                )
+                or scope.get(
+                    "end_stake_value"
+                )
+                or "?"
+            )
+            text = (
+                f"分管段（{start}～{end}）"
             )
 
-        self.canal_combo.blockSignals(False)
+        description = str(
+            scope.get(
+                "description"
+            )
+            or ""
+        ).strip()
+
+        if description:
+            text += (
+                f" — {description}"
+            )
+
+        return text
+
+    def canal_changed(
+        self,
+    ):
+        self.task_scope_combo.blockSignals(
+            True
+        )
+        self.task_scope_combo.clear()
+
+        canal_data = (
+            self.canal_combo
+            .currentData()
+        )
+        task_workspace = (
+            self._entry_task_workspace
+        )
+
+        if not canal_data:
+            self.task_scope_label.setVisible(
+                bool(task_workspace)
+            )
+            self.task_scope_combo.setVisible(
+                bool(task_workspace)
+            )
+            self.task_scope_combo.blockSignals(
+                False
+            )
+            self.business_code_edit.clear()
+            return
+
+        if task_workspace:
+            self.task_scope_label.show()
+            self.task_scope_combo.show()
+
+            canal_id = int(
+                canal_data["id"]
+            )
+
+            for scope in (
+                task_workspace.get(
+                    "management_scopes"
+                )
+                or ()
+            ):
+                if (
+                    int(
+                        scope[
+                            "canal_unit_id"
+                        ]
+                    )
+                    != canal_id
+                ):
+                    continue
+
+                self.task_scope_combo.addItem(
+                    self._format_task_scope_text(
+                        scope
+                    ),
+                    dict(scope),
+                )
+
+            if (
+                self.task_scope_combo.count()
+                > 0
+            ):
+                self.task_scope_combo.setCurrentIndex(
+                    0
+                )
+        else:
+            self.task_scope_label.hide()
+            self.task_scope_combo.hide()
+
+        self.task_scope_combo.blockSignals(
+            False
+        )
         self.update_business_code()
+
+    def _show_loaded_task_scope(
+        self,
+        record,
+    ):
+        source_task_uid = str(
+            record.get(
+                "source_task_uid"
+            )
+            or ""
+        ).strip()
+        scope_uid = str(
+            record.get(
+                "source_management_scope_uid"
+            )
+            or ""
+        ).strip()
+
+        self.task_scope_combo.blockSignals(
+            True
+        )
+        self.task_scope_combo.clear()
+
+        if not scope_uid:
+            self.task_scope_label.hide()
+            self.task_scope_combo.hide()
+            self.task_scope_combo.blockSignals(
+                False
+            )
+            return
+
+        snapshot = None
+
+        if source_task_uid:
+            snapshot = (
+                get_task_workspace_scope_snapshot(
+                    source_task_uid,
+                    scope_uid,
+                )
+            )
+
+        if snapshot is None:
+            text = (
+                "来源分管范围："
+                f"{scope_uid}"
+            )
+            data = {
+                "management_scope_uid": (
+                    scope_uid
+                ),
+                "canal_unit_id": (
+                    record.get(
+                        "canal_id"
+                    )
+                ),
+            }
+        else:
+            text = (
+                self._format_task_scope_text(
+                    snapshot
+                )
+            )
+            data = snapshot
+
+        self.task_scope_combo.addItem(
+            text,
+            data,
+        )
+        self.task_scope_combo.setCurrentIndex(
+            0
+        )
+        self.task_scope_label.show()
+        self.task_scope_combo.show()
+        self.task_scope_combo.blockSignals(
+            False
+        )
 
     def update_business_code(
         self,
@@ -680,31 +928,103 @@ class GenericEngineeringSurveyPage(QWidget):
         所需的公共归属信息。
         """
 
-        department_data = self.department_combo.currentData()
-
-        office_data = self.office_combo.currentData()
-
-        canal_data = self.canal_combo.currentData()
+        department_data = (
+            self.department_combo
+            .currentData()
+        )
+        office_data = (
+            self.office_combo
+            .currentData()
+        )
+        canal_data = (
+            self.canal_combo
+            .currentData()
+        )
 
         if not department_data:
-            raise ValueError("请选择基层处。")
+            raise ValueError(
+                "请选择基层处。"
+            )
 
         if not office_data:
-            raise ValueError("请选择水管所。")
+            raise ValueError(
+                "请选择水管所。"
+            )
 
         if not canal_data:
-            raise ValueError("请选择所属渠系。")
+            raise ValueError(
+                "请选择所属渠系。"
+            )
 
-        business_code = self.business_code_edit.text().strip()
+        management_scope_uid = None
+
+        if self._entry_task_workspace:
+            scope_data = (
+                self.task_scope_combo
+                .currentData()
+            )
+
+            if not isinstance(
+                scope_data,
+                dict,
+            ):
+                raise ValueError(
+                    "请选择任务分管范围。"
+                )
+
+            if (
+                int(
+                    scope_data[
+                        "canal_unit_id"
+                    ]
+                )
+                != int(
+                    canal_data["id"]
+                )
+            ):
+                raise ValueError(
+                    "任务分管范围与所属渠系不一致。"
+                )
+
+            management_scope_uid = str(
+                scope_data.get(
+                    "management_scope_uid"
+                )
+                or ""
+            ).strip()
+
+            if not management_scope_uid:
+                raise ValueError(
+                    "任务分管范围缺少稳定 UID。"
+                )
+
+        business_code = (
+            self.business_code_edit
+            .text()
+            .strip()
+        )
 
         if not business_code:
-            raise ValueError("业务编号尚未生成。")
+            raise ValueError(
+                "业务编号尚未生成。"
+            )
 
         return {
-            "department_id": department_data["id"],
-            "office_id": office_data["id"],
-            "canal_id": canal_data["id"],
-            "business_code": business_code,
+            "department_id": (
+                department_data["id"]
+            ),
+            "office_id": (
+                office_data["id"]
+            ),
+            "canal_id": (
+                canal_data["id"]
+            ),
+            "management_scope_uid": (
+                management_scope_uid
+            ),
+            "business_code": (
+                business_code
+            ),
         }
 
     # =========================================================
@@ -848,6 +1168,9 @@ class GenericEngineeringSurveyPage(QWidget):
                     organization_unit_id=(ownership["office_id"]),
                     canal_unit_id=(ownership["canal_id"]),
                     business_code=(ownership["business_code"]),
+                    source_management_scope_uid=(
+                        ownership["management_scope_uid"]
+                    ),
                     payload=payload,
                 )
 
@@ -880,6 +1203,7 @@ class GenericEngineeringSurveyPage(QWidget):
             self.office_combo.setEnabled(False)
 
             self.canal_combo.setEnabled(False)
+            self.task_scope_combo.setEnabled(False)
 
             self._apply_record_mode()
 
@@ -1177,6 +1501,10 @@ class GenericEngineeringSurveyPage(QWidget):
         ):
             raise ValueError("该调查记录所属渠系" "已不存在或不可用。")
 
+        self._show_loaded_task_scope(
+            record
+        )
+
         # 加载机构时可能清空了编号，
         # 最终恢复数据库原编号。
         self.business_code_edit.setText(record.get("business_code") or "")
@@ -1202,6 +1530,7 @@ class GenericEngineeringSurveyPage(QWidget):
         self.office_combo.setEnabled(False)
 
         self.canal_combo.setEnabled(False)
+        self.task_scope_combo.setEnabled(False)
 
         self._apply_record_mode()
 
@@ -2310,6 +2639,7 @@ class GenericEngineeringSurveyPage(QWidget):
         self.office_combo.setEnabled(True)
 
         self.canal_combo.setEnabled(True)
+        self.task_scope_combo.setEnabled(True)
 
         self.clear_form_data()
 

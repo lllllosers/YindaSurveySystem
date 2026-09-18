@@ -1163,6 +1163,71 @@ def get_current_task_workspace():
     return result
 
 
+def get_task_workspace_scope_snapshot(
+    task_uid,
+    management_scope_uid,
+):
+    """
+    按来源任务 UID + 分管范围 UID 读取冻结快照。
+
+    不要求任务当前处于 is_current，
+    供历史调查记录回填来源范围。
+    """
+    ensure_survey_task_workspace_schema()
+
+    task_uid = _require_text(
+        task_uid,
+        "task_uid",
+    )
+    management_scope_uid = _require_text(
+        management_scope_uid,
+        "management_scope_uid",
+    )
+
+    with database.get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                stws.id AS workspace_scope_id,
+                stws.management_scope_uid,
+                stws.canal_unit_id,
+                stws.canal_unit_uid,
+                stws.organization_unit_uid,
+                stws.canal_name_snapshot
+                    AS canal_name,
+                stws.canal_level_snapshot
+                    AS canal_level,
+                stws.range_mode,
+                stws.start_stake_text,
+                stws.start_stake_value,
+                stws.end_stake_text,
+                stws.end_stake_value,
+                stws.sort_order,
+                stws.source_scope_status
+                    AS status,
+                stws.description
+            FROM survey_task_workspaces AS stw
+            JOIN survey_task_workspace_scopes
+                AS stws
+              ON stws.task_workspace_id
+                = stw.id
+            WHERE stw.task_uid = ?
+              AND stws.management_scope_uid = ?
+            LIMIT 1
+            """,
+            (
+                task_uid,
+                management_scope_uid,
+            ),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return _workspace_row_to_dict(
+        row
+    )
+
 def receive_survey_task_package(
     package_path,
     *,

@@ -23,9 +23,6 @@ import database
 from services.application_bootstrap import (
     initialize_application_database,
 )
-from services.survey_task_record_scope import (
-    ensure_survey_task_record_scope_schema,
-)
 
 
 class SurveyTaskRecordScopeTestCase(
@@ -77,9 +74,7 @@ class SurveyTaskRecordScopeTestCase(
                 )
                 VALUES (?, 'active')
                 """,
-                (
-                    "任务测试项目",
-                ),
+                ("任务测试项目",),
             )
             project_id = int(
                 project.lastrowid
@@ -113,66 +108,41 @@ class SurveyTaskRecordScopeTestCase(
                 FROM organization_units
                 WHERE master_key = ?
                 """,
-                (
-                    "ORG-D01-O03",
-                ),
+                ("ORG-D01-O03",),
             ).fetchone()
-            office_id = int(
-                office["id"]
-            )
 
-            scopes = connection.execute(
+            allowed = connection.execute(
                 """
                 SELECT
-                    cms.management_scope_uid,
-                    cms.canal_unit_id,
-                    cu.canal_unit_uid,
-                    cu.name AS canal_name,
-                    cu.canal_level,
-                    cms.range_mode,
-                    cms.start_stake_text,
-                    cms.start_stake_value,
-                    cms.end_stake_text,
-                    cms.end_stake_value,
-                    cms.sort_order,
-                    cms.status,
-                    cms.description
-                FROM canal_management_scopes
-                    AS cms
-                JOIN canal_units AS cu
-                  ON cu.id = cms.canal_unit_id
-                WHERE cms.organization_unit_id = ?
-                  AND cms.status = 'active'
-                ORDER BY
-                    cu.sort_order,
-                    cms.sort_order,
-                    cms.id
+                    id,
+                    canal_unit_uid,
+                    name,
+                    canal_level
+                FROM canal_units
+                WHERE master_key = ?
                 """,
-                (
-                    office_id,
-                ),
-            ).fetchall()
+                ("CANAL-G01",),
+            ).fetchone()
 
-            self.assertGreaterEqual(
-                len(scopes),
-                2,
-            )
+            blocked = connection.execute(
+                """
+                SELECT id
+                FROM canal_units
+                WHERE master_key = ?
+                """,
+                ("CANAL-S001",),
+            ).fetchone()
 
             form = connection.execute(
                 """
-                SELECT
-                    fv.id AS form_version_id
+                SELECT fv.id AS form_version_id
                 FROM form_versions AS fv
                 JOIN form_definitions AS fd
-                  ON fd.id
-                    = fv.form_definition_id
+                  ON fd.id = fv.form_definition_id
                 WHERE fd.series = 'series_2'
-                  AND fd.record_type
-                    = 'engineering'
+                  AND fd.record_type = 'engineering'
                   AND fv.is_current = 1
-                ORDER BY
-                    fd.sort_order,
-                    fv.id
+                ORDER BY fd.sort_order, fv.id
                 LIMIT 1
                 """
             ).fetchone()
@@ -190,20 +160,17 @@ class SurveyTaskRecordScopeTestCase(
                     source_package_sha256,
                     is_current
                 )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, 1
-                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     "task-source-001",
                     "package-source-001",
                     project_id,
                     batch_id,
-                    office_id,
-                    "通远水管所任务",
+                    int(office["id"]),
+                    "同渠双分管段任务",
                     (
-                        "task_packages/"
-                        "task-source-001/"
+                        "task_packages/task-source-001/"
                         "package-source-001.ydtask"
                     ),
                     "0" * 64,
@@ -213,104 +180,73 @@ class SurveyTaskRecordScopeTestCase(
                 workspace.lastrowid
             )
 
-            allowed = scopes[0]
-            blocked = scopes[1]
-
-            connection.execute(
-                """
-                INSERT INTO
-                    survey_task_workspace_scopes (
-                        task_workspace_id,
-                        management_scope_uid,
-                        canal_unit_id,
-                        canal_unit_uid,
-                        organization_unit_uid,
-                        canal_name_snapshot,
-                        canal_level_snapshot,
-                        range_mode,
-                        start_stake_text,
-                        start_stake_value,
-                        end_stake_text,
-                        end_stake_value,
-                        sort_order,
-                        source_scope_status,
-                        description
-                    )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?
-                )
-                """,
+            for index, uid in enumerate(
                 (
-                    workspace_id,
-                    allowed[
-                        "management_scope_uid"
-                    ],
-                    int(
-                        allowed[
-                            "canal_unit_id"
-                        ]
-                    ),
-                    allowed[
-                        "canal_unit_uid"
-                    ],
-                    office[
-                        "organization_unit_uid"
-                    ],
-                    allowed[
-                        "canal_name"
-                    ],
-                    allowed[
-                        "canal_level"
-                    ],
-                    allowed[
-                        "range_mode"
-                    ],
-                    allowed[
-                        "start_stake_text"
-                    ],
-                    allowed[
-                        "start_stake_value"
-                    ],
-                    allowed[
-                        "end_stake_text"
-                    ],
-                    allowed[
-                        "end_stake_value"
-                    ],
-                    int(
-                        allowed[
-                            "sort_order"
-                        ]
-                        or 0
-                    ),
-                    allowed["status"],
-                    allowed[
-                        "description"
-                    ],
+                    "task-scope-a",
+                    "task-scope-b",
                 ),
-            )
-
-        ensure_survey_task_record_scope_schema()
+                start=1,
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO
+                        survey_task_workspace_scopes (
+                            task_workspace_id,
+                            management_scope_uid,
+                            canal_unit_id,
+                            canal_unit_uid,
+                            organization_unit_uid,
+                            canal_name_snapshot,
+                            canal_level_snapshot,
+                            range_mode,
+                            start_stake_text,
+                            start_stake_value,
+                            end_stake_text,
+                            end_stake_value,
+                            sort_order,
+                            source_scope_status,
+                            description
+                        )
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?,
+                        'segment_unknown',
+                        NULL, NULL, NULL, NULL,
+                        ?, 'active', ?
+                    )
+                    """,
+                    (
+                        workspace_id,
+                        uid,
+                        int(allowed["id"]),
+                        allowed[
+                            "canal_unit_uid"
+                        ],
+                        office[
+                            "organization_unit_uid"
+                        ],
+                        allowed["name"],
+                        allowed["canal_level"],
+                        index,
+                        f"分管段{index}",
+                    ),
+                )
 
         return {
             "project_id": project_id,
             "batch_id": batch_id,
-            "office_id": office_id,
+            "office_id": int(
+                office["id"]
+            ),
             "allowed_canal_id": int(
-                allowed[
-                    "canal_unit_id"
-                ]
+                allowed["id"]
             ),
             "blocked_canal_id": int(
-                blocked[
-                    "canal_unit_id"
-                ]
+                blocked["id"]
             ),
+            "scope_a": "task-scope-a",
+            "scope_b": "task-scope-b",
             "form_version_id": int(
-                form[
-                    "form_version_id"
-                ]
+                form["form_version_id"]
             ),
         }
 
@@ -319,6 +255,8 @@ class SurveyTaskRecordScopeTestCase(
         context,
         canal_id,
         business_code,
+        *,
+        scope_uid=None,
     ):
         with database.get_connection() as connection:
             cursor = connection.execute(
@@ -330,29 +268,23 @@ class SurveyTaskRecordScopeTestCase(
                     record_type,
                     organization_unit_id,
                     canal_unit_id,
+                    source_management_scope_uid,
                     business_code,
                     record_status,
                     record_data_json
                 )
                 VALUES (
                     ?, ?, ?, 'engineering',
-                    ?, ?, ?, 'draft', '{}'
+                    ?, ?, ?, ?, 'draft', '{}'
                 )
                 """,
                 (
-                    context[
-                        "project_id"
-                    ],
-                    context[
-                        "batch_id"
-                    ],
-                    context[
-                        "form_version_id"
-                    ],
-                    context[
-                        "office_id"
-                    ],
+                    context["project_id"],
+                    context["batch_id"],
+                    context["form_version_id"],
+                    context["office_id"],
                     canal_id,
+                    scope_uid,
                     business_code,
                 ),
             )
@@ -360,52 +292,100 @@ class SurveyTaskRecordScopeTestCase(
                 cursor.lastrowid
             )
 
-    def test_allowed_record_is_stamped_with_task_uid(
+    def test_explicit_scope_stamps_task_and_scope(
         self,
     ):
         context = self._build_context()
 
         record_id = self._insert_record(
             context,
-            context[
-                "allowed_canal_id"
-            ],
+            context["allowed_canal_id"],
             "TASK-ALLOW-001",
+            scope_uid=context["scope_a"],
         )
 
         with database.get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT source_task_uid
+                SELECT
+                    source_task_uid,
+                    source_management_scope_uid
                 FROM survey_records
                 WHERE id = ?
                 """,
-                (
-                    record_id,
-                ),
+                (record_id,),
             ).fetchone()
 
         self.assertEqual(
             row["source_task_uid"],
             "task-source-001",
         )
+        self.assertEqual(
+            row[
+                "source_management_scope_uid"
+            ],
+            context["scope_a"],
+        )
 
-    def test_out_of_scope_canal_is_blocked(
+    def test_same_canal_multiple_scopes_requires_explicit_scope(
         self,
     ):
         context = self._build_context()
 
         with self.assertRaisesRegex(
             sqlite3.IntegrityError,
-            "outside current task scope",
+            "required or ambiguous",
         ):
             self._insert_record(
                 context,
-                context[
-                    "blocked_canal_id"
-                ],
-                "TASK-BLOCK-001",
+                context["allowed_canal_id"],
+                "TASK-AMBIGUOUS-001",
             )
+
+    def test_scope_must_match_current_task_canal(
+        self,
+    ):
+        context = self._build_context()
+
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError,
+            "does not match current task canal",
+        ):
+            self._insert_record(
+                context,
+                context["blocked_canal_id"],
+                "TASK-BLOCK-001",
+                scope_uid=context["scope_a"],
+            )
+
+    def test_scope_uid_is_immutable(
+        self,
+    ):
+        context = self._build_context()
+
+        record_id = self._insert_record(
+            context,
+            context["allowed_canal_id"],
+            "TASK-IMMUTABLE-001",
+            scope_uid=context["scope_a"],
+        )
+
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError,
+            "source_management_scope_uid is immutable",
+        ):
+            with database.get_connection() as connection:
+                connection.execute(
+                    """
+                    UPDATE survey_records
+                    SET source_management_scope_uid = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        context["scope_b"],
+                        record_id,
+                    ),
+                )
 
     def test_no_current_task_keeps_central_entry_compatible(
         self,
@@ -422,26 +402,29 @@ class SurveyTaskRecordScopeTestCase(
 
         record_id = self._insert_record(
             context,
-            context[
-                "blocked_canal_id"
-            ],
+            context["blocked_canal_id"],
             "CENTRAL-001",
         )
 
         with database.get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT source_task_uid
+                SELECT
+                    source_task_uid,
+                    source_management_scope_uid
                 FROM survey_records
                 WHERE id = ?
                 """,
-                (
-                    record_id,
-                ),
+                (record_id,),
             ).fetchone()
 
         self.assertIsNone(
             row["source_task_uid"]
+        )
+        self.assertIsNone(
+            row[
+                "source_management_scope_uid"
+            ]
         )
 
 

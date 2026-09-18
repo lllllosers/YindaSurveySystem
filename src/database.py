@@ -2972,6 +2972,7 @@ def create_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    source_management_scope_uid=None,
 ):
     """
     第一次调查时，同时创建：
@@ -2995,7 +2996,6 @@ def create_engineering_survey(
     )
 
     with get_connection() as connection:
-
         duplicate = _find_duplicate_engineering_survey(
             connection=connection,
             project_id=project_id,
@@ -3056,7 +3056,9 @@ def create_engineering_survey(
             ),
         )
 
-        engineering_asset_id = asset_cursor.lastrowid
+        engineering_asset_id = (
+            asset_cursor.lastrowid
+        )
 
         record_cursor = connection.execute(
             """
@@ -3067,6 +3069,7 @@ def create_engineering_survey(
                 record_type,
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3075,7 +3078,10 @@ def create_engineering_survey(
                 record_status,
                 record_data_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
+            )
             """,
             (
                 project_id,
@@ -3084,6 +3090,7 @@ def create_engineering_survey(
                 "engineering",
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3094,7 +3101,9 @@ def create_engineering_survey(
             ),
         )
 
-        survey_record_id = record_cursor.lastrowid
+        survey_record_id = (
+            record_cursor.lastrowid
+        )
 
         if inspection_results is not None:
             _replace_inspection_results(
@@ -3104,8 +3113,12 @@ def create_engineering_survey(
             )
 
         return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
+            "engineering_asset_id": (
+                engineering_asset_id
+            ),
+            "survey_record_id": (
+                survey_record_id
+            ),
             "business_code": business_code,
         }
 
@@ -3230,16 +3243,11 @@ def create_range_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    source_management_scope_uid=None,
 ):
     """
     第一次保存区间型工程调查时，
-    同时创建：
-
-    1. EngineeringAsset；
-    2. SurveyRecord。
-
-    当前供附表2.5、2.7等
-    起止桩号工程共同使用。
+    同时创建 EngineeringAsset 和 SurveyRecord。
     """
 
     if not asset_name or not asset_name.strip():
@@ -3254,15 +3262,23 @@ def create_range_engineering_survey(
     )
 
     with get_connection() as connection:
-        duplicate = _find_duplicate_range_engineering_survey(
-            connection=connection,
-            project_id=project_id,
-            survey_batch_id=survey_batch_id,
-            form_version_id=form_version_id,
-            organization_unit_id=(organization_unit_id),
-            canal_unit_id=canal_unit_id,
-            start_stake_value=(start_stake_value),
-            end_stake_value=(end_stake_value),
+        duplicate = (
+            _find_duplicate_range_engineering_survey(
+                connection=connection,
+                project_id=project_id,
+                survey_batch_id=survey_batch_id,
+                form_version_id=form_version_id,
+                organization_unit_id=(
+                    organization_unit_id
+                ),
+                canal_unit_id=canal_unit_id,
+                start_stake_value=(
+                    start_stake_value
+                ),
+                end_stake_value=(
+                    end_stake_value
+                ),
+            )
         )
 
         if duplicate is not None:
@@ -3335,7 +3351,9 @@ def create_range_engineering_survey(
             ),
         )
 
-        engineering_asset_id = asset_cursor.lastrowid
+        engineering_asset_id = (
+            asset_cursor.lastrowid
+        )
 
         record_cursor = connection.execute(
             """
@@ -3346,6 +3364,7 @@ def create_range_engineering_survey(
                 record_type,
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3355,7 +3374,7 @@ def create_range_engineering_survey(
                 record_data_json
             )
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?
             )
             """,
@@ -3366,6 +3385,7 @@ def create_range_engineering_survey(
                 "engineering",
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3376,7 +3396,9 @@ def create_range_engineering_survey(
             ),
         )
 
-        survey_record_id = record_cursor.lastrowid
+        survey_record_id = (
+            record_cursor.lastrowid
+        )
 
         if inspection_results is not None:
             _replace_inspection_results(
@@ -3386,8 +3408,12 @@ def create_range_engineering_survey(
             )
 
         return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
+            "engineering_asset_id": (
+                engineering_asset_id
+            ),
+            "survey_record_id": (
+                survey_record_id
+            ),
             "business_code": business_code,
         }
 
@@ -3787,12 +3813,6 @@ def get_point_engineering_record(
 ):
     """
     获取一条点状工程调查记录。
-
-    当前供附表2.2、2.3等使用单桩号的
-    工程调查表共同使用。
-
-    form_code 用于保证：
-    调查页面只能打开属于自己的调查记录。
     """
 
     with get_connection() as connection:
@@ -3801,6 +3821,8 @@ def get_point_engineering_record(
             SELECT
                 sr.id AS survey_record_id,
                 sr.record_status,
+                sr.source_task_uid,
+                sr.source_management_scope_uid,
                 sr.business_code,
                 sr.record_data_json,
                 sr.survey_date,
@@ -3853,27 +3875,61 @@ def get_point_engineering_record(
             return None
 
         try:
-            record_data = json.loads(row["record_data_json"] or "{}")
+            record_data = json.loads(
+                row["record_data_json"]
+                or "{}"
+            )
         except json.JSONDecodeError:
             record_data = {}
 
         return {
-            "survey_record_id": (row["survey_record_id"]),
-            "engineering_asset_id": (row["engineering_asset_id"]),
-            "record_status": (row["record_status"]),
-            "business_code": (row["business_code"] or ""),
-            "asset_name": (row["asset_name"] or ""),
-            "asset_type": (row["asset_type"]),
-            "form_code": (row["form_code"]),
-            "single_stake_text": (row["single_stake_text"]),
-            "single_stake_value": (row["single_stake_value"]),
-            "department_id": (row["department_id"]),
-            "office_id": (row["office_id"]),
-            "canal_id": (row["canal_id"]),
+            "survey_record_id": (
+                row["survey_record_id"]
+            ),
+            "engineering_asset_id": (
+                row["engineering_asset_id"]
+            ),
+            "record_status": (
+                row["record_status"]
+            ),
+            "source_task_uid": (
+                row["source_task_uid"]
+            ),
+            "source_management_scope_uid": (
+                row[
+                    "source_management_scope_uid"
+                ]
+            ),
+            "business_code": (
+                row["business_code"]
+                or ""
+            ),
+            "asset_name": (
+                row["asset_name"]
+                or ""
+            ),
+            "asset_type": row["asset_type"],
+            "form_code": row["form_code"],
+            "single_stake_text": (
+                row["single_stake_text"]
+            ),
+            "single_stake_value": (
+                row["single_stake_value"]
+            ),
+            "department_id": (
+                row["department_id"]
+            ),
+            "office_id": row["office_id"],
+            "canal_id": row["canal_id"],
             "record_data": record_data,
-            "survey_date": (row["survey_date"]),
-            "overall_grade": (row["overall_grade"]),
-            "survey_comment": (row["survey_comment"] or ""),
+            "survey_date": row["survey_date"],
+            "overall_grade": (
+                row["overall_grade"]
+            ),
+            "survey_comment": (
+                row["survey_comment"]
+                or ""
+            ),
         }
 
 
@@ -4072,10 +4128,6 @@ def get_range_engineering_record(
 ):
     """
     获取一条区间型工程调查记录。
-
-    返回区间工程公共字段，
-    同时保留组织、渠系及工程身份信息，
-    供附表2.1、2.5、2.7等共同使用。
     """
 
     with get_connection() as connection:
@@ -4093,6 +4145,8 @@ def get_range_engineering_record(
                 sr.canal_unit_id,
 
                 sr.record_status,
+                sr.source_task_uid,
+                sr.source_management_scope_uid,
                 sr.business_code,
                 sr.record_data_json,
                 sr.survey_date,
@@ -4166,36 +4220,88 @@ def get_range_engineering_record(
         return None
 
     try:
-        record_data = json.loads(row["record_data_json"] or "{}")
+        record_data = json.loads(
+            row["record_data_json"]
+            or "{}"
+        )
     except json.JSONDecodeError:
         record_data = {}
 
     return {
-        "survey_record_id": row["survey_record_id"],
-        "engineering_asset_id": row["engineering_asset_id"],
+        "survey_record_id": (
+            row["survey_record_id"]
+        ),
+        "engineering_asset_id": (
+            row["engineering_asset_id"]
+        ),
         "project_id": row["project_id"],
-        "survey_batch_id": row["survey_batch_id"],
-        "form_version_id": row["form_version_id"],
-        "organization_unit_id": row["organization_unit_id"],
-        "canal_unit_id": row["canal_unit_id"],
-        "record_status": row["record_status"],
-        "business_code": row["business_code"] or "",
-        "asset_name": row["asset_name"] or "",
+        "survey_batch_id": (
+            row["survey_batch_id"]
+        ),
+        "form_version_id": (
+            row["form_version_id"]
+        ),
+        "organization_unit_id": (
+            row["organization_unit_id"]
+        ),
+        "canal_unit_id": (
+            row["canal_unit_id"]
+        ),
+        "record_status": (
+            row["record_status"]
+        ),
+        "source_task_uid": (
+            row["source_task_uid"]
+        ),
+        "source_management_scope_uid": (
+            row[
+                "source_management_scope_uid"
+            ]
+        ),
+        "business_code": (
+            row["business_code"]
+            or ""
+        ),
+        "asset_name": (
+            row["asset_name"]
+            or ""
+        ),
         "asset_type": row["asset_type"],
         "form_code": row["form_code"],
-        "single_stake_text": row["single_stake_text"],
-        "single_stake_value": row["single_stake_value"],
-        "start_stake_text": row["start_stake_text"] or "",
-        "start_stake_value": row["start_stake_value"],
-        "end_stake_text": row["end_stake_text"] or "",
-        "end_stake_value": row["end_stake_value"],
-        "department_id": row["department_id"],
+        "single_stake_text": (
+            row["single_stake_text"]
+        ),
+        "single_stake_value": (
+            row["single_stake_value"]
+        ),
+        "start_stake_text": (
+            row["start_stake_text"]
+            or ""
+        ),
+        "start_stake_value": (
+            row["start_stake_value"]
+        ),
+        "end_stake_text": (
+            row["end_stake_text"]
+            or ""
+        ),
+        "end_stake_value": (
+            row["end_stake_value"]
+        ),
+        "department_id": (
+            row["department_id"]
+        ),
         "office_id": row["office_id"],
         "canal_id": row["canal_id"],
         "record_data": record_data,
         "survey_date": row["survey_date"],
-        "overall_grade": row["overall_grade"],
-        "survey_comment": row["survey_comment"] or "",
+        "overall_grade": (
+            row["overall_grade"]
+        ),
+        "survey_comment": (
+            row["survey_comment"]
+            or ""
+        ),
     }
 
 
