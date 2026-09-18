@@ -389,6 +389,61 @@ def _ensure_official_master_data_schema(
     )
 
 
+def _ensure_survey_record_provenance_schema(
+    connection,
+):
+    """
+    保证 SurveyRecord 任务来源字段属于 database.py 核心 schema。
+
+    新数据库的 CREATE TABLE 已包含这些列；
+    对开发阶段已有数据库则在 init_database() 中幂等补齐。
+    """
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(survey_records)"
+        ).fetchall()
+    }
+
+    if "source_task_uid" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN source_task_uid TEXT
+            """
+        )
+
+    if "source_management_scope_uid" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN source_management_scope_uid TEXT
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_survey_records_source_task_uid
+        ON survey_records(
+            source_task_uid,
+            id
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_survey_records_source_scope_uid
+        ON survey_records(
+            source_task_uid,
+            source_management_scope_uid,
+            id
+        )
+        """
+    )
+
 def init_database():
     """
     初始化数据库。
@@ -673,6 +728,10 @@ def init_database():
 
                 organization_unit_id INTEGER,
                 canal_unit_id INTEGER,
+
+                source_task_uid TEXT,
+                source_management_scope_uid TEXT,
+
                 engineering_asset_id INTEGER,
 
                 business_code TEXT,
@@ -834,6 +893,10 @@ def init_database():
             );
 
             """)
+
+        _ensure_survey_record_provenance_schema(
+            connection
+        )
 
         _ensure_stable_identity_schema(connection)
 

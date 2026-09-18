@@ -578,6 +578,64 @@ class DatabaseCoreTestCase(unittest.TestCase):
             204,
         )
 
+    def test_survey_record_provenance_schema_is_core(
+        self,
+    ):
+        """
+        SurveyRecord 来源字段必须由 database.init_database()
+        直接保证，不能依赖任务服务二次补列。
+        """
+
+        with database.get_connection() as connection:
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(survey_records)"
+                ).fetchall()
+            }
+            indexes = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA index_list(survey_records)"
+                ).fetchall()
+            }
+
+        self.assertIn(
+            "source_task_uid",
+            columns,
+        )
+        self.assertIn(
+            "source_management_scope_uid",
+            columns,
+        )
+        self.assertIn(
+            "idx_survey_records_source_task_uid",
+            indexes,
+        )
+        self.assertIn(
+            "idx_survey_records_source_scope_uid",
+            indexes,
+        )
+
+        database.init_database()
+
+        with database.get_connection() as connection:
+            columns_after = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(survey_records)"
+                ).fetchall()
+            }
+
+        self.assertIn(
+            "source_task_uid",
+            columns_after,
+        )
+        self.assertIn(
+            "source_management_scope_uid",
+            columns_after,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
