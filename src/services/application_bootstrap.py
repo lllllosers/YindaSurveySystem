@@ -16,6 +16,9 @@ from services.canal_management_scope import (
 from services.official_canal_management_scope import (
     seed_official_canal_management_scopes,
 )
+from services.survey_task_issue_history import (
+    ensure_survey_task_issue_history_schema,
+)
 from services.survey_task_record_scope import (
     ensure_survey_task_record_scope_schema,
 )
@@ -59,6 +62,10 @@ def initialize_application_database():
         seed_official_canal_management_scopes()
     )
 
+    task_issue_history_result = (
+        ensure_survey_task_issue_history_schema()
+    )
+
     task_record_scope_result = (
         ensure_survey_task_record_scope_schema()
     )
@@ -79,6 +86,9 @@ def initialize_application_database():
         ),
         "official_canal_management_scope": (
             official_canal_management_scope_result
+        ),
+        "survey_task_issue_history": (
+            task_issue_history_result
         ),
         "survey_task_record_scope": (
             task_record_scope_result

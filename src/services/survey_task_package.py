@@ -7,6 +7,9 @@ from pathlib import Path
 import database
 
 from services.master_data_integrity import check_master_data_integrity
+from services.survey_task_issue_history import (
+    record_issued_survey_task,
+)
 from services.yd_package import (
     SURVEY_TASK_PACKAGE_KIND,
     encode_json_bytes,
@@ -490,6 +493,41 @@ def export_survey_task_package(request):
         manifest=manifest,
         payload_files=payload_files,
     )
+
+    # 任务包成功落盘后，立即把“下发时事实”
+    # 写入上级端不可变历史。
+    # 权威历史直接复用本次写入包内的冻结文档，
+    # 不重新读取 current CanalManagementScope。
+    try:
+        record_issued_survey_task(
+            package_uid=package_uid,
+            manifest=manifest,
+            task_document=task_data,
+            management_scopes=(
+                scope_reference
+            ),
+            canal_units=(
+                canal_reference
+            ),
+        )
+
+    except Exception:
+        # 没有权威下发历史的任务包不能流出。
+        # write_package() 已保证目标文件原先不存在，
+        # 因此这里可以安全删除本次刚生成的文件。
+        try:
+            write_result.output_path.unlink(
+                missing_ok=True
+            )
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                "调查任务包已经生成，但上级端下发历史"
+                "保存失败，且未登记任务包无法自动删除："
+                f"{write_result.output_path}。"
+                "请勿分发该任务包。"
+            ) from cleanup_error
+
+        raise
 
     return SurveyTaskExportResult(
         output_path=write_result.output_path,
