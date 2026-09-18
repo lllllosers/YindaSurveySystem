@@ -359,3 +359,30 @@ select {
   justify-content: flex-end;
   margin-top: 18px;
 }
+.result-upload-card {
+  margin-bottom: 18px;
+}
+.result-upload-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.result-list-card {
+  min-height: 520px;
+}
+.result-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.result-secondary {
+  margin-top: 3px;
+  color: #9aa3ad;
+  font-size: 11px;
+}
+.result-issue {
+  margin-bottom: 8px;
+  color: #5f6b78;
+  font-size: 12px;
+  line-height: 1.55;
+}

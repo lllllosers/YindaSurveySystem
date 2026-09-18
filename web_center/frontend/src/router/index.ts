@@ -6,6 +6,7 @@ import LoginView from "../views/LoginView.vue";
 import ProjectsView from "../views/ProjectsView.vue";
 import UsersView from "../views/UsersView.vue";
 import AuditView from "../views/AuditView.vue";
+import ResultsView from "../views/ResultsView.vue";
 import { useAuthStore } from "../stores/auth";
 
 export const router = createRouter({
@@ -23,6 +24,12 @@ export const router = createRouter({
       children: [
         { path: "", name: "dashboard", component: DashboardView },
         { path: "projects", name: "projects", component: ProjectsView },
+        {
+          path: "results",
+          name: "results",
+          component: ResultsView,
+          meta: { permission: "results.read" },
+        },
         {
           path: "users",
           name: "users",
