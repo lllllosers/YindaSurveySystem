@@ -389,6 +389,590 @@ def _ensure_official_master_data_schema(
     )
 
 
+
+_CANAL_UNIT_LEGACY_OWNER_COLUMN = (
+    "organization_unit_id"
+)
+
+_CANAL_UNIT_REBUILD_TABLE = (
+    "canal_units__physical_schema_v2"
+)
+
+_CANAL_UNIT_KNOWN_SCHEMA_OBJECTS = {
+    "uq_canal_units_canal_unit_uid",
+    "trg_canal_units_canal_unit_uid_insert",
+    "trg_canal_units_canal_unit_uid_immutable",
+    "uq_canal_units_master_key",
+    "idx_canal_units_sort_order",
+}
+
+
+_STALE_TASK_WORKSPACE_TABLE = (
+    "survey_task_workspace_canals"
+)
+
+_KNOWN_TASK_SCOPE_TRIGGER_NAMES = {
+    "trg_survey_records_task_scope_insert",
+    "trg_survey_records_task_source_insert",
+    "trg_survey_records_task_scope_update",
+    "trg_survey_records_source_task_uid_immutable",
+    "trg_survey_records_source_management_scope_uid_immutable",
+}
+
+
+def _drop_stale_task_scope_triggers(
+    connection,
+):
+    """
+    删除仍引用已退役 workspace_canals 表的已知任务约束触发器。
+
+    这是数据库结构迁移前的窄范围修复：
+    - 只检查 trigger SQL 中明确引用旧表名的触发器；
+    - 只允许删除当前版本已知的任务触发器名称；
+    - 遇到未知触发器时拒绝迁移，不做猜测；
+    - 当前版本触发器引用 workspace_scopes，不会被删除。
+
+    应用 bootstrap 后续会由
+    ensure_survey_task_record_scope_schema()
+    重新建立当前版本触发器。
+    """
+
+    rows = connection.execute(
+        """
+        SELECT
+            name,
+            sql
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND sql IS NOT NULL
+          AND instr(
+                lower(sql),
+                lower(?)
+              ) > 0
+        ORDER BY name
+        """,
+        (
+            _STALE_TASK_WORKSPACE_TABLE,
+        ),
+    ).fetchall()
+
+    if not rows:
+        return ()
+
+    unknown = [
+        str(
+            row["name"]
+        )
+        for row in rows
+        if row["name"]
+        not in _KNOWN_TASK_SCOPE_TRIGGER_NAMES
+    ]
+
+    if unknown:
+        raise RuntimeError(
+            "检测到引用已退役任务工作区表的"
+            "未知触发器："
+            + "、".join(
+                unknown
+            )
+            + "。为避免误删自定义数据库逻辑，"
+            "本次 schema 迁移已停止。"
+        )
+
+    removed = []
+
+    for row in rows:
+        trigger_name = str(
+            row["name"]
+        )
+
+        # trigger_name 已通过固定白名单验证。
+        connection.execute(
+            (
+                'DROP TRIGGER IF EXISTS "'
+                + trigger_name
+                + '"'
+            )
+        )
+
+        removed.append(
+            trigger_name
+        )
+
+    return tuple(
+        removed
+    )
+
+
+def _ensure_canal_unit_physical_schema(
+    connection,
+):
+    """
+    将既有 canal_units 收口为纯物理渠道表。
+
+    当前版本不再允许 CanalUnit 保存管理单位归属。
+    对仍带 organization_unit_id 的开发阶段数据库：
+    1. 先确认旧归属已经存在等价 CanalManagementScope；
+    2. 拒绝存在未知 canal_units 索引/触发器的数据库；
+    3. 在单个 SQLite 事务内重建 canal_units；
+    4. 保留 ID、层级、状态、稳定 UID、master_key 和排序；
+    5. 事务提交前执行 foreign_key_check。
+
+    新数据库已经使用目标 schema，因此本函数直接返回。
+    """
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(canal_units)"
+        ).fetchall()
+    }
+
+    if (
+        _CANAL_UNIT_LEGACY_OWNER_COLUMN
+        not in columns
+    ):
+        return {
+            "rebuilt": False,
+            "legacy_assignment_count": 0,
+        }
+
+    required_columns = {
+        "id",
+        "parent_id",
+        "name",
+        "canal_level",
+        "status",
+        "description",
+        "created_at",
+        "updated_at",
+    }
+
+    missing_required = sorted(
+        required_columns - columns
+    )
+
+    if missing_required:
+        raise RuntimeError(
+            "canal_units 结构不完整，"
+            "无法安全执行物理 schema 收口："
+            + "、".join(missing_required)
+            + "。"
+        )
+
+    schema_objects = connection.execute(
+        """
+        SELECT
+            type,
+            name
+        FROM sqlite_master
+        WHERE tbl_name = 'canal_units'
+          AND type IN ('index', 'trigger')
+          AND sql IS NOT NULL
+        ORDER BY type, name
+        """
+    ).fetchall()
+
+    unknown_objects = [
+        (
+            str(row["type"]),
+            str(row["name"]),
+        )
+        for row in schema_objects
+        if row["name"]
+        not in _CANAL_UNIT_KNOWN_SCHEMA_OBJECTS
+    ]
+
+    if unknown_objects:
+        object_text = "、".join(
+            f"{object_type}:{object_name}"
+            for (
+                object_type,
+                object_name,
+            )
+            in unknown_objects
+        )
+
+        raise RuntimeError(
+            "canal_units 存在当前版本"
+            "无法自动重建的未知索引/触发器："
+            f"{object_text}。"
+        )
+
+    legacy_assignment_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*) AS value
+            FROM canal_units
+            WHERE organization_unit_id
+                IS NOT NULL
+            """
+        ).fetchone()["value"]
+    )
+
+    if legacy_assignment_count:
+        scope_table_exists = (
+            connection.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name =
+                    'canal_management_scopes'
+                """
+            ).fetchone()
+            is not None
+        )
+
+        if not scope_table_exists:
+            raise RuntimeError(
+                "检测到 canal_units 中仍有"
+                "旧管理单位数据，但数据库尚未建立"
+                " CanalManagementScope。"
+                "为避免丢失管理关系，"
+                "本次 schema 迁移已停止。"
+            )
+
+        unmatched = connection.execute(
+            """
+            SELECT
+                canal.id,
+                canal.name,
+                canal.organization_unit_id
+            FROM canal_units AS canal
+            WHERE
+                canal.organization_unit_id
+                    IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM canal_management_scopes
+                        AS cms
+                    WHERE
+                        cms.canal_unit_id
+                            = canal.id
+                        AND
+                        cms.organization_unit_id
+                            = canal.organization_unit_id
+                )
+            ORDER BY canal.id
+            LIMIT 10
+            """
+        ).fetchall()
+
+        if unmatched:
+            details = "；".join(
+                (
+                    f"ID={row['id']} "
+                    f"{row['name']} -> 组织ID "
+                    f"{row['organization_unit_id']}"
+                )
+                for row in unmatched
+            )
+
+            raise RuntimeError(
+                "检测到尚未迁移到 "
+                "CanalManagementScope 的"
+                "旧渠道管理关系："
+                f"{details}。"
+                "为避免数据丢失，"
+                "本次 schema 迁移已停止。"
+            )
+
+    source_expressions = {
+        "canal_unit_uid": (
+            "canal_unit_uid"
+            if "canal_unit_uid" in columns
+            else "NULL"
+        ),
+        "master_key": (
+            "master_key"
+            if "master_key" in columns
+            else "NULL"
+        ),
+        "sort_order": (
+            "COALESCE(sort_order, 0)"
+            if "sort_order" in columns
+            else "0"
+        ),
+    }
+
+    row_count_before = int(
+        connection.execute(
+            """
+            SELECT COUNT(*) AS value
+            FROM canal_units
+            """
+        ).fetchone()["value"]
+    )
+
+    original_foreign_keys = int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    )
+
+    if connection.in_transaction:
+        connection.commit()
+
+    connection.execute(
+        "PRAGMA foreign_keys = OFF"
+    )
+
+    if int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    ) != 0:
+        raise RuntimeError(
+            "SQLite 未能临时关闭 foreign_keys，"
+            "无法安全重建 canal_units。"
+        )
+
+    try:
+        connection.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        # SQLite ALTER TABLE RENAME 会重新解析数据库 schema。
+        # 若历史 trigger 仍引用已经删除的
+        # survey_task_workspace_canals，会导致与 CanalUnit
+        # 无关的 rename 也失败，因此先在同一事务内清掉
+        # 这些已知陈旧 trigger。
+        _drop_stale_task_scope_triggers(
+            connection
+        )
+
+        connection.execute(
+            f"""
+            DROP TABLE IF EXISTS
+                {_CANAL_UNIT_REBUILD_TABLE}
+            """
+        )
+
+        connection.execute(
+            f"""
+            CREATE TABLE
+                {_CANAL_UNIT_REBUILD_TABLE} (
+                    id INTEGER PRIMARY KEY
+                        AUTOINCREMENT,
+
+                    parent_id INTEGER,
+
+                    name TEXT NOT NULL,
+
+                    canal_level TEXT NOT NULL
+                        CHECK (
+                            canal_level IN (
+                                '01',
+                                '02',
+                                '03',
+                                '04'
+                            )
+                        ),
+
+                    status TEXT NOT NULL
+                        DEFAULT 'active'
+                        CHECK (
+                            status IN (
+                                'active',
+                                'inactive'
+                            )
+                        ),
+
+                    description TEXT,
+
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+
+                    canal_unit_uid TEXT,
+                    master_key TEXT,
+
+                    sort_order INTEGER
+                        NOT NULL DEFAULT 0,
+
+                    FOREIGN KEY (parent_id)
+                        REFERENCES
+                            {_CANAL_UNIT_REBUILD_TABLE}(id)
+                )
+            """
+        )
+
+        connection.execute(
+            f"""
+            INSERT INTO
+                {_CANAL_UNIT_REBUILD_TABLE} (
+                    id,
+                    parent_id,
+                    name,
+                    canal_level,
+                    status,
+                    description,
+                    created_at,
+                    updated_at,
+                    canal_unit_uid,
+                    master_key,
+                    sort_order
+                )
+            SELECT
+                id,
+                parent_id,
+                name,
+                canal_level,
+                status,
+                description,
+                created_at,
+                updated_at,
+                {source_expressions['canal_unit_uid']},
+                {source_expressions['master_key']},
+                {source_expressions['sort_order']}
+            FROM canal_units
+            ORDER BY id
+            """
+        )
+
+        row_count_after_copy = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*) AS value
+                FROM {_CANAL_UNIT_REBUILD_TABLE}
+                """
+            ).fetchone()["value"]
+        )
+
+        if (
+            row_count_after_copy
+            != row_count_before
+        ):
+            raise RuntimeError(
+                "canal_units 重建复制行数不一致，"
+                "迁移已回滚。"
+            )
+
+        connection.execute(
+            "DROP TABLE canal_units"
+        )
+
+        connection.execute(
+            f"""
+            ALTER TABLE
+                {_CANAL_UNIT_REBUILD_TABLE}
+            RENAME TO canal_units
+            """
+        )
+
+        migrated_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(canal_units)"
+            ).fetchall()
+        }
+
+        if (
+            _CANAL_UNIT_LEGACY_OWNER_COLUMN
+            in migrated_columns
+        ):
+            raise RuntimeError(
+                "canal_units 旧管理字段"
+                "仍然存在，迁移已回滚。"
+            )
+
+        parent_foreign_keys = [
+            dict(row)
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(canal_units)"
+            ).fetchall()
+        ]
+
+        invalid_parent_fk = [
+            row
+            for row in parent_foreign_keys
+            if (
+                row["from"] == "parent_id"
+                and row["table"]
+                != "canal_units"
+            )
+        ]
+
+        if invalid_parent_fk:
+            raise RuntimeError(
+                "canal_units 自引用外键"
+                "在重建后指向异常，"
+                "迁移已回滚。"
+            )
+
+        foreign_key_violations = connection.execute(
+            "PRAGMA foreign_key_check"
+        ).fetchall()
+
+        if foreign_key_violations:
+            preview = "；".join(
+                (
+                    f"{row[0]} rowid={row[1]} "
+                    f"parent={row[2]}"
+                )
+                for row in foreign_key_violations[:10]
+            )
+
+            raise RuntimeError(
+                "canal_units 重建后"
+                "外键一致性检查失败："
+                f"{preview}。"
+                "迁移已回滚。"
+            )
+
+        connection.commit()
+
+    except Exception:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+
+    finally:
+        connection.execute(
+            (
+                "PRAGMA foreign_keys = ON"
+                if original_foreign_keys
+                else
+                "PRAGMA foreign_keys = OFF"
+            )
+        )
+
+    restored_foreign_keys = int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    )
+
+    if (
+        restored_foreign_keys
+        != original_foreign_keys
+    ):
+        raise RuntimeError(
+            "canal_units schema 迁移完成后"
+            "未能恢复 SQLite foreign_keys 状态。"
+        )
+
+    return {
+        "rebuilt": True,
+        "legacy_assignment_count": (
+            legacy_assignment_count
+        ),
+        "row_count": row_count_before,
+    }
+
 def _ensure_survey_record_provenance_schema(
     connection,
 ):
@@ -564,7 +1148,6 @@ def init_database():
                         )
                     ),
 
-                organization_unit_id INTEGER,
 
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (
@@ -583,10 +1166,7 @@ def init_database():
                     DEFAULT (datetime('now', 'localtime')),
 
                 FOREIGN KEY (parent_id)
-                    REFERENCES canal_units(id),
-
-                FOREIGN KEY (organization_unit_id)
-                    REFERENCES organization_units(id)
+                    REFERENCES canal_units(id)
             );
 
 
@@ -893,6 +1473,10 @@ def init_database():
             );
 
             """)
+
+        _ensure_canal_unit_physical_schema(
+            connection
+        )
 
         _ensure_survey_record_provenance_schema(
             connection
@@ -1671,7 +2255,7 @@ def get_organization_unit_usage(
     获取组织机构引用情况。
 
     渠道管理关系只读取 CanalManagementScope。
-    canal_units.organization_unit_id 已退出运行事实模型。
+    CanalUnit 不再保存组织管理归属。
     基层处的业务引用同时包括直属末级管理单位产生的
     工程和调查记录。
     """

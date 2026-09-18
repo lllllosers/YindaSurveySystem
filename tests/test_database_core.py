@@ -1,6 +1,7 @@
 import gc
 import time
 import sys
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -634,6 +635,541 @@ class DatabaseCoreTestCase(unittest.TestCase):
         self.assertIn(
             "source_management_scope_uid",
             columns_after,
+        )
+
+    def test_canal_unit_schema_is_physical_only(
+        self,
+    ):
+        with database.get_connection() as connection:
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(canal_units)"
+                ).fetchall()
+            }
+
+            foreign_keys = [
+                dict(row)
+                for row in connection.execute(
+                    "PRAGMA foreign_key_list(canal_units)"
+                ).fetchall()
+            ]
+
+        self.assertNotIn(
+            "organization_unit_id",
+            columns,
+        )
+
+        self.assertFalse(
+            any(
+                row["from"]
+                == "organization_unit_id"
+                for row in foreign_keys
+            )
+        )
+
+        self.assertTrue(
+            any(
+                row["from"] == "parent_id"
+                and row["table"]
+                == "canal_units"
+                for row in foreign_keys
+            )
+        )
+
+    def test_legacy_canal_owner_schema_is_safely_migrated(
+        self,
+    ):
+        if self.temp_db_path.exists():
+            self.temp_db_path.unlink()
+
+        raw = sqlite3.connect(
+            self.temp_db_path
+        )
+
+        try:
+            raw.execute(
+                "PRAGMA foreign_keys = ON"
+            )
+
+            raw.executescript(
+                """
+                CREATE TABLE organization_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    parent_id INTEGER,
+                    name TEXT NOT NULL,
+                    unit_type TEXT NOT NULL,
+                    business_code TEXT,
+                    status TEXT NOT NULL
+                        DEFAULT 'active',
+                    description TEXT,
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    FOREIGN KEY (parent_id)
+                        REFERENCES organization_units(id)
+                );
+
+                CREATE TABLE canal_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    parent_id INTEGER,
+                    name TEXT NOT NULL,
+                    canal_level TEXT NOT NULL,
+                    organization_unit_id INTEGER,
+                    status TEXT NOT NULL
+                        DEFAULT 'active',
+                    description TEXT,
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    canal_unit_uid TEXT,
+                    master_key TEXT,
+                    sort_order INTEGER
+                        NOT NULL DEFAULT 0,
+                    FOREIGN KEY (parent_id)
+                        REFERENCES canal_units(id),
+                    FOREIGN KEY (
+                        organization_unit_id
+                    )
+                        REFERENCES organization_units(id)
+                );
+
+                CREATE TABLE canal_management_scopes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canal_unit_id INTEGER NOT NULL,
+                    organization_unit_id INTEGER NOT NULL,
+                    FOREIGN KEY (canal_unit_id)
+                        REFERENCES canal_units(id),
+                    FOREIGN KEY (
+                        organization_unit_id
+                    )
+                        REFERENCES organization_units(id)
+                );
+
+                CREATE TABLE legacy_canal_ref (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canal_unit_id INTEGER NOT NULL,
+                    FOREIGN KEY (canal_unit_id)
+                        REFERENCES canal_units(id)
+                );
+
+                CREATE TABLE survey_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT
+                );
+
+                CREATE TRIGGER
+                    trg_survey_records_task_scope_insert
+                BEFORE INSERT ON survey_records
+                FOR EACH ROW
+                BEGIN
+                    SELECT CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM survey_task_workspace_canals
+                        )
+                        THEN RAISE(
+                            ABORT,
+                            'stale task workspace trigger'
+                        )
+                    END;
+                END;
+
+                INSERT INTO organization_units (
+                    id,
+                    parent_id,
+                    name,
+                    unit_type,
+                    business_code
+                )
+                VALUES (
+                    1,
+                    NULL,
+                    '测试处',
+                    'department',
+                    '1'
+                );
+
+                INSERT INTO organization_units (
+                    id,
+                    parent_id,
+                    name,
+                    unit_type,
+                    business_code
+                )
+                VALUES (
+                    2,
+                    1,
+                    '测试所',
+                    'water_office',
+                    '01'
+                );
+
+                INSERT INTO canal_units (
+                    id,
+                    parent_id,
+                    name,
+                    canal_level,
+                    organization_unit_id,
+                    description,
+                    canal_unit_uid,
+                    master_key,
+                    sort_order
+                )
+                VALUES (
+                    10,
+                    NULL,
+                    '历史测试干渠',
+                    '01',
+                    2,
+                    '迁移保留备注',
+                    'legacy-canal-uid',
+                    'CANAL-LEGACY-TEST',
+                    123
+                );
+
+                INSERT INTO canal_management_scopes (
+                    canal_unit_id,
+                    organization_unit_id
+                )
+                VALUES (
+                    10,
+                    2
+                );
+
+                INSERT INTO legacy_canal_ref (
+                    canal_unit_id
+                )
+                VALUES (
+                    10
+                );
+                """
+            )
+
+            raw.commit()
+
+        finally:
+            raw.close()
+
+        database.init_database()
+
+        with database.get_connection() as connection:
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(canal_units)"
+                ).fetchall()
+            }
+
+            canal = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    description,
+                    canal_unit_uid,
+                    master_key,
+                    sort_order
+                FROM canal_units
+                WHERE id = 10
+                """
+            ).fetchone()
+
+            reference = connection.execute(
+                """
+                SELECT canal_unit_id
+                FROM legacy_canal_ref
+                WHERE id = 1
+                """
+            ).fetchone()
+
+            foreign_key_violations = (
+                connection.execute(
+                    "PRAGMA foreign_key_check"
+                ).fetchall()
+            )
+
+            indexes = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA index_list(canal_units)"
+                ).fetchall()
+            }
+
+            stale_trigger = connection.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'trigger'
+                  AND name =
+                    'trg_survey_records_task_scope_insert'
+                """
+            ).fetchone()
+
+        self.assertIsNone(
+            stale_trigger
+        )
+
+        self.assertNotIn(
+            "organization_unit_id",
+            columns,
+        )
+
+        self.assertIsNotNone(
+            canal
+        )
+        self.assertEqual(
+            int(canal["id"]),
+            10,
+        )
+        self.assertEqual(
+            canal["name"],
+            "历史测试干渠",
+        )
+        self.assertEqual(
+            canal["description"],
+            "迁移保留备注",
+        )
+        self.assertEqual(
+            canal["canal_unit_uid"],
+            "legacy-canal-uid",
+        )
+        self.assertEqual(
+            canal["master_key"],
+            "CANAL-LEGACY-TEST",
+        )
+        self.assertEqual(
+            int(canal["sort_order"]),
+            123,
+        )
+
+        self.assertIsNotNone(
+            reference
+        )
+        self.assertEqual(
+            int(
+                reference[
+                    "canal_unit_id"
+                ]
+            ),
+            10,
+        )
+
+        self.assertEqual(
+            foreign_key_violations,
+            [],
+        )
+
+        self.assertIn(
+            "uq_canal_units_canal_unit_uid",
+            indexes,
+        )
+        self.assertIn(
+            "uq_canal_units_master_key",
+            indexes,
+        )
+        self.assertIn(
+            "idx_canal_units_sort_order",
+            indexes,
+        )
+
+        new_id = database.create_canal_unit(
+            name="迁移后新增渠道",
+            canal_level="01",
+        )
+
+        self.assertGreater(
+            int(new_id),
+            10,
+        )
+
+    def test_legacy_canal_owner_schema_refuses_unmapped_assignment(
+        self,
+    ):
+        if self.temp_db_path.exists():
+            self.temp_db_path.unlink()
+
+        raw = sqlite3.connect(
+            self.temp_db_path
+        )
+
+        try:
+            raw.execute(
+                "PRAGMA foreign_keys = ON"
+            )
+
+            raw.executescript(
+                """
+                CREATE TABLE organization_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    parent_id INTEGER,
+                    name TEXT NOT NULL,
+                    unit_type TEXT NOT NULL,
+                    business_code TEXT,
+                    status TEXT NOT NULL
+                        DEFAULT 'active',
+                    description TEXT,
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    FOREIGN KEY (parent_id)
+                        REFERENCES organization_units(id)
+                );
+
+                CREATE TABLE canal_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    parent_id INTEGER,
+                    name TEXT NOT NULL,
+                    canal_level TEXT NOT NULL,
+                    organization_unit_id INTEGER,
+                    status TEXT NOT NULL
+                        DEFAULT 'active',
+                    description TEXT,
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+                    FOREIGN KEY (parent_id)
+                        REFERENCES canal_units(id),
+                    FOREIGN KEY (
+                        organization_unit_id
+                    )
+                        REFERENCES organization_units(id)
+                );
+
+                INSERT INTO organization_units (
+                    id,
+                    parent_id,
+                    name,
+                    unit_type,
+                    business_code
+                )
+                VALUES (
+                    1,
+                    NULL,
+                    '测试处',
+                    'department',
+                    '1'
+                );
+
+                INSERT INTO organization_units (
+                    id,
+                    parent_id,
+                    name,
+                    unit_type,
+                    business_code
+                )
+                VALUES (
+                    2,
+                    1,
+                    '测试所',
+                    'water_office',
+                    '01'
+                );
+
+                INSERT INTO canal_units (
+                    id,
+                    name,
+                    canal_level,
+                    organization_unit_id
+                )
+                VALUES (
+                    10,
+                    '未迁移渠道',
+                    '01',
+                    2
+                );
+                """
+            )
+
+            raw.commit()
+
+        finally:
+            raw.close()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "CanalManagementScope",
+        ):
+            database.init_database()
+
+        raw = sqlite3.connect(
+            self.temp_db_path
+        )
+
+        try:
+            columns = {
+                row[1]
+                for row in raw.execute(
+                    "PRAGMA table_info(canal_units)"
+                ).fetchall()
+            }
+
+            row = raw.execute(
+                """
+                SELECT
+                    id,
+                    organization_unit_id
+                FROM canal_units
+                WHERE id = 10
+                """
+            ).fetchone()
+
+        finally:
+            raw.close()
+
+        self.assertIn(
+            "organization_unit_id",
+            columns,
+        )
+        self.assertEqual(
+            row,
+            (
+                10,
+                2,
+            ),
         )
 
 
