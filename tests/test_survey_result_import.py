@@ -457,7 +457,8 @@ class SurveyResultImportTestCase(
                 """
                 SELECT
                     id,
-                    parent_id
+                    parent_id,
+                    organization_unit_uid
                 FROM organization_units
                 WHERE master_key = ?
                 """,
@@ -466,18 +467,42 @@ class SurveyResultImportTestCase(
                 ),
             ).fetchone()
 
-            canal = connection.execute(
+            scope = connection.execute(
                 """
-                SELECT id
-                FROM canal_units
-                WHERE master_key = ?
+                SELECT
+                    cms.management_scope_uid,
+                    cms.canal_unit_id,
+                    cu.canal_unit_uid,
+                    ou.organization_unit_uid,
+                    cu.name AS canal_name,
+                    cu.canal_level,
+                    cms.range_mode,
+                    cms.start_stake_text,
+                    cms.start_stake_value,
+                    cms.end_stake_text,
+                    cms.end_stake_value,
+                    cms.sort_order,
+                    cms.status,
+                    cms.description
+                FROM canal_management_scopes AS cms
+                JOIN canal_units AS cu
+                  ON cu.id = cms.canal_unit_id
+                JOIN organization_units AS ou
+                  ON ou.id = cms.organization_unit_id
+                WHERE cms.master_key = ?
                 """,
                 (
-                    "CANAL-S001",
+                    "CMS-CANAL-S001-ORG-D01-O03",
                 ),
             ).fetchone()
 
+            self.assertIsNotNone(
+                scope
+            )
+
             # 模拟目标库本身也处在父任务工作区。
+            # Stage 14.4.2 起，父任务范围使用冻结 scope snapshot，
+            # 不再写入已删除的 测试阶段旧的渠道任务关系表。
             workspace = connection.execute(
                 """
                 INSERT INTO survey_task_workspaces (
@@ -518,17 +543,77 @@ class SurveyResultImportTestCase(
             connection.execute(
                 """
                 INSERT INTO
-                    survey_task_workspace_canals (
+                    survey_task_workspace_scopes (
                         task_workspace_id,
-                        canal_unit_id
+                        management_scope_uid,
+                        canal_unit_id,
+                        canal_unit_uid,
+                        organization_unit_uid,
+                        canal_name_snapshot,
+                        canal_level_snapshot,
+                        range_mode,
+                        start_stake_text,
+                        start_stake_value,
+                        end_stake_text,
+                        end_stake_value,
+                        sort_order,
+                        source_scope_status,
+                        description
                     )
-                VALUES (?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     workspace_id,
+                    scope[
+                        "management_scope_uid"
+                    ],
                     int(
-                        canal["id"]
+                        scope[
+                            "canal_unit_id"
+                        ]
                     ),
+                    scope[
+                        "canal_unit_uid"
+                    ],
+                    scope[
+                        "organization_unit_uid"
+                    ],
+                    scope[
+                        "canal_name"
+                    ],
+                    scope[
+                        "canal_level"
+                    ],
+                    scope[
+                        "range_mode"
+                    ],
+                    scope[
+                        "start_stake_text"
+                    ],
+                    scope[
+                        "start_stake_value"
+                    ],
+                    scope[
+                        "end_stake_text"
+                    ],
+                    scope[
+                        "end_stake_value"
+                    ],
+                    int(
+                        scope[
+                            "sort_order"
+                        ]
+                        or 0
+                    ),
+                    scope[
+                        "status"
+                    ],
+                    scope[
+                        "description"
+                    ],
                 ),
             )
 

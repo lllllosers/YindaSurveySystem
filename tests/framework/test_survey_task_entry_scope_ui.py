@@ -10,11 +10,9 @@ os.environ.setdefault(
     "offscreen",
 )
 
-
 PROJECT_ROOT = (
     Path(__file__).resolve().parents[2]
 )
-
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -75,7 +73,7 @@ class SurveyTaskEntryScopeUiTestCase(
         "generic_engineering_survey_page."
         "get_departments"
     )
-    def test_cached_new_record_task_scope_filters_ownership(
+    def test_cached_task_scope_snapshot_filters_canals(
         self,
         mock_departments,
         mock_offices,
@@ -133,9 +131,12 @@ class SurveyTaskEntryScopeUiTestCase(
         self.page._entry_task_workspace = {
             "department_id": 10,
             "organization_unit_id": 20,
-            "canals": (
+            "management_scopes": (
                 {
-                    "id": 30,
+                    "management_scope_uid": (
+                        "scope-task-001"
+                    ),
+                    "canal_unit_id": 30,
                 },
             ),
         }
@@ -154,7 +155,6 @@ class SurveyTaskEntryScopeUiTestCase(
             self.page.canal_combo.count(),
             1,
         )
-
         self.assertEqual(
             self.page.department_combo.currentData()[
                 "id"

@@ -118,7 +118,7 @@ class SurveyTaskReceivePanel(QWidget):
         self.organization_label = QLabel(
             "-"
         )
-        self.canals_label = QLabel(
+        self.scope_summary_label = QLabel(
             "-"
         )
         self.received_at_label = QLabel(
@@ -129,7 +129,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.task_name_label,
             self.project_batch_label,
             self.organization_label,
-            self.canals_label,
+            self.scope_summary_label,
             self.received_at_label,
         ):
             label.setWordWrap(True)
@@ -150,8 +150,8 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label,
         )
         current_form.addRow(
-            "任务渠系：",
-            self.canals_label,
+            "任务分管范围：",
+            self.scope_summary_label,
         )
         current_form.addRow(
             "接收时间：",
@@ -436,7 +436,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label.setText(
                 "-"
             )
-            self.canals_label.setText(
+            self.scope_summary_label.setText(
                 "-"
             )
             self.received_at_label.setText(
@@ -457,7 +457,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label.setText(
                 "-"
             )
-            self.canals_label.setText(
+            self.scope_summary_label.setText(
                 "-"
             )
             self.received_at_label.setText(
@@ -492,38 +492,80 @@ class SurveyTaskReceivePanel(QWidget):
             )
         )
 
-        canals = tuple(
+        scopes = tuple(
             workspace.get(
-                "canals"
+                "management_scopes"
             )
             or ()
         )
 
-        canal_names = [
-            str(
-                item[
-                    "name"
-                ]
-            )
-            for item in canals
-        ]
+        labels = []
 
-        if not canal_names:
-            canal_text = "-"
-        elif len(canal_names) <= 6:
-            canal_text = "、".join(
-                canal_names
+        for item in scopes:
+            canal_name = str(
+                item.get(
+                    "canal_name"
+                )
+                or "-"
+            )
+
+            range_mode = str(
+                item.get(
+                    "range_mode"
+                )
+                or ""
+            )
+
+            if range_mode == "whole":
+                range_text = "全渠"
+            elif (
+                range_mode
+                == "segment_unknown"
+            ):
+                range_text = "边界未知"
+            else:
+                start = (
+                    item.get(
+                        "start_stake_text"
+                    )
+                    or item.get(
+                        "start_stake_value"
+                    )
+                    or "?"
+                )
+                end = (
+                    item.get(
+                        "end_stake_text"
+                    )
+                    or item.get(
+                        "end_stake_value"
+                    )
+                    or "?"
+                )
+                range_text = (
+                    f"{start}～{end}"
+                )
+
+            labels.append(
+                f"{canal_name}（{range_text}）"
+            )
+
+        if not labels:
+            scope_text = "-"
+        elif len(labels) <= 6:
+            scope_text = "、".join(
+                labels
             )
         else:
-            canal_text = (
+            scope_text = (
                 "、".join(
-                    canal_names[:6]
+                    labels[:6]
                 )
-                + f" 等 {len(canal_names)} 条"
+                + f" 等 {len(labels)} 项"
             )
 
-        self.canals_label.setText(
-            canal_text
+        self.scope_summary_label.setText(
+            scope_text
         )
 
         self.received_at_label.setText(

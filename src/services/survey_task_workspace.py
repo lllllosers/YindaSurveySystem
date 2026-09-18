@@ -55,14 +55,39 @@ def ensure_survey_task_workspace_schema():
     """
     建立“已接收调查任务”本地工作区。
 
-    Stage 12.1 只建立一个最小闭环：
-    .ydtask -> 本地任务工作区 -> 当前项目/批次。
+    Stage 14.4.2 起，任务权限事实保存为
+    survey_task_workspace_scopes 的冻结快照。
 
-    不创建 EngineeringAsset / SurveyRecord，
-    不自动生成调查数据。
+    旧 survey_task_workspace_canals 属于测试阶段合同：
+    - 不迁移；
+    - 检测到后直接作废旧 task workspace；
+    - 删除旧关系表；
+    - 旧 .ydtask 需要重新生成并重新接收。
     """
-
     with database.get_connection() as connection:
+        legacy_table = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'survey_task_workspace_canals'
+            """
+        ).fetchone()
+
+        if legacy_table is not None:
+            # 旧任务包已经明确不兼容。
+            # workspace 只保存任务上下文，不删除调查业务数据。
+            connection.execute(
+                """
+                DELETE FROM survey_task_workspaces
+                """
+            )
+            connection.execute(
+                """
+                DROP TABLE survey_task_workspace_canals
+                """
+            )
+
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS
@@ -112,27 +137,89 @@ def ensure_survey_task_workspace_schema():
             WHERE is_current = 1;
 
             CREATE TABLE IF NOT EXISTS
-                survey_task_workspace_canals (
-                    task_workspace_id INTEGER NOT NULL,
-                    canal_unit_id INTEGER NOT NULL,
+                survey_task_workspace_scopes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-                    PRIMARY KEY (
-                        task_workspace_id,
-                        canal_unit_id
-                    ),
+                    task_workspace_id INTEGER NOT NULL,
+                    management_scope_uid TEXT NOT NULL,
+
+                    canal_unit_id INTEGER NOT NULL,
+                    canal_unit_uid TEXT NOT NULL,
+                    organization_unit_uid TEXT NOT NULL,
+
+                    canal_name_snapshot TEXT NOT NULL,
+                    canal_level_snapshot TEXT NOT NULL,
+
+                    range_mode TEXT NOT NULL
+                        CHECK (
+                            range_mode IN (
+                                'whole',
+                                'segment_known',
+                                'segment_unknown'
+                            )
+                        ),
+
+                    start_stake_text TEXT,
+                    start_stake_value REAL,
+                    end_stake_text TEXT,
+                    end_stake_value REAL,
+
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    source_scope_status TEXT NOT NULL
+                        CHECK (
+                            source_scope_status IN (
+                                'active',
+                                'inactive'
+                            )
+                        ),
+                    description TEXT,
 
                     FOREIGN KEY (task_workspace_id)
                         REFERENCES survey_task_workspaces(id)
                         ON DELETE CASCADE,
 
                     FOREIGN KEY (canal_unit_id)
-                        REFERENCES canal_units(id)
+                        REFERENCES canal_units(id),
+
+                    UNIQUE (
+                        task_workspace_id,
+                        management_scope_uid
+                    ),
+
+                    CHECK (
+                        (
+                            range_mode = 'segment_known'
+                            AND start_stake_value IS NOT NULL
+                            AND end_stake_value IS NOT NULL
+                            AND start_stake_value
+                                <= end_stake_value
+                        )
+                        OR
+                        (
+                            range_mode IN (
+                                'whole',
+                                'segment_unknown'
+                            )
+                            AND start_stake_text IS NULL
+                            AND start_stake_value IS NULL
+                            AND end_stake_text IS NULL
+                            AND end_stake_value IS NULL
+                        )
+                    )
                 );
 
             CREATE INDEX IF NOT EXISTS
-                idx_task_workspace_canals_canal
-            ON survey_task_workspace_canals(
+                idx_task_workspace_scopes_canal
+            ON survey_task_workspace_scopes(
+                task_workspace_id,
                 canal_unit_id,
+                id
+            );
+
+            CREATE INDEX IF NOT EXISTS
+                idx_task_workspace_scopes_uid
+            ON survey_task_workspace_scopes(
+                management_scope_uid,
                 task_workspace_id
             );
             """
@@ -580,22 +667,34 @@ def _resolve_local_assignment(
     )
 
 
-def _resolve_selected_canals(
+def _resolve_selected_management_scopes(
     connection,
     *,
     selected_management_scope_uids,
     management_scopes,
+    canal_references,
     organization_unit_id,
 ):
     """
-    Stage 14.4.1 过渡投影：新 .ydtask 已完全以 management scope 快照为任务事实源。
-    当前 workspace 表仍暂存 CanalUnit，14.4.2 再升级为 scope snapshot 表。
+    将 .ydtask 中冻结的 management scope 快照解析到本机物理 CanalUnit。
 
-    这里明确不读取 canal_units.organization_unit_id，也不要求接收端预先存在
-    发送端人工创建的 scope；只按包内冻结快照解析物理 CanalUnit。
+    关键规则：
+    - 权限事实来自包内 management scope snapshot；
+    - 不读取 canal_units.organization_unit_id；
+    - 不要求接收端已经存在同一条 CanalManagementScope；
+    - CanalUnit 只用于解析真实物理渠道；
+    - 同一 CanalUnit 的多个 scope 必须分别保留，不能按渠道去重。
     """
-    if not isinstance(selected_management_scope_uids, list) or not selected_management_scope_uids:
-        raise ValueError("任务没有有效的分管范围。")
+    if (
+        not isinstance(
+            selected_management_scope_uids,
+            list,
+        )
+        or not selected_management_scope_uids
+    ):
+        raise ValueError(
+            "任务没有有效的分管范围。"
+        )
 
     office = connection.execute(
         """
@@ -603,51 +702,218 @@ def _resolve_selected_canals(
         FROM organization_units
         WHERE id = ?
         """,
-        (int(organization_unit_id),),
+        (
+            int(organization_unit_id),
+        ),
     ).fetchone()
-    if office is None:
-        raise ValueError("本机找不到任务管理单位。")
 
-    office_uid = _require_text(office["organization_unit_uid"], "任务管理单位 UID")
+    if office is None:
+        raise ValueError(
+            "本机找不到任务管理单位。"
+        )
+
+    office_uid = _require_text(
+        office["organization_unit_uid"],
+        "任务管理单位 UID",
+    )
 
     scope_by_uid = {}
+
     for item in management_scopes:
-        uid = _require_text(item.get("management_scope_uid"), "management_scope_uid")
+        uid = _require_text(
+            item.get(
+                "management_scope_uid"
+            ),
+            "management_scope_uid",
+        )
+
         if uid in scope_by_uid:
-            raise ValueError("任务分管范围快照包含重复 UID。")
+            raise ValueError(
+                "任务分管范围快照包含重复 UID。"
+            )
+
         scope_by_uid[uid] = item
 
+    canal_reference_by_uid = {}
+
+    for item in canal_references:
+        canal_uid = _require_text(
+            item.get("canal_uid"),
+            "canal_uid",
+        )
+
+        if canal_uid in canal_reference_by_uid:
+            raise ValueError(
+                "任务渠系参考包含重复 canal_uid。"
+            )
+
+        canal_reference_by_uid[
+            canal_uid
+        ] = item
+
     resolved = []
-    for raw_uid in selected_management_scope_uids:
-        uid = _require_text(raw_uid, "management_scope_uid")
+
+    for raw_uid in (
+        selected_management_scope_uids
+    ):
+        uid = _require_text(
+            raw_uid,
+            "management_scope_uid",
+        )
+
         item = scope_by_uid.get(uid)
+
         if item is None:
-            raise ValueError(f"任务缺少选定分管范围快照：{uid}。")
+            raise ValueError(
+                "任务缺少选定分管范围快照："
+                f"{uid}。"
+            )
 
         item_office_uid = _require_text(
-            item.get("organization_unit_uid"),
+            item.get(
+                "organization_unit_uid"
+            ),
             "分管范围管理单位 UID",
         )
-        if item_office_uid != office_uid:
-            raise ValueError("任务分管范围与管理单位不一致。")
 
-        canal_uid = _require_text(item.get("canal_uid"), "分管范围 canal_uid")
-        row = connection.execute(
+        if item_office_uid != office_uid:
+            raise ValueError(
+                "任务分管范围与管理单位不一致。"
+            )
+
+        canal_uid = _require_text(
+            item.get("canal_uid"),
+            "分管范围 canal_uid",
+        )
+
+        canal_reference = (
+            canal_reference_by_uid.get(
+                canal_uid
+            )
+        )
+
+        if canal_reference is None:
+            raise ValueError(
+                "任务缺少分管范围对应的"
+                "物理渠系参考："
+                f"{canal_uid}。"
+            )
+
+        local_canal = connection.execute(
             """
-            SELECT id, name, status
+            SELECT
+                id,
+                name,
+                canal_level,
+                status
             FROM canal_units
             WHERE canal_unit_uid = ?
             """,
-            (canal_uid,),
+            (
+                canal_uid,
+            ),
         ).fetchone()
-        if row is None:
-            raise ValueError(f"本机正式主数据中找不到任务渠系：{canal_uid}。")
-        if row["status"] != "active":
-            raise ValueError(f"任务包含已停用渠系：{row['name']}。")
 
-        canal_id = int(row["id"])
-        if canal_id not in resolved:
-            resolved.append(canal_id)
+        if local_canal is None:
+            raise ValueError(
+                "本机正式主数据中找不到任务渠系："
+                f"{canal_uid}。"
+            )
+
+        if (
+            local_canal["status"]
+            != "active"
+        ):
+            raise ValueError(
+                "任务包含已停用渠系："
+                f"{local_canal['name']}。"
+            )
+
+        range_mode = _require_text(
+            item.get("range_mode"),
+            "分管范围类型",
+        )
+
+        resolved.append(
+            {
+                "management_scope_uid": uid,
+                "canal_unit_id": int(
+                    local_canal["id"]
+                ),
+                "canal_unit_uid": (
+                    canal_uid
+                ),
+                "organization_unit_uid": (
+                    item_office_uid
+                ),
+                "canal_name_snapshot": (
+                    _require_text(
+                        canal_reference.get(
+                            "name"
+                        ),
+                        "任务渠系名称",
+                    )
+                ),
+                "canal_level_snapshot": (
+                    _require_text(
+                        canal_reference.get(
+                            "canal_level"
+                        ),
+                        "任务渠系级别",
+                    )
+                ),
+                "range_mode": (
+                    range_mode
+                ),
+                "start_stake_text": (
+                    item.get(
+                        "start_stake_text"
+                    )
+                ),
+                "start_stake_value": (
+                    item.get(
+                        "start_stake_value"
+                    )
+                ),
+                "end_stake_text": (
+                    item.get(
+                        "end_stake_text"
+                    )
+                ),
+                "end_stake_value": (
+                    item.get(
+                        "end_stake_value"
+                    )
+                ),
+                "sort_order": int(
+                    item.get(
+                        "sort_order"
+                    )
+                    or 0
+                ),
+                "source_scope_status": (
+                    _require_text(
+                        item.get("status"),
+                        "分管范围状态",
+                    )
+                ),
+                "description": (
+                    _clean_text(
+                        item.get(
+                            "description"
+                        )
+                    )
+                    or None
+                ),
+            }
+        )
+
+    if len(resolved) != len(
+        selected_management_scope_uids
+    ):
+        raise ValueError(
+            "任务分管范围解析数量不一致。"
+        )
 
     return tuple(resolved)
 
@@ -839,41 +1105,50 @@ def get_current_task_workspace():
             row
         )
 
-        canal_rows = (
-            connection.execute(
-                """
-                SELECT
-                    cu.id,
-                    cu.canal_unit_uid,
-                    cu.name,
-                    cu.canal_level,
-                    cu.sort_order
-                FROM survey_task_workspace_canals
-                    AS stwc
-                JOIN canal_units AS cu
-                  ON cu.id = stwc.canal_unit_id
-                WHERE stwc.task_workspace_id = ?
-                ORDER BY
-                    CASE
-                        WHEN cu.sort_order > 0
-                        THEN cu.sort_order
-                        ELSE 1000000 + cu.id
-                    END,
-                    cu.id
-                """,
-                (
-                    int(
-                        row["id"]
-                    ),
-                ),
-            ).fetchall()
-        )
+        scope_rows = connection.execute(
+            """
+            SELECT
+                stws.id AS workspace_scope_id,
+                stws.management_scope_uid,
+                stws.canal_unit_id,
+                stws.canal_unit_uid,
+                stws.organization_unit_uid,
+                stws.canal_name_snapshot
+                    AS canal_name,
+                stws.canal_level_snapshot
+                    AS canal_level,
+                stws.range_mode,
+                stws.start_stake_text,
+                stws.start_stake_value,
+                stws.end_stake_text,
+                stws.end_stake_value,
+                stws.sort_order,
+                stws.source_scope_status
+                    AS status,
+                stws.description
+            FROM survey_task_workspace_scopes
+                AS stws
+            WHERE stws.task_workspace_id = ?
+            ORDER BY
+                stws.sort_order,
+                stws.id
+            """,
+            (
+                int(row["id"]),
+            ),
+        ).fetchall()
 
-    result["canals"] = tuple(
+    result["management_scopes"] = tuple(
         _workspace_row_to_dict(
             item
         )
-        for item in canal_rows
+        for item in scope_rows
+    )
+
+    result[
+        "selected_management_scope_count"
+    ] = len(
+        result["management_scopes"]
     )
 
     result[
@@ -894,19 +1169,12 @@ def receive_survey_task_package(
     make_current=True,
 ):
     """
-    接收一个 .ydtask，并建立本机录入工作区。
+    接收新的 management-scope .ydtask，
+    并建立本机冻结分管范围工作区。
 
-    处理顺序：
-    1. 使用 Stage 10.2 完整校验任务包；
-    2. 复用本机确定性正式主数据匹配管理单位/渠系；
-    3. 按包内稳定 UID 建立或复用项目、调查批次；
-    4. 保存任务工作区及渠系范围；
-    5. 把原 .ydtask 复制到 local_data/task_packages 托管；
-    6. 默认切换为当前项目/批次/任务。
-
-    不创建工程对象和调查记录。
+    不兼容旧 selected_canal_uids 任务合同。
+    不创建 EngineeringAsset / SurveyRecord。
     """
-
     ensure_survey_task_workspace_schema()
 
     source_path = Path(
@@ -933,39 +1201,25 @@ def receive_survey_task_package(
     task = contents.task
 
     task_uid = _require_text(
-        task.get(
-            "task_uid"
-        ),
+        task.get("task_uid"),
         "task_uid",
     )
 
     package_uid = _require_text(
-        manifest.get(
-            "package_uid"
-        ),
+        manifest.get("package_uid"),
         "package_uid",
     )
 
-    project = task.get(
-        "project"
-    )
-
+    project = task.get("project")
     survey_batch = task.get(
         "survey_batch"
     )
-
     assignment = task.get(
         "assignment"
     )
+    scope = task.get("scope")
 
-    scope = task.get(
-        "scope"
-    )
-
-    if not isinstance(
-        project,
-        dict,
-    ):
+    if not isinstance(project, dict):
         raise ValueError(
             "任务包 project 结构无效。"
         )
@@ -986,25 +1240,25 @@ def receive_survey_task_package(
             "任务包 assignment 结构无效。"
         )
 
-    if not isinstance(
-        scope,
-        dict,
-    ):
+    if not isinstance(scope, dict):
         raise ValueError(
             "任务包 scope 结构无效。"
         )
 
-    package_hash = (
-        _sha256_file(
-            source_path
+    selected_scope_uids = (
+        scope.get(
+            "selected_management_scope_uids"
         )
+    )
+
+    package_hash = _sha256_file(
+        source_path
     )
 
     copied_new_file = False
     managed_absolute_path = None
 
-    # 先完成数据库侧全部可验证项，
-    # 但暂不写 workspace。
+    # 第一事务：解析所有稳定身份并检查是否已经接收。
     with database.get_connection() as connection:
         (
             project_id,
@@ -1032,8 +1286,22 @@ def receive_survey_task_package(
             )
         )
 
-        canal_ids = (
-            _resolve_selected_canals(connection, selected_management_scope_uids=scope.get('selected_management_scope_uids'), management_scopes=contents.management_scopes, organization_unit_id=organization_unit_id)
+        resolved_scopes = (
+            _resolve_selected_management_scopes(
+                connection,
+                selected_management_scope_uids=(
+                    selected_scope_uids
+                ),
+                management_scopes=(
+                    contents.management_scopes
+                ),
+                canal_references=(
+                    contents.canals
+                ),
+                organization_unit_id=(
+                    organization_unit_id
+                ),
+            )
         )
 
         _validate_local_forms(
@@ -1062,33 +1330,33 @@ def receive_survey_task_package(
         ).fetchone()
 
         if existing is not None:
-            existing_canal_ids = {
-                int(
-                    row[
-                        "canal_unit_id"
-                    ]
-                )
-                for row in (
-                    connection.execute(
-                        """
-                        SELECT canal_unit_id
-                        FROM survey_task_workspace_canals
-                        WHERE task_workspace_id = ?
-                        """,
-                        (
-                            int(
-                                existing["id"]
-                            ),
-                        ),
-                    ).fetchall()
-                )
+            existing_scope_uids = {
+                row[
+                    "management_scope_uid"
+                ]
+                for row in connection.execute(
+                    """
+                    SELECT
+                        management_scope_uid
+                    FROM survey_task_workspace_scopes
+                    WHERE task_workspace_id = ?
+                    """,
+                    (
+                        int(existing["id"]),
+                    ),
+                ).fetchall()
+            }
+
+            expected_scope_uids = {
+                item[
+                    "management_scope_uid"
+                ]
+                for item in resolved_scopes
             }
 
             if (
                 int(
-                    existing[
-                        "project_id"
-                    ]
+                    existing["project_id"]
                 )
                 != project_id
                 or int(
@@ -1103,12 +1371,24 @@ def receive_survey_task_package(
                     ]
                 )
                 != organization_unit_id
-                or existing_canal_ids
-                != set(canal_ids)
+                or existing_scope_uids
+                != expected_scope_uids
             ):
                 raise ValueError(
                     "本机已存在同 task_uid 的任务，"
-                    "但任务上下文不同，不能覆盖。"
+                    "但任务上下文或分管范围不同，"
+                    "不能覆盖。"
+                )
+
+            if (
+                existing[
+                    "source_package_sha256"
+                ]
+                != package_hash
+            ):
+                raise ValueError(
+                    "本机已接收同 task_uid，"
+                    "但任务包文件内容不同。"
                 )
 
             workspace_id = int(
@@ -1127,17 +1407,8 @@ def receive_survey_task_package(
             )
 
             if (
-                existing[
-                    "source_package_sha256"
-                ]
-                != package_hash
+                not managed_absolute_path.exists()
             ):
-                raise ValueError(
-                    "本机已接收同 task_uid，"
-                    "但任务包文件内容不同。"
-                )
-
-            if not managed_absolute_path.exists():
                 (
                     _,
                     managed_absolute_path,
@@ -1205,17 +1476,10 @@ def receive_survey_task_package(
                     organization_unit_id
                 ),
                 task_name=(
-                    existing[
-                        "task_name"
-                    ]
+                    existing["task_name"]
                 ),
                 selected_management_scope_count=(
-                    len(
-                    scope.get(
-                        "selected_management_scope_uids"
-                    )
-                    or []
-                )
+                    len(resolved_scopes)
                 ),
                 managed_package_path=(
                     managed_absolute_path
@@ -1229,8 +1493,7 @@ def receive_survey_task_package(
                 already_received=True,
             )
 
-    # 在事务之外把来源任务包复制入托管目录。
-    # 如果随后数据库写入失败，会删除本次新复制的文件。
+    # 数据库外复制原始任务包。
     (
         managed_relative_path,
         managed_absolute_path,
@@ -1246,8 +1509,6 @@ def receive_survey_task_package(
 
     try:
         with database.get_connection() as connection:
-            # 上一个验证事务可能新建了 project/batch，
-            # 再按 UID 读取，避免依赖临时整数。
             project_row = connection.execute(
                 """
                 SELECT id
@@ -1306,8 +1567,22 @@ def receive_survey_task_package(
                 office_row["id"]
             )
 
-            canal_ids = (
-                _resolve_selected_canals(connection, selected_management_scope_uids=scope.get('selected_management_scope_uids'), management_scopes=contents.management_scopes, organization_unit_id=organization_unit_id)
+            resolved_scopes = (
+                _resolve_selected_management_scopes(
+                    connection,
+                    selected_management_scope_uids=(
+                        selected_scope_uids
+                    ),
+                    management_scopes=(
+                        contents.management_scopes
+                    ),
+                    canal_references=(
+                        contents.canals
+                    ),
+                    organization_unit_id=(
+                        organization_unit_id
+                    ),
+                )
             )
 
             if make_current:
@@ -1342,16 +1617,12 @@ def receive_survey_task_package(
                     survey_batch_id,
                     organization_unit_id,
                     _require_text(
-                        task.get(
-                            "task_name"
-                        ),
+                        task.get("task_name"),
                         "任务名称",
                     ),
                     (
                         _clean_text(
-                            task.get(
-                                "notes"
-                            )
+                            task.get("notes")
                         )
                         or None
                     ),
@@ -1369,19 +1640,72 @@ def receive_survey_task_package(
                 cursor.lastrowid
             )
 
-            for canal_id in canal_ids:
+            for item in resolved_scopes:
                 connection.execute(
                     """
                     INSERT INTO
-                        survey_task_workspace_canals (
+                        survey_task_workspace_scopes (
                             task_workspace_id,
-                            canal_unit_id
+                            management_scope_uid,
+                            canal_unit_id,
+                            canal_unit_uid,
+                            organization_unit_uid,
+                            canal_name_snapshot,
+                            canal_level_snapshot,
+                            range_mode,
+                            start_stake_text,
+                            start_stake_value,
+                            end_stake_text,
+                            end_stake_value,
+                            sort_order,
+                            source_scope_status,
+                            description
                         )
-                    VALUES (?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?
+                    )
                     """,
                     (
                         workspace_id,
-                        canal_id,
+                        item[
+                            "management_scope_uid"
+                        ],
+                        item[
+                            "canal_unit_id"
+                        ],
+                        item[
+                            "canal_unit_uid"
+                        ],
+                        item[
+                            "organization_unit_uid"
+                        ],
+                        item[
+                            "canal_name_snapshot"
+                        ],
+                        item[
+                            "canal_level_snapshot"
+                        ],
+                        item["range_mode"],
+                        item[
+                            "start_stake_text"
+                        ],
+                        item[
+                            "start_stake_value"
+                        ],
+                        item[
+                            "end_stake_text"
+                        ],
+                        item[
+                            "end_stake_value"
+                        ],
+                        item["sort_order"],
+                        item[
+                            "source_scope_status"
+                        ],
+                        item[
+                            "description"
+                        ],
                     ),
                 )
 
@@ -1406,9 +1730,7 @@ def receive_survey_task_package(
         raise
 
     return SurveyTaskReceiveResult(
-        task_workspace_id=(
-            workspace_id
-        ),
+        task_workspace_id=workspace_id,
         task_uid=task_uid,
         package_uid=package_uid,
         project_id=project_id,
@@ -1419,18 +1741,11 @@ def receive_survey_task_package(
             organization_unit_id
         ),
         task_name=_require_text(
-            task.get(
-                "task_name"
-            ),
+            task.get("task_name"),
             "任务名称",
         ),
         selected_management_scope_count=(
-            len(
-                    scope.get(
-                        "selected_management_scope_uids"
-                    )
-                    or []
-                )
+            len(resolved_scopes)
         ),
         managed_package_path=(
             managed_absolute_path

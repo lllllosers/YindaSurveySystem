@@ -9,22 +9,32 @@ from services.survey_task_workspace import (
 
 def ensure_survey_task_record_scope_schema():
     """
-    将“当前调查任务”落实到 SurveyRecord 层。
+    Stage 14.4.2 过渡约束：
 
-    规则：
-    1. survey_records.source_task_uid 记录基层数据来源任务；
-    2. 当前存在 task workspace 时，新建调查记录必须属于：
-       - 同一项目；
-       - 同一调查批次；
-       - 同一管理单位；
-       - 任务允许的渠系；
-    3. 符合范围的新记录自动写入当前 task_uid；
-    4. 已带 source_task_uid 的记录不能被修改到原任务范围之外；
-    5. 没有当前任务时保持原有集中录入行为，不强制任务来源。
+    workspace 的任务权限事实已经切换到
+    survey_task_workspace_scopes。
 
-    约束落在数据库触发器层，而不是只依赖界面下拉框，
-    避免未来出现其他入口绕过任务范围。
+    本阶段 SurveyRecord 尚只有 source_task_uid，
+    因而数据库先按“任务 scope 所映射的 CanalUnit”
+    约束新增/修改。Stage 14.4.3 再增加
+    source_management_scope_uid，将记录精确绑定到
+    某一个分管段。
     """
+    # 先移除可能仍引用旧 workspace_canals 的触发器，
+    # 再允许 workspace schema 删除测试阶段旧表。
+    with database.get_connection() as connection:
+        connection.executescript(
+            """
+            DROP TRIGGER IF EXISTS
+                trg_survey_records_task_scope_insert;
+            DROP TRIGGER IF EXISTS
+                trg_survey_records_task_source_insert;
+            DROP TRIGGER IF EXISTS
+                trg_survey_records_task_scope_update;
+            DROP TRIGGER IF EXISTS
+                trg_survey_records_source_task_uid_immutable;
+            """
+        )
 
     ensure_survey_task_workspace_schema()
 
@@ -57,7 +67,7 @@ def ensure_survey_task_record_scope_schema():
 
         connection.executescript(
             """
-            CREATE TRIGGER IF NOT EXISTS
+            CREATE TRIGGER
                 trg_survey_records_task_scope_insert
             BEFORE INSERT ON survey_records
             FOR EACH ROW
@@ -72,18 +82,19 @@ def ensure_survey_task_record_scope_schema():
                         SELECT 1
                         FROM survey_task_workspaces AS stw
                         WHERE stw.is_current = 1
-                          AND stw.project_id = NEW.project_id
+                          AND stw.project_id
+                              = NEW.project_id
                           AND stw.survey_batch_id
                               = NEW.survey_batch_id
                           AND stw.organization_unit_id
                               = NEW.organization_unit_id
                           AND EXISTS (
                               SELECT 1
-                              FROM survey_task_workspace_canals
-                                  AS stwc
-                              WHERE stwc.task_workspace_id
+                              FROM survey_task_workspace_scopes
+                                  AS stws
+                              WHERE stws.task_workspace_id
                                   = stw.id
-                                AND stwc.canal_unit_id
+                                AND stws.canal_unit_id
                                   = NEW.canal_unit_id
                           )
                     )
@@ -96,7 +107,9 @@ def ensure_survey_task_record_scope_schema():
                 SELECT CASE
                     WHEN
                         NEW.source_task_uid IS NOT NULL
-                        AND trim(NEW.source_task_uid) <> ''
+                        AND trim(
+                            NEW.source_task_uid
+                        ) <> ''
                         AND NEW.source_task_uid
                             <> (
                                 SELECT task_uid
@@ -111,14 +124,16 @@ def ensure_survey_task_record_scope_schema():
                 END;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS
+            CREATE TRIGGER
                 trg_survey_records_task_source_insert
             AFTER INSERT ON survey_records
             FOR EACH ROW
             WHEN
                 (
                     NEW.source_task_uid IS NULL
-                    OR trim(NEW.source_task_uid) = ''
+                    OR trim(
+                        NEW.source_task_uid
+                    ) = ''
                 )
                 AND EXISTS (
                     SELECT 1
@@ -136,7 +151,7 @@ def ensure_survey_task_record_scope_schema():
                 WHERE id = NEW.id;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS
+            CREATE TRIGGER
                 trg_survey_records_task_scope_update
             BEFORE UPDATE OF
                 project_id,
@@ -147,7 +162,9 @@ def ensure_survey_task_record_scope_schema():
             FOR EACH ROW
             WHEN
                 OLD.source_task_uid IS NOT NULL
-                AND trim(OLD.source_task_uid) <> ''
+                AND trim(
+                    OLD.source_task_uid
+                ) <> ''
             BEGIN
                 SELECT CASE
                     WHEN NOT EXISTS (
@@ -163,11 +180,11 @@ def ensure_survey_task_record_scope_schema():
                               = NEW.organization_unit_id
                           AND EXISTS (
                               SELECT 1
-                              FROM survey_task_workspace_canals
-                                  AS stwc
-                              WHERE stwc.task_workspace_id
+                              FROM survey_task_workspace_scopes
+                                  AS stws
+                              WHERE stws.task_workspace_id
                                   = stw.id
-                                AND stwc.canal_unit_id
+                                AND stws.canal_unit_id
                                   = NEW.canal_unit_id
                           )
                     )
@@ -178,14 +195,16 @@ def ensure_survey_task_record_scope_schema():
                 END;
             END;
 
-            CREATE TRIGGER IF NOT EXISTS
+            CREATE TRIGGER
                 trg_survey_records_source_task_uid_immutable
             BEFORE UPDATE OF source_task_uid
             ON survey_records
             FOR EACH ROW
             WHEN
                 OLD.source_task_uid IS NOT NULL
-                AND trim(OLD.source_task_uid) <> ''
+                AND trim(
+                    OLD.source_task_uid
+                ) <> ''
                 AND OLD.source_task_uid
                     IS NOT NEW.source_task_uid
             BEGIN
@@ -201,4 +220,5 @@ def ensure_survey_task_record_scope_schema():
         "ready": True,
         "source_task_uid_column": True,
         "scope_guard": True,
+        "workspace_scope_snapshot": True,
     }

@@ -494,7 +494,6 @@ class GenericEngineeringSurveyPage(QWidget):
         self,
     ):
         self.canal_combo.blockSignals(True)
-
         self.canal_combo.clear()
 
         office_data = (
@@ -503,10 +502,10 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         if not office_data:
-            self.canal_combo.blockSignals(False)
-
+            self.canal_combo.blockSignals(
+                False
+            )
             self.business_code_edit.clear()
-
             return
 
         task_workspace = (
@@ -518,19 +517,21 @@ class GenericEngineeringSurveyPage(QWidget):
         if task_workspace:
             allowed_canal_ids = {
                 int(
-                    item["id"]
+                    item[
+                        "canal_unit_id"
+                    ]
                 )
                 for item in (
                     task_workspace.get(
-                        "canals"
+                        "management_scopes"
                     )
                     or ()
                 )
             }
 
-        # 新增调查只使用当前启用的渠道管理范围；
-        # 打开历史记录时允许读取已停用范围，
-        # 避免管理关系调整后历史记录无法回填。
+        # 新增调查的管理关系来自 CanalManagementScope；
+        # 当前任务存在时，再与任务下发时冻结的 scope snapshot
+        # 所映射的 CanalUnit 求交集。
         canals = (
             get_managed_canals_for_organization(
                 office_data["id"],
@@ -565,7 +566,6 @@ class GenericEngineeringSurveyPage(QWidget):
             )
 
         self.canal_combo.blockSignals(False)
-
         self.update_business_code()
 
     def update_business_code(

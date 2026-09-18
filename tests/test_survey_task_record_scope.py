@@ -9,7 +9,6 @@ from pathlib import Path
 PROJECT_ROOT = (
     Path(__file__).resolve().parents[1]
 )
-
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -36,7 +35,6 @@ class SurveyTaskRecordScopeTestCase(
         self.temp_directory = (
             tempfile.TemporaryDirectory()
         )
-
         self.temp_root = Path(
             self.temp_directory.name
         )
@@ -52,7 +50,6 @@ class SurveyTaskRecordScopeTestCase(
             self.temp_root
             / "local_data"
         )
-
         database.DB_PATH = (
             database.DATA_DIR
             / "scope.db"
@@ -62,19 +59,17 @@ class SurveyTaskRecordScopeTestCase(
 
     def tearDown(self):
         gc.collect()
-
         database.DATA_DIR = (
             self.original_data_dir
         )
         database.DB_PATH = (
             self.original_db_path
         )
-
         self.temp_directory.cleanup()
 
     def _build_context(self):
         with database.get_connection() as connection:
-            project_cursor = connection.execute(
+            project = connection.execute(
                 """
                 INSERT INTO projects (
                     name,
@@ -86,12 +81,11 @@ class SurveyTaskRecordScopeTestCase(
                     "任务测试项目",
                 ),
             )
-
             project_id = int(
-                project_cursor.lastrowid
+                project.lastrowid
             )
 
-            batch_cursor = connection.execute(
+            batch = connection.execute(
                 """
                 INSERT INTO survey_batches (
                     project_id,
@@ -107,16 +101,15 @@ class SurveyTaskRecordScopeTestCase(
                     "TASK-2026",
                 ),
             )
-
             batch_id = int(
-                batch_cursor.lastrowid
+                batch.lastrowid
             )
 
             office = connection.execute(
                 """
                 SELECT
                     id,
-                    parent_id
+                    organization_unit_uid
                 FROM organization_units
                 WHERE master_key = ?
                 """,
@@ -124,26 +117,44 @@ class SurveyTaskRecordScopeTestCase(
                     "ORG-D01-O03",
                 ),
             ).fetchone()
+            office_id = int(
+                office["id"]
+            )
 
-            canals = connection.execute(
+            scopes = connection.execute(
                 """
                 SELECT
-                    id,
-                    name
-                FROM canal_units
-                WHERE organization_unit_id = ?
-                  AND status = 'active'
-                ORDER BY sort_order, id
+                    cms.management_scope_uid,
+                    cms.canal_unit_id,
+                    cu.canal_unit_uid,
+                    cu.name AS canal_name,
+                    cu.canal_level,
+                    cms.range_mode,
+                    cms.start_stake_text,
+                    cms.start_stake_value,
+                    cms.end_stake_text,
+                    cms.end_stake_value,
+                    cms.sort_order,
+                    cms.status,
+                    cms.description
+                FROM canal_management_scopes
+                    AS cms
+                JOIN canal_units AS cu
+                  ON cu.id = cms.canal_unit_id
+                WHERE cms.organization_unit_id = ?
+                  AND cms.status = 'active'
+                ORDER BY
+                    cu.sort_order,
+                    cms.sort_order,
+                    cms.id
                 """,
                 (
-                    int(
-                        office["id"]
-                    ),
+                    office_id,
                 ),
             ).fetchall()
 
             self.assertGreaterEqual(
-                len(canals),
+                len(scopes),
                 2,
             )
 
@@ -153,75 +164,130 @@ class SurveyTaskRecordScopeTestCase(
                     fv.id AS form_version_id
                 FROM form_versions AS fv
                 JOIN form_definitions AS fd
-                  ON fd.id = fv.form_definition_id
+                  ON fd.id
+                    = fv.form_definition_id
                 WHERE fd.series = 'series_2'
-                  AND fd.record_type = 'engineering'
+                  AND fd.record_type
+                    = 'engineering'
                   AND fv.is_current = 1
-                ORDER BY fd.sort_order, fv.id
+                ORDER BY
+                    fd.sort_order,
+                    fv.id
                 LIMIT 1
                 """
             ).fetchone()
 
-            workspace_cursor = (
-                connection.execute(
-                    """
-                    INSERT INTO survey_task_workspaces (
-                        task_uid,
-                        source_package_uid,
-                        project_id,
-                        survey_batch_id,
-                        organization_unit_id,
-                        task_name,
-                        managed_package_relative_path,
-                        source_package_sha256,
-                        is_current
-                    )
-                    VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, 1
-                    )
-                    """,
-                    (
-                        "task-source-001",
-                        "package-source-001",
-                        project_id,
-                        batch_id,
-                        int(
-                            office["id"]
-                        ),
-                        "通远水管所任务",
-                        (
-                            "task_packages/"
-                            "task-source-001/"
-                            "package-source-001.ydtask"
-                        ),
-                        "0" * 64,
-                    ),
+            workspace = connection.execute(
+                """
+                INSERT INTO survey_task_workspaces (
+                    task_uid,
+                    source_package_uid,
+                    project_id,
+                    survey_batch_id,
+                    organization_unit_id,
+                    task_name,
+                    managed_package_relative_path,
+                    source_package_sha256,
+                    is_current
                 )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, 1
+                )
+                """,
+                (
+                    "task-source-001",
+                    "package-source-001",
+                    project_id,
+                    batch_id,
+                    office_id,
+                    "通远水管所任务",
+                    (
+                        "task_packages/"
+                        "task-source-001/"
+                        "package-source-001.ydtask"
+                    ),
+                    "0" * 64,
+                ),
             )
-
             workspace_id = int(
-                workspace_cursor.lastrowid
+                workspace.lastrowid
             )
 
-            allowed_canal_id = int(
-                canals[0]["id"]
-            )
-            blocked_canal_id = int(
-                canals[1]["id"]
-            )
+            allowed = scopes[0]
+            blocked = scopes[1]
 
             connection.execute(
                 """
                 INSERT INTO
-                    survey_task_workspace_canals (
+                    survey_task_workspace_scopes (
                         task_workspace_id,
-                        canal_unit_id
+                        management_scope_uid,
+                        canal_unit_id,
+                        canal_unit_uid,
+                        organization_unit_uid,
+                        canal_name_snapshot,
+                        canal_level_snapshot,
+                        range_mode,
+                        start_stake_text,
+                        start_stake_value,
+                        end_stake_text,
+                        end_stake_value,
+                        sort_order,
+                        source_scope_status,
+                        description
                     )
-                VALUES (?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     workspace_id,
-                    allowed_canal_id,
+                    allowed[
+                        "management_scope_uid"
+                    ],
+                    int(
+                        allowed[
+                            "canal_unit_id"
+                        ]
+                    ),
+                    allowed[
+                        "canal_unit_uid"
+                    ],
+                    office[
+                        "organization_unit_uid"
+                    ],
+                    allowed[
+                        "canal_name"
+                    ],
+                    allowed[
+                        "canal_level"
+                    ],
+                    allowed[
+                        "range_mode"
+                    ],
+                    allowed[
+                        "start_stake_text"
+                    ],
+                    allowed[
+                        "start_stake_value"
+                    ],
+                    allowed[
+                        "end_stake_text"
+                    ],
+                    allowed[
+                        "end_stake_value"
+                    ],
+                    int(
+                        allowed[
+                            "sort_order"
+                        ]
+                        or 0
+                    ),
+                    allowed["status"],
+                    allowed[
+                        "description"
+                    ],
                 ),
             )
 
@@ -230,14 +296,16 @@ class SurveyTaskRecordScopeTestCase(
         return {
             "project_id": project_id,
             "batch_id": batch_id,
-            "office_id": int(
-                office["id"]
+            "office_id": office_id,
+            "allowed_canal_id": int(
+                allowed[
+                    "canal_unit_id"
+                ]
             ),
-            "allowed_canal_id": (
-                allowed_canal_id
-            ),
-            "blocked_canal_id": (
-                blocked_canal_id
+            "blocked_canal_id": int(
+                blocked[
+                    "canal_unit_id"
+                ]
             ),
             "form_version_id": int(
                 form[
@@ -288,7 +356,6 @@ class SurveyTaskRecordScopeTestCase(
                     business_code,
                 ),
             )
-
             return int(
                 cursor.lastrowid
             )
@@ -296,9 +363,7 @@ class SurveyTaskRecordScopeTestCase(
     def test_allowed_record_is_stamped_with_task_uid(
         self,
     ):
-        context = (
-            self._build_context()
-        )
+        context = self._build_context()
 
         record_id = self._insert_record(
             context,
@@ -321,18 +386,14 @@ class SurveyTaskRecordScopeTestCase(
             ).fetchone()
 
         self.assertEqual(
-            row[
-                "source_task_uid"
-            ],
+            row["source_task_uid"],
             "task-source-001",
         )
 
     def test_out_of_scope_canal_is_blocked(
         self,
     ):
-        context = (
-            self._build_context()
-        )
+        context = self._build_context()
 
         with self.assertRaisesRegex(
             sqlite3.IntegrityError,
@@ -349,9 +410,7 @@ class SurveyTaskRecordScopeTestCase(
     def test_no_current_task_keeps_central_entry_compatible(
         self,
     ):
-        context = (
-            self._build_context()
-        )
+        context = self._build_context()
 
         with database.get_connection() as connection:
             connection.execute(
@@ -382,9 +441,7 @@ class SurveyTaskRecordScopeTestCase(
             ).fetchone()
 
         self.assertIsNone(
-            row[
-                "source_task_uid"
-            ]
+            row["source_task_uid"]
         )
 
 
