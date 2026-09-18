@@ -10,13 +10,13 @@ from app.services.auth_service import create_user
 
 def read_password() -> str:
     while True:
-        first = getpass("Admin password (minimum 10 characters): ")
+        first = getpass("Admin password (minimum 6 characters): ")
         second = getpass("Repeat admin password: ")
         if first != second:
             print("Passwords do not match.")
             continue
-        if len(first) < 10:
-            print("Password must be at least 10 characters.")
+        if len(first) < 6:
+            print("Password must be at least 6 characters.")
             continue
         return first
 

@@ -42,7 +42,7 @@ def user_payload(user: User) -> AuthMeResponse:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, response: Response, db: DbSession):
+def login(payload: LoginRequest, request: Request, response: Response, db: DbSession):
     try:
         user = auth_service.authenticate_user(
             db,
@@ -56,6 +56,12 @@ def login(payload: LoginRequest, response: Response, db: DbSession):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         ) from exc
+
+    request.state.audit_user_id = user.id
+    request.state.audit_user_uid = user.user_uid
+    request.state.audit_username = user.username
+    request.state.audit_role = user.role
+    request.state.audit_summary = "用户登录成功"
 
     _, token, csrf_token = auth_service.create_session(db, user)
     response.set_cookie(

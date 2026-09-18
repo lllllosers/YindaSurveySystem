@@ -15,6 +15,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "master_data.read",
         "tasks.read", "tasks.write",
         "results.read", "results.upload",
+        "audit.read",
     },
     "reviewer": {
         "projects.read", "batches.read", "master_data.read",

@@ -52,7 +52,7 @@ class CsrfResponse(BaseModel):
 class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=80)
     display_name: str = Field(min_length=1, max_length=120)
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
     role: UserRole = "viewer"
     is_active: bool = True
 
@@ -77,9 +77,9 @@ class UserUpdate(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)

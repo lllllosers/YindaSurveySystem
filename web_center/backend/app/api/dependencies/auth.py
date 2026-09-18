@@ -38,6 +38,11 @@ def get_auth_context(
             detail="Session expired or invalid.",
         )
 
+    request.state.audit_user_id = session.user.id
+    request.state.audit_user_uid = session.user.user_uid
+    request.state.audit_username = session.user.username
+    request.state.audit_role = session.user.role
+
     return AuthContext(user=session.user, session=session)
 
 

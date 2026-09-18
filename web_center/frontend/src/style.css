@@ -336,3 +336,26 @@ select {
   color: #94a3b8;
   font-size: 11px;
 }
+.audit-filter-card {
+  margin-bottom: 18px;
+}
+
+.audit-filter-card .el-form-item {
+  margin-bottom: 0;
+}
+
+.audit-table-card {
+  min-height: 520px;
+}
+
+.audit-secondary {
+  margin-top: 2px;
+  color: #9aa3ad;
+  font-size: 11px;
+}
+
+.audit-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}

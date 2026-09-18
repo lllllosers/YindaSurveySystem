@@ -5,6 +5,7 @@ import DashboardView from "../views/DashboardView.vue";
 import LoginView from "../views/LoginView.vue";
 import ProjectsView from "../views/ProjectsView.vue";
 import UsersView from "../views/UsersView.vue";
+import AuditView from "../views/AuditView.vue";
 import { useAuthStore } from "../stores/auth";
 
 export const router = createRouter({
@@ -27,6 +28,12 @@ export const router = createRouter({
           name: "users",
           component: UsersView,
           meta: { adminOnly: true },
+        },
+        {
+          path: "audit",
+          name: "audit",
+          component: AuditView,
+          meta: { permission: "audit.read" },
         },
       ],
     },
@@ -55,6 +62,13 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.adminOnly && !auth.isAdmin) {
+    return { name: "dashboard" };
+  }
+
+  if (
+    typeof to.meta.permission === "string" &&
+    !auth.hasPermission(to.meta.permission)
+  ) {
     return { name: "dashboard" };
   }
 

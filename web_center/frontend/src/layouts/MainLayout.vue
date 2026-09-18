@@ -8,6 +8,7 @@ import {
   Management,
   Operation,
   Setting,
+  Tickets,
   UserFilled,
 } from "@element-plus/icons-vue";
 
@@ -75,6 +76,13 @@ async function logout() {
         <el-menu-item v-if="auth.isAdmin" index="/users">
           <el-icon><UserFilled /></el-icon>
           <span>用户与权限</span>
+        </el-menu-item>
+        <el-menu-item
+          v-if="auth.hasPermission('audit.read')"
+          index="/audit"
+        >
+          <el-icon><Tickets /></el-icon>
+          <span>审计日志</span>
         </el-menu-item>
         <el-menu-item index="/settings" disabled>
           <el-icon><Setting /></el-icon>

@@ -46,7 +46,7 @@ const rules: FormRules = {
   display_name: [{ required: true, message: "请输入显示姓名", trigger: "blur" }],
   password: [
     { required: true, message: "请输入初始密码", trigger: "blur" },
-    { min: 10, message: "密码至少 10 个字符", trigger: "blur" },
+    { min: 6, message: "密码至少 6 个字符", trigger: "blur" },
   ],
 };
 
@@ -116,14 +116,14 @@ async function saveEdit() {
 async function resetPassword(user: UserRecord) {
   try {
     const result = await ElMessageBox.prompt(
-      `为“${user.display_name}”设置新密码（至少 10 个字符）。重置后该用户所有会话都会失效。`,
+      `为“${user.display_name}”设置新密码（至少 6 个字符）。重置后该用户所有会话都会失效。`,
       "重置密码",
       {
         confirmButtonText: "重置",
         cancelButtonText: "取消",
         inputType: "password",
-        inputPattern: /^.{10,128}$/,
-        inputErrorMessage: "密码长度必须为 10～128 个字符",
+        inputPattern: /^.{6,128}$/,
+        inputErrorMessage: "密码长度必须为 6～128 个字符",
       },
     );
     await resetUserPassword(user.user_uid, result.value);
