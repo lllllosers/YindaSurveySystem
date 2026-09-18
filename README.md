@@ -4,9 +4,9 @@
 
 ## 当前版本
 
-**V0.7.0 测试版**
+**V0.8.0 测试版**
 
-V0.7.0 在附表2.1～2.14完整业务闭环基础上，完成多电脑调查任务下发、基层录入、成果上报和上级汇总链路的首轮测试版闭环。
+V0.8.0 在 V0.7.0 多电脑调查闭环基础上，完成渠道物理实体与管理范围解耦、management scope 冻结任务范围、`SurveyRecord` 的 task + scope provenance、上级 issued-task 冻结快照权威校验以及 `.ydresult` V2 成果回收闭环，并已通过独立双数据库人工生产验收。
 
 当前开发分支已完成渠道管理范围与跨库任务 provenance 模型收口：`CanalUnit` 仅表示物理渠道，管理责任统一由 `CanalManagementScope` 表达；调查任务使用冻结的 management scope 快照约束录入范围，成果回收按上级端原始下发任务快照核验来源。
 
@@ -112,9 +112,9 @@ EngineeringFormRegistry
 
 ## 当前开发方向
 
-附表2工程现状调查体系已经完成阶段性闭环，V0.7.0 已具备任务下发、基层录入、成果上报和上级汇总的测试链路。
+附表2工程现状调查体系已经完成阶段性闭环，V0.8.0 已具备基于 `CanalManagementScope` 的任务下发、基层受控录入、成果上报、来源核验和上级事务化汇总链路。
 
-任务范围 provenance 与成果回收校验已完成 Stage 14 自动化闭环：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。下一步进入真实双数据库人工生产模拟和甲方实际数据试录，以收集体验、流程和边界问题；附表1系列继续作为独立业务域留待后续单独设计。
+任务范围 provenance 与成果回收校验已完成 Stage 14 自动化与人工双重验收：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。双数据库人工验收已覆盖同一物理渠道多 scope、重复成果幂等、以及 current master 变化后历史成果 warning-only 但仍可合法导入的场景。下一阶段进入甲方实际数据试录和使用反馈收集；附表1系列继续作为独立业务域留待后续单独设计。
 
 ## 技术栈
 

@@ -5,6 +5,9 @@
 ---
 ## [Unreleased]
 
+---
+## [0.8.0] - 2026-09-19
+
 ### Added
 
 - 新增 `CanalManagementScope` 渠道管理范围模型，支持 `whole`、`segment_known`、`segment_unknown`
@@ -43,7 +46,9 @@
 - 旧 `.ydtask` 字段仍由 reader 明确拒绝，不作为兼容路径继续运行
 - `.ydresult` V2 来源合同已完成收口，旧来源字段格式仅做明确拒绝，不再兼容读取
 - 当前管理关系唯一事实源为 `CanalManagementScope`
-- Stage 14 已完成任务下发 → 基层接收/录入 → 成果回传 → 上级冻结快照校验 → 事务导入的自动化端到端回归；下一步进行真实双数据库人工生产模拟
+- Stage 14 已完成任务下发 → 基层接收/录入 → 成果回传 → 上级冻结快照校验 → 事务导入的自动化端到端回归
+- 已完成独立 Parent / Child 双数据库人工生产验收，覆盖同一物理渠道多 `segment_unknown` scope、显式 scope 选择、成果重复导入保护，以及 current master 变化后历史成果 warning-only 但仍可按 issued-task snapshot 合法导入
+- `V0.8.0-test` 作为渠道管理范围、任务范围 provenance 与成果回收权威校验完成收口后的测试基线
 
 ---
 ## [0.7.0] - 2026-09-17
