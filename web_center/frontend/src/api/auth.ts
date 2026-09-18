@@ -1,6 +1,10 @@
-import { api, setCsrfToken } from "./http";
+import { api } from "./http";
 
-export type UserRole = "admin" | "manager" | "reviewer" | "viewer";
+export type UserRole =
+  | "admin"
+  | "manager"
+  | "reviewer"
+  | "viewer";
 
 export interface CurrentUser {
   user_uid: string;
@@ -23,43 +27,63 @@ export interface UserRecord {
   created_at: string;
 }
 
-export async function login(username: string, password: string): Promise<CurrentUser> {
-  const response = await api.post<{ user: CurrentUser; csrf_token: string }>(
+export async function login(
+  username: string,
+  password: string,
+): Promise<CurrentUser> {
+  const response = await api.post<{
+    user: CurrentUser;
+    csrf_token: string;
+  }>(
     "/auth/login",
-    { username, password },
+    {
+      username,
+      password,
+    },
   );
-  setCsrfToken(response.data.csrf_token);
+
   return response.data.user;
 }
 
 export async function getMe(): Promise<CurrentUser> {
-  const response = await api.get<CurrentUser>("/auth/me");
+  const response = await api.get<CurrentUser>(
+    "/auth/me",
+  );
   return response.data;
 }
 
 export async function refreshCsrf(): Promise<void> {
-  const response = await api.get<{ csrf_token: string }>("/auth/csrf");
-  setCsrfToken(response.data.csrf_token);
+  await api.get(
+    "/auth/csrf",
+  );
 }
 
 export async function logout(): Promise<void> {
-  await api.post("/auth/logout");
-  setCsrfToken(null);
+  await api.post(
+    "/auth/logout",
+  );
 }
 
 export async function listUsers(): Promise<UserRecord[]> {
-  const response = await api.get<UserRecord[]>("/users");
+  const response = await api.get<UserRecord[]>(
+    "/users",
+  );
   return response.data;
 }
 
-export async function createUser(payload: {
-  username: string;
-  display_name: string;
-  password: string;
-  role: UserRole;
-  is_active: boolean;
-}): Promise<UserRecord> {
-  const response = await api.post<UserRecord>("/users", payload);
+export async function createUser(
+  payload: {
+    username: string;
+    display_name: string;
+    password: string;
+    role: UserRole;
+    is_active: boolean;
+  },
+): Promise<UserRecord> {
+  const response = await api.post<UserRecord>(
+    "/users",
+    payload,
+  );
   return response.data;
 }
 
@@ -71,7 +95,10 @@ export async function updateUser(
     is_active: boolean;
   }>,
 ): Promise<UserRecord> {
-  const response = await api.patch<UserRecord>(`/users/${userUid}`, payload);
+  const response = await api.patch<UserRecord>(
+    `/users/${userUid}`,
+    payload,
+  );
   return response.data;
 }
 
@@ -79,11 +106,18 @@ export async function resetUserPassword(
   userUid: string,
   newPassword: string,
 ): Promise<void> {
-  await api.post(`/users/${userUid}/reset-password`, {
-    new_password: newPassword,
-  });
+  await api.post(
+    `/users/${userUid}/reset-password`,
+    {
+      new_password: newPassword,
+    },
+  );
 }
 
-export async function revokeUserSessions(userUid: string): Promise<void> {
-  await api.post(`/users/${userUid}/revoke-sessions`);
+export async function revokeUserSessions(
+  userUid: string,
+): Promise<void> {
+  await api.post(
+    `/users/${userUid}/revoke-sessions`,
+  );
 }

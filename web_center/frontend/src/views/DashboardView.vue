@@ -108,16 +108,16 @@ onMounted(checkServices);
     <template #header>
       <div class="card-header">
         <span>Web 中心业务链</span>
-        <el-tag type="success">Stage 02 已开始</el-tag>
+        <el-tag type="success">Web POC 已收口</el-tag>
       </div>
     </template>
 
     <el-steps :active="1" align-center>
-      <el-step title="项目与批次" description="本阶段" />
-      <el-step title="组织与渠系" description="下一阶段" />
-      <el-step title="任务中心" description=".ydtask" />
-      <el-step title="成果中心" description=".ydresult" />
-      <el-step title="审核汇总" description="冲突、编号、统计" />
+      <el-step title="项目与批次" description="已完成" />
+      <el-step title="组织与渠系" description="等待主数据" />
+      <el-step title="任务中心" description="等待主数据" />
+      <el-step title="成果中心" description="POC 已完成" />
+      <el-step title="审核汇总" description="后续阶段" />
     </el-steps>
   </el-card>
 </template>

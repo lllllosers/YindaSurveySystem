@@ -1,14 +1,23 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import (
+    CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     AuthContext,
     get_auth_context,
     get_current_user,
 )
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.auth import User
 from app.schemas.auth import (
@@ -19,16 +28,34 @@ from app.schemas.auth import (
     LoginResponse,
 )
 from app.services import auth_service
-from app.services.security import permissions_for_role, verify_password
+from app.services.security import (
+    permissions_for_role,
+    verify_password,
+)
 
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
-DbSession = Annotated[Session, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(get_current_user)]
-CurrentContext = Annotated[AuthContext, Depends(get_auth_context)]
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"],
+)
+
+DbSession = Annotated[
+    Session,
+    Depends(get_db),
+]
+CurrentUser = Annotated[
+    User,
+    Depends(get_current_user),
+]
+CurrentContext = Annotated[
+    AuthContext,
+    Depends(get_auth_context),
+]
 
 
-def user_payload(user: User) -> AuthMeResponse:
+def user_payload(
+    user: User,
+) -> AuthMeResponse:
     return AuthMeResponse(
         user_uid=user.user_uid,
         username=user.username,
@@ -37,12 +64,65 @@ def user_payload(user: User) -> AuthMeResponse:
         is_active=user.is_active,
         last_login_at=user.last_login_at,
         created_at=user.created_at,
-        permissions=sorted(permissions_for_role(user.role)),
+        permissions=sorted(
+            permissions_for_role(user.role)
+        ),
     )
 
 
-@router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, request: Request, response: Response, db: DbSession):
+def set_session_cookie(
+    response: Response,
+    token: str,
+) -> None:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=auth_service.SESSION_HOURS * 3600,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def set_csrf_cookie(
+    response: Response,
+    csrf_token: str,
+) -> None:
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=auth_service.SESSION_HOURS * 3600,
+        httponly=False,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_auth_cookies(
+    response: Response,
+) -> None:
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path="/",
+    )
+    response.delete_cookie(
+        CSRF_COOKIE_NAME,
+        path="/",
+    )
+
+
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+)
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+):
     try:
         user = auth_service.authenticate_user(
             db,
@@ -50,7 +130,10 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DbSes
             payload.password,
         )
     except auth_service.AccountLockedError as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+        ) from exc
     except auth_service.InvalidCredentialsError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,59 +146,96 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DbSes
     request.state.audit_role = user.role
     request.state.audit_summary = "用户登录成功"
 
-    _, token, csrf_token = auth_service.create_session(db, user)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        max_age=auth_service.SESSION_HOURS * 3600,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        path="/",
+    _, token, csrf_token = (
+        auth_service.create_session(
+            db,
+            user,
+        )
     )
+
+    set_session_cookie(
+        response,
+        token,
+    )
+    set_csrf_cookie(
+        response,
+        csrf_token,
+    )
+
     return LoginResponse(
         user=user_payload(user),
         csrf_token=csrf_token,
     )
 
 
-@router.get("/me", response_model=AuthMeResponse)
-def me(user: CurrentUser):
+@router.get(
+    "/me",
+    response_model=AuthMeResponse,
+)
+def me(
+    user: CurrentUser,
+):
     return user_payload(user)
 
 
-@router.get("/csrf", response_model=CsrfResponse)
-def csrf(context: CurrentContext, db: DbSession):
-    return CsrfResponse(
-        csrf_token=auth_service.rotate_csrf_token(
+@router.get(
+    "/csrf",
+    response_model=CsrfResponse,
+)
+def csrf(
+    response: Response,
+    context: CurrentContext,
+    db: DbSession,
+):
+    csrf_token = (
+        auth_service.rotate_csrf_token(
             db,
             context.session,
         )
     )
 
+    set_csrf_cookie(
+        response,
+        csrf_token,
+    )
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+    return CsrfResponse(
+        csrf_token=csrf_token,
+    )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def logout(
     request: Request,
-    response: Response,
     context: CurrentContext,
     db: DbSession,
 ):
-    csrf_token = request.headers.get("X-CSRF-Token")
-    if not auth_service.verify_csrf_token(context.session, csrf_token):
+    csrf_token = request.headers.get(
+        "X-CSRF-Token"
+    )
+
+    if not auth_service.verify_csrf_token(
+        context.session,
+        csrf_token,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",
         )
 
-    auth_service.revoke_session(db, context.session)
-    response.delete_cookie(
-        SESSION_COOKIE_NAME,
-        path="/",
-        httponly=True,
-        samesite="lax",
+    auth_service.revoke_session(
+        db,
+        context.session,
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    response = Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    clear_auth_cookies(response)
+    return response
 
 
 @router.post(
@@ -125,12 +245,17 @@ def logout(
 def change_password(
     payload: ChangePasswordRequest,
     request: Request,
-    response: Response,
     context: CurrentContext,
     db: DbSession,
 ):
-    csrf_token = request.headers.get("X-CSRF-Token")
-    if not auth_service.verify_csrf_token(context.session, csrf_token):
+    csrf_token = request.headers.get(
+        "X-CSRF-Token"
+    )
+
+    if not auth_service.verify_csrf_token(
+        context.session,
+        csrf_token,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",
@@ -145,10 +270,16 @@ def change_password(
             detail="Current password is incorrect.",
         )
 
-    if payload.current_password == payload.new_password:
+    if (
+        payload.current_password
+        == payload.new_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must differ from current password.",
+            detail=(
+                "New password must differ "
+                "from current password."
+            ),
         )
 
     auth_service.reset_password(
@@ -156,10 +287,9 @@ def change_password(
         context.user,
         payload.new_password,
     )
-    response.delete_cookie(
-        SESSION_COOKIE_NAME,
-        path="/",
-        httponly=True,
-        samesite="lax",
+
+    response = Response(
+        status_code=status.HTTP_204_NO_CONTENT,
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    clear_auth_cookies(response)
+    return response

@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     db_name: str = "yinda_web_center"
     db_user: str = "yinda_app"
     db_password: str
+
+    session_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
