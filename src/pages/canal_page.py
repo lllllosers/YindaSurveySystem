@@ -22,15 +22,18 @@ from database import (
     get_canal_unit,
     get_canal_unit_usage,
     get_canal_units,
-    get_departments,
-    get_organization_unit,
-    get_water_offices,
     set_canal_unit_status,
     update_canal_unit,
 )
 
 from services.master_data_admin import (
     get_canal_sort_order_map,
+)
+from services.canal_management_scope_admin import (
+    get_canal_management_summary_map,
+)
+from pages.components.canal_management_scope_dialog import (
+    CanalManagementScopeDialog,
 )
 
 CANAL_LEVEL_NAMES = {
@@ -55,10 +58,11 @@ class CanalPage(QWidget):
 
         description = QLabel(
             "维护干渠、分干渠、支渠和分支渠基础资料。"
-            "正式主数据按甲方确认顺序显示；"
-            "甲方基础表中的说明统一使用渠道“备注”字段维护。"
+            "渠道实体与管理单位分开维护；"
+            "请通过“管理范围”配置全渠或分段管理关系。"
+            "无法取得正式边界桩号时，可登记为分段管理（边界未知）。"
             "已被工程或调查数据引用的渠系仍可修改名称和备注，"
-            "但渠道层级、上级渠道和管理单位将受到保护。"
+            "但渠道层级和上级渠道将受到保护。"
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #607080; font-size: 15px;")
@@ -79,6 +83,11 @@ class CanalPage(QWidget):
         self.delete_button = QPushButton("删除选中")
         self.delete_button.clicked.connect(self.delete_selected)
 
+        self.management_scope_button = QPushButton("管理范围")
+        self.management_scope_button.clicked.connect(
+            self.manage_selected_scope
+        )
+
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
@@ -91,7 +100,7 @@ class CanalPage(QWidget):
         button_layout.addWidget(self.status_button)
 
         button_layout.addWidget(self.delete_button)
-
+        button_layout.addWidget(self.management_scope_button)
         button_layout.addWidget(refresh_button)
 
         button_layout.addStretch()
@@ -109,7 +118,7 @@ class CanalPage(QWidget):
             [
                 "渠道名称",
                 "渠道层级",
-                "管理单位",
+                "管理范围",
                 "备注",
                 "状态",
             ]
@@ -132,6 +141,10 @@ class CanalPage(QWidget):
 
         sort_order_map = (
             get_canal_sort_order_map()
+        )
+
+        management_summary_map = (
+            get_canal_management_summary_map()
         )
 
         canals = list(
@@ -161,7 +174,10 @@ class CanalPage(QWidget):
             canal_id = int(canal["id"])
             canal_name = str(canal["name"] or "")
             canal_level = str(canal["canal_level"] or "")
-            organization_name = str(canal["organization_name"] or "")
+            management_summary = management_summary_map.get(
+                canal_id,
+                "",
+            )
             status = str(canal["status"] or "")
 
             description = str(
@@ -185,7 +201,7 @@ class CanalPage(QWidget):
 
             item.setText(
                 2,
-                organization_name,
+                management_summary,
             )
 
             item.setText(
@@ -287,6 +303,7 @@ class CanalPage(QWidget):
         self.status_button.setEnabled(has_selection)
 
         self.delete_button.setEnabled(has_selection)
+        self.management_scope_button.setEnabled(has_selection)
 
         if not has_selection:
             self.status_button.setText("停用选中")
@@ -391,68 +408,6 @@ class CanalPage(QWidget):
                 parent_combo.setCurrentIndex(parent_combo.count() - 1)
 
         # =========================
-        # 管理单位
-        # 继续沿用当前页面已有规则：
-        # 新建/编辑时从水管所中选择。
-        # =========================
-
-        organization_combo = QComboBox()
-
-        organization_combo.addItem(
-            "暂不指定",
-            None,
-        )
-
-        current_organization_id = canal["organization_unit_id"]
-
-        current_org_found = False
-
-        departments = get_departments()
-
-        for department in departments:
-            offices = get_water_offices(department["id"])
-
-            for office in offices:
-                office_id = int(office["id"])
-
-                # 新选择只提供有效机构。
-                # 当前已有的停用机构仍需显示，
-                # 否则编辑名称时会误改管理单位。
-                if (
-                    department["status"] != "active" or office["status"] != "active"
-                ) and office_id != current_organization_id:
-                    continue
-
-                display_name = f"{department['name']} / " f"{office['name']}"
-
-                if department["status"] != "active" or office["status"] != "active":
-                    display_name += "（停用）"
-
-                organization_combo.addItem(
-                    display_name,
-                    office_id,
-                )
-
-                if office_id == current_organization_id:
-                    current_org_found = True
-
-                    organization_combo.setCurrentIndex(organization_combo.count() - 1)
-
-        # 兼容已有数据：
-        # 如果当前管理单位不在现有水管所列表中，
-        # 至少把原值显示出来，避免编辑名称时误清空。
-        if current_organization_id is not None and not current_org_found:
-            current_org = get_organization_unit(current_organization_id)
-
-            if current_org is not None:
-                organization_combo.addItem(
-                    (f"{current_org['name']}" "（当前管理单位）"),
-                    current_organization_id,
-                )
-
-                organization_combo.setCurrentIndex(organization_combo.count() - 1)
-
-        # =========================
         # 备注
         # =========================
 
@@ -478,11 +433,6 @@ class CanalPage(QWidget):
         )
 
         form.addRow(
-            "管理单位：",
-            organization_combo,
-        )
-
-        form.addRow(
             "备注：",
             description_edit,
         )
@@ -496,17 +446,13 @@ class CanalPage(QWidget):
         if usage["structure_locked"]:
             level_combo.setEnabled(False)
             parent_combo.setEnabled(False)
-            organization_combo.setEnabled(False)
-
             locked_tip = (
                 "该渠系已经产生工程或调查数据，"
-                "渠道层级、上级渠道和管理单位"
-                "不能再修改。"
+                "渠道层级和上级渠道不能再修改。"
             )
 
             level_combo.setToolTip(locked_tip)
             parent_combo.setToolTip(locked_tip)
-            organization_combo.setToolTip(locked_tip)
 
         info_label = QLabel()
 
@@ -514,7 +460,7 @@ class CanalPage(QWidget):
             info_label.setText(
                 "该渠系已有业务数据引用。"
                 "渠道名称和备注仍可修改；"
-                "渠道层级、上级渠道和管理单位已锁定。"
+                "渠道层级和上级渠道已锁定。"
             )
         else:
             info_label.setText("当前渠系尚未产生工程或调查数据，" "结构信息允许修改。")
@@ -545,7 +491,9 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=(level_combo.currentData()),
                 parent_id=(parent_combo.currentData()),
-                organization_unit_id=(organization_combo.currentData()),
+                # 旧 organization_unit_id 仅保留兼容值，
+                # 渠道管理事实由 CanalManagementScope 维护。
+                organization_unit_id=(canal["organization_unit_id"]),
                 description=(description_edit.toPlainText()),
             )
 
@@ -561,6 +509,30 @@ class CanalPage(QWidget):
             QMessageBox.warning(
                 self,
                 "保存失败",
+                str(error),
+            )
+
+    def manage_selected_scope(self):
+        """维护当前渠道的管理单位及全渠/分段范围。"""
+
+        canal = self._require_selected_canal()
+
+        if canal is None:
+            return
+
+        try:
+            dialog = CanalManagementScopeDialog(
+                canal["id"],
+                self,
+            )
+
+            dialog.exec()
+            self.load_data()
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "管理范围打开失败",
                 str(error),
             )
 
@@ -641,6 +613,12 @@ class CanalPage(QWidget):
 
             if usage["child_count"]:
                 reasons.append(f"下级渠道 " f"{usage['child_count']} 个")
+
+            if usage.get("management_scope_count"):
+                reasons.append(
+                    f"渠道管理范围 "
+                    f"{usage['management_scope_count']} 条"
+                )
 
             if usage["asset_count"]:
                 reasons.append(f"工程对象 " f"{usage['asset_count']} 个")
@@ -732,28 +710,6 @@ class CanalPage(QWidget):
                 canal["id"],
             )
 
-        organization_combo = QComboBox()
-        organization_combo.addItem(
-            "暂不指定",
-            None,
-        )
-
-        departments = get_departments()
-
-        for department in departments:
-            if department["status"] != "active":
-                continue
-
-            offices = get_water_offices(department["id"])
-
-            for office in offices:
-                if office["status"] != "active":
-                    continue
-                organization_combo.addItem(
-                    (f"{department['name']} / " f"{office['name']}"),
-                    office["id"],
-                )
-
         description_edit = QTextEdit()
         description_edit.setMaximumHeight(90)
 
@@ -770,11 +726,6 @@ class CanalPage(QWidget):
         form.addRow(
             "上级渠道：",
             parent_combo,
-        )
-
-        form.addRow(
-            "管理水管所：",
-            organization_combo,
         )
 
         form.addRow(
@@ -802,7 +753,7 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=level_combo.currentData(),
                 parent_id=parent_combo.currentData(),
-                organization_unit_id=(organization_combo.currentData()),
+                organization_unit_id=None,
                 description=(description_edit.toPlainText()),
             )
 
@@ -811,7 +762,7 @@ class CanalPage(QWidget):
             QMessageBox.information(
                 self,
                 "保存成功",
-                "渠道已保存。",
+                "渠道已保存。请通过“管理范围”配置管理单位及范围。",
             )
 
         except Exception as error:

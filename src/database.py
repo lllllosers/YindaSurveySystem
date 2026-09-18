@@ -1644,6 +1644,27 @@ def get_organization_unit_usage(
             (unit_id,),
         ).fetchone()[0]
 
+        scope_table_exists = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'canal_management_scopes'
+            """
+        ).fetchone() is not None
+
+        management_scope_count = 0
+
+        if scope_table_exists:
+            management_scope_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM canal_management_scopes
+                WHERE organization_unit_id = ?
+                """,
+                (unit_id,),
+            ).fetchone()[0]
+
         asset_count = connection.execute(
             """
             SELECT COUNT(*)
@@ -1698,6 +1719,7 @@ def get_organization_unit_usage(
         return {
             "child_count": int(child_count),
             "canal_count": int(canal_count),
+            "management_scope_count": int(management_scope_count),
             "asset_count": int(asset_count),
             "survey_count": int(survey_count),
             "descendant_asset_count": int(descendant_asset_count),
@@ -1707,6 +1729,7 @@ def get_organization_unit_usage(
             "can_delete": (
                 child_count == 0
                 and canal_count == 0
+                and management_scope_count == 0
                 and asset_count == 0
                 and survey_count == 0
             ),
@@ -1913,7 +1936,12 @@ def delete_organization_unit(
             reasons.append(f"下属机构 {usage['child_count']} 个")
 
         if usage["canal_count"]:
-            reasons.append(f"管理渠系 {usage['canal_count']} 个")
+            reasons.append(f"兼容管理渠系 {usage['canal_count']} 个")
+
+        if usage["management_scope_count"]:
+            reasons.append(
+                f"渠道管理范围 {usage['management_scope_count']} 条"
+            )
 
         if usage["asset_count"]:
             reasons.append(f"工程对象 {usage['asset_count']} 个")
@@ -2125,15 +2153,42 @@ def get_canal_unit_usage(
             (canal_unit_id,),
         ).fetchone()[0]
 
+        scope_table_exists = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'canal_management_scopes'
+            """
+        ).fetchone() is not None
+
+        management_scope_count = 0
+
+        if scope_table_exists:
+            management_scope_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM canal_management_scopes
+                WHERE canal_unit_id = ?
+                """,
+                (canal_unit_id,),
+            ).fetchone()[0]
+
         business_reference_count = asset_count + survey_count
 
         return {
             "child_count": int(child_count),
             "asset_count": int(asset_count),
             "survey_count": int(survey_count),
+            "management_scope_count": int(management_scope_count),
             "business_reference_count": int(business_reference_count),
             "structure_locked": (business_reference_count > 0),
-            "can_delete": (child_count == 0 and asset_count == 0 and survey_count == 0),
+            "can_delete": (
+                child_count == 0
+                and management_scope_count == 0
+                and asset_count == 0
+                and survey_count == 0
+            ),
         }
 
 
@@ -2323,6 +2378,11 @@ def delete_canal_unit(
 
         if usage["child_count"]:
             reasons.append(f"下级渠道 {usage['child_count']} 个")
+
+        if usage["management_scope_count"]:
+            reasons.append(
+                f"渠道管理范围 {usage['management_scope_count']} 条"
+            )
 
         if usage["asset_count"]:
             reasons.append(f"工程对象 {usage['asset_count']} 个")

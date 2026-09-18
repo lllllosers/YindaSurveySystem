@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
 )
 
 from database import (
-    get_canal_units_for_organization,
     get_current_context,
     get_current_form_version,
     get_departments,
@@ -40,6 +39,10 @@ from database import (
 from services.business_code import (
     build_business_code,
     suggest_next_sequence,
+)
+
+from services.canal_management_scope import (
+    get_managed_canals_for_organization,
 )
 
 from services.survey_task_workspace import (
@@ -525,9 +528,16 @@ class GenericEngineeringSurveyPage(QWidget):
                 )
             }
 
+        # 新增调查只使用当前启用的渠道管理范围；
+        # 打开历史记录时允许读取已停用范围，
+        # 避免管理关系调整后历史记录无法回填。
         canals = (
-            get_canal_units_for_organization(
-                office_data["id"]
+            get_managed_canals_for_organization(
+                office_data["id"],
+                active_only=(
+                    self.editing_record_id
+                    is None
+                ),
             )
         )
 

@@ -10,6 +10,12 @@ from services.official_master_data import (
 from services.master_identity import (
     synchronize_official_master_identities,
 )
+from services.canal_management_scope import (
+    ensure_canal_management_scope_schema,
+)
+from services.official_canal_management_scope import (
+    seed_official_canal_management_scopes,
+)
 from services.survey_task_record_scope import (
     ensure_survey_task_record_scope_schema,
 )
@@ -44,6 +50,14 @@ def initialize_application_database():
         synchronize_official_master_identities()
     )
 
+    canal_management_scope_result = (
+        ensure_canal_management_scope_schema()
+    )
+
+    official_canal_management_scope_result = (
+        seed_official_canal_management_scopes()
+    )
+
     task_record_scope_result = (
         ensure_survey_task_record_scope_schema()
     )
@@ -58,6 +72,12 @@ def initialize_application_database():
         ),
         "official_master_identity": (
             master_identity_result
+        ),
+        "canal_management_scope": (
+            canal_management_scope_result
+        ),
+        "official_canal_management_scope": (
+            official_canal_management_scope_result
         ),
         "survey_task_record_scope": (
             task_record_scope_result

@@ -20,10 +20,11 @@ class MasterDataPagesTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    @patch("pages.canal_page.get_canal_management_summary_map")
     @patch("pages.canal_page.get_canal_sort_order_map")
     @patch("pages.canal_page.get_canal_units")
     def test_canal_page_uses_official_sort_and_description(
-        self, mock_canals, mock_orders
+        self, mock_canals, mock_orders, mock_summaries
     ):
         mock_canals.return_value = [
             {
@@ -46,6 +47,9 @@ class MasterDataPagesTestCase(unittest.TestCase):
             },
         ]
         mock_orders.return_value = {1: 10, 2: 20}
+        mock_summaries.return_value = {
+            2: "测试管理单位（全渠）",
+        }
         page = CanalPage()
         try:
             self.assertEqual(page.tree.columnCount(), 5)
