@@ -478,6 +478,33 @@ def create_canal_management_scope(
     return dict(row)
 
 
+def get_canal_management_scope(management_scope_uid):
+    # 按稳定 UID 获取单条渠道管理范围。
+    # 身份查询不按 active / inactive 过滤，以支持维护已停用记录。
+    management_scope_uid = _clean_text(
+        management_scope_uid
+    )
+
+    if not management_scope_uid:
+        return None
+
+    with database.get_connection() as connection:
+        row = connection.execute(
+            _scope_select_sql()
+            + " WHERE cms.management_scope_uid = ?",
+            (
+                management_scope_uid,
+            ),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return dict(
+        row
+    )
+
+
 def get_management_scopes_for_canal(canal_unit_id, *, active_only=True):
     sql = _scope_select_sql() + " WHERE cms.canal_unit_id = ?"
     params = [int(canal_unit_id)]

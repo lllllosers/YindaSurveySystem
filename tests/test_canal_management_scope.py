@@ -19,6 +19,7 @@ from services.canal_management_scope import (
     create_canal_management_scope,
     ensure_canal_management_scope_schema,
     find_management_scope_for_stake,
+    get_canal_management_scope,
     get_management_scopes_for_canal,
     get_management_scopes_for_organization,
     organization_manages_canal,
@@ -209,6 +210,71 @@ class CanalManagementScopeTestCase(unittest.TestCase):
                 start_stake_value=20.0,
                 end_stake_value=10.0,
             )
+
+
+    def test_scope_can_be_loaded_by_uid_including_inactive(self):
+        canal_id = self._manual_canal(
+            "测试稳定UID查询干渠"
+        )
+        office_id = self._office_id(
+            "ORG-D01-O01"
+        )
+
+        created = create_canal_management_scope(
+            canal_unit_id=canal_id,
+            organization_unit_id=office_id,
+            range_mode=RANGE_MODE_SEGMENT_UNKNOWN,
+        )
+
+        loaded = get_canal_management_scope(
+            created["management_scope_uid"]
+        )
+
+        self.assertIsNotNone(loaded)
+        self.assertEqual(
+            loaded["id"],
+            created["id"],
+        )
+        self.assertEqual(
+            loaded["canal_unit_id"],
+            canal_id,
+        )
+        self.assertEqual(
+            loaded["organization_unit_id"],
+            office_id,
+        )
+        self.assertEqual(
+            loaded["status"],
+            "active",
+        )
+
+        with database.get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE canal_management_scopes
+                SET status = 'inactive'
+                WHERE management_scope_uid = ?
+                """,
+                (
+                    created["management_scope_uid"],
+                ),
+            )
+
+        inactive = get_canal_management_scope(
+            created["management_scope_uid"]
+        )
+
+        self.assertIsNotNone(inactive)
+        self.assertEqual(
+            inactive["status"],
+            "inactive",
+        )
+
+        self.assertIsNone(
+            get_canal_management_scope(
+                "missing-management-scope-uid"
+            )
+        )
 
 
 if __name__ == "__main__":
