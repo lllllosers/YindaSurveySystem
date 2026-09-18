@@ -70,7 +70,16 @@ Desktop.ini
 .mypy_cache/
 .coverage
 htmlcov/
+
 # =========================
 # Automated test logs
 # =========================
 test_logs/
+
+# =========================
+# Web center
+# =========================
+web_center/backend/.venv/
+web_center/backend/.env
+web_center/frontend/node_modules/
+web_center/frontend/dist/web_center/frontend/.env.local
