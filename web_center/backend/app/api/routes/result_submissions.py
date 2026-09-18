@@ -1,6 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -8,20 +17,51 @@ from app.api.dependencies.auth import require_permission
 from app.db.session import get_db
 from app.models.auth import User
 from app.models.result_submission import ResultSubmission
-from app.schemas.result_submission import PackageIssueRead, ResultSubmissionPage, ResultSubmissionRead
+from app.schemas.result_submission import (
+    PackageIssueRead,
+    ResultSubmissionPage,
+    ResultSubmissionRead,
+)
+from app.schemas.result_verification import ResultFileVerificationRead
 from app.services import result_submission_service
+from app.services import result_verification_service
 
 
-router = APIRouter(prefix="/result-submissions", tags=["Result Submissions"])
+router = APIRouter(
+    prefix="/result-submissions",
+    tags=["Result Submissions"],
+)
 DbSession = Annotated[Session, Depends(get_db)]
-ResultReader = Annotated[User, Depends(require_permission("results.read"))]
-ResultUploader = Annotated[User, Depends(require_permission("results.upload"))]
+ResultReader = Annotated[
+    User,
+    Depends(require_permission("results.read")),
+]
+ResultUploader = Annotated[
+    User,
+    Depends(require_permission("results.upload")),
+]
+ResultVerifier = Annotated[
+    User,
+    Depends(require_permission("results.verify")),
+]
 
 
 def to_read(row: ResultSubmission) -> ResultSubmissionRead:
-    issues = row.inspection_issues_json if isinstance(row.inspection_issues_json, list) else []
-    counts = row.counts_json if isinstance(row.counts_json, dict) else {}
-    source_task_uids = row.source_task_uids if isinstance(row.source_task_uids, list) else []
+    issues = (
+        row.inspection_issues_json
+        if isinstance(row.inspection_issues_json, list)
+        else []
+    )
+    counts = (
+        row.counts_json
+        if isinstance(row.counts_json, dict)
+        else {}
+    )
+    source_task_uids = (
+        row.source_task_uids
+        if isinstance(row.source_task_uids, list)
+        else []
+    )
 
     return ResultSubmissionRead(
         submission_uid=row.submission_uid,
@@ -44,11 +84,17 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
             PackageIssueRead(
                 code=str(item.get("code", "")),
                 message=str(item.get("message", "")),
-                path=str(item["path"]) if item.get("path") is not None else None,
+                path=(
+                    str(item["path"])
+                    if item.get("path") is not None
+                    else None
+                ),
             )
             for item in issues
             if isinstance(item, dict)
         ],
+        storage_status=row.storage_status,
+        storage_checked_at=row.storage_checked_at,
         uploader_user_uid=row.uploader_user_uid,
         uploader_username=row.uploader_username,
         uploaded_at=row.uploaded_at,
@@ -126,16 +172,67 @@ async def upload_result(
     return to_read(row)
 
 
-@router.get("/{submission_uid}", response_model=ResultSubmissionRead)
+@router.get(
+    "/{submission_uid}",
+    response_model=ResultSubmissionRead,
+)
 def get_submission(
     submission_uid: str,
     _: ResultReader,
     db: DbSession,
 ):
-    row = result_submission_service.get_submission(db, submission_uid)
+    row = result_submission_service.get_submission(
+        db,
+        submission_uid,
+    )
     if row is None:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Submission not found.",
+        )
     return to_read(row)
+
+
+@router.post(
+    "/{submission_uid}/verify",
+    response_model=ResultFileVerificationRead,
+)
+def verify_submission(
+    submission_uid: str,
+    request: Request,
+    _: ResultVerifier,
+    db: DbSession,
+):
+    row = result_submission_service.get_submission(
+        db,
+        submission_uid,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Submission not found.",
+        )
+
+    try:
+        result = result_verification_service.verify_submission_file(
+            db,
+            row,
+        )
+    except RuntimeError as exc:
+        row.storage_status = "error"
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+    request.state.audit_summary = "重新校验成果包服务器文件完整性"
+    request.state.audit_details = {
+        "submission_uid": submission_uid,
+        "storage_status": result["storage_status"],
+    }
+
+    return result
 
 
 @router.get("/{submission_uid}/download")
@@ -144,14 +241,23 @@ def download_submission(
     _: ResultReader,
     db: DbSession,
 ):
-    row = result_submission_service.get_submission(db, submission_uid)
+    row = result_submission_service.get_submission(
+        db,
+        submission_uid,
+    )
     if row is None:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Submission not found.",
+        )
 
     try:
         path = result_submission_service.submission_file_path(row)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=410, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=410,
+            detail=str(exc),
+        ) from exc
 
     return FileResponse(
         path,

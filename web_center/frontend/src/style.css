@@ -386,3 +386,34 @@ select {
   font-size: 12px;
   line-height: 1.55;
 }
+
+.detail-actions,
+.detail-tags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-card {
+  margin-bottom: 18px;
+}
+
+.detail-hash {
+  word-break: break-all;
+}
+
+.detail-uid-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #eef1f4;
+}
+
+.detail-uid-row:last-child {
+  border-bottom: none;
+}
+
+.detail-issue {
+  margin-top: 12px;
+  color: #5f6b78;
+  font-size: 13px;
+  line-height: 1.6;
+}

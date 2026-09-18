@@ -7,6 +7,7 @@ import ProjectsView from "../views/ProjectsView.vue";
 import UsersView from "../views/UsersView.vue";
 import AuditView from "../views/AuditView.vue";
 import ResultsView from "../views/ResultsView.vue";
+import ResultDetailView from "../views/ResultDetailView.vue";
 import { useAuthStore } from "../stores/auth";
 
 export const router = createRouter({
@@ -28,6 +29,12 @@ export const router = createRouter({
           path: "results",
           name: "results",
           component: ResultsView,
+          meta: { permission: "results.read" },
+        },
+        {
+          path: "results/:submissionUid",
+          name: "result-detail",
+          component: ResultDetailView,
           meta: { permission: "results.read" },
         },
         {

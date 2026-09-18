@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -26,6 +27,8 @@ class ResultSubmissionRead(BaseModel):
     status: str
     inspection_error_count: int
     inspection_issues: list[PackageIssueRead]
+    storage_status: str
+    storage_checked_at: datetime | None
     uploader_user_uid: str
     uploader_username: str
     uploaded_at: datetime
