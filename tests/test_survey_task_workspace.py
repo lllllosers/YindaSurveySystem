@@ -168,14 +168,14 @@ class SurveyTaskWorkspaceTestCase(
                 ),
             ).fetchone()
 
-            canal = connection.execute(
+            scope = connection.execute(
                 """
-                SELECT id
-                FROM canal_units
+                SELECT management_scope_uid
+                FROM canal_management_scopes
                 WHERE master_key = ?
                 """,
                 (
-                    "CANAL-S001",
+                    "CMS-CANAL-S001-ORG-D01-O03",
                 ),
             ).fetchone()
 
@@ -212,10 +212,10 @@ class SurveyTaskWorkspaceTestCase(
                             office["id"]
                         )
                     ),
-                    canal_ids=(
-                        int(
-                            canal["id"]
-                        ),
+                    management_scope_uids=(
+                        scope[
+                            "management_scope_uid"
+                        ],
                     ),
                     task_name=(
                         "通远水管所调查任务"
@@ -271,7 +271,7 @@ class SurveyTaskWorkspaceTestCase(
             result.created_batch
         )
         self.assertEqual(
-            result.selected_canal_count,
+            result.selected_management_scope_count,
             1,
         )
         self.assertTrue(

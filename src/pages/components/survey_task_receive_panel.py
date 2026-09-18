@@ -63,7 +63,7 @@ class SurveyTaskReceivePanel(QWidget):
 
         description = QLabel(
             "收到 .ydtask 后，从这里接收。"
-            "系统会校验任务包，将项目、调查批次、管理单位和渠系范围"
+            "系统会校验任务包，将项目、调查批次、管理单位和分管范围"
             "建立为本机当前任务工作区，并把原任务包复制到本地托管目录。"
         )
         description.setWordWrap(True)
@@ -262,14 +262,14 @@ class SurveyTaskReceivePanel(QWidget):
             )
         )
 
-        canal_count = scope.get(
-            "selected_canal_count"
+        scope_count = scope.get(
+            "selected_management_scope_count"
         )
 
-        if canal_count is None:
-            canal_count = len(
+        if scope_count is None:
+            scope_count = len(
                 scope.get(
-                    "selected_canal_uids"
+                    "selected_management_scope_uids"
                 )
                 or []
             )
@@ -280,7 +280,7 @@ class SurveyTaskReceivePanel(QWidget):
             f"调查批次：{batch_name}\n"
             f"基层处：{department_name}\n"
             f"管理单位：{organization_name}\n"
-            f"渠系范围：{canal_count} 条\n\n"
+            f"分管范围：{scope_count} 项\n\n"
             "确认接收并切换到该任务工作区吗？"
         )
 
@@ -395,8 +395,8 @@ class SurveyTaskReceivePanel(QWidget):
         message = (
             f"{action_text}\n\n"
             f"任务：{result.task_name}\n"
-            f"渠系范围："
-            f"{result.selected_canal_count} 条\n"
+            f"分管范围："
+            f"{result.selected_management_scope_count} 条\n"
             f"本地托管："
             f"{result.managed_package_path}"
         )

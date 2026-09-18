@@ -22,7 +22,7 @@ class SurveyTaskReceiveResult:
     survey_batch_id: int
     organization_unit_id: int
     task_name: str
-    selected_canal_count: int
+    selected_management_scope_count: int
     managed_package_path: Path
     created_project: bool
     created_batch: bool
@@ -583,91 +583,73 @@ def _resolve_local_assignment(
 def _resolve_selected_canals(
     connection,
     *,
-    selected_canal_uids,
+    selected_management_scope_uids,
+    management_scopes,
     organization_unit_id,
 ):
-    if not isinstance(
-        selected_canal_uids,
-        list,
-    ) or not selected_canal_uids:
-        raise ValueError(
-            "任务没有有效的渠系范围。"
-        )
+    """
+    Stage 14.4.1 过渡投影：新 .ydtask 已完全以 management scope 快照为任务事实源。
+    当前 workspace 表仍暂存 CanalUnit，14.4.2 再升级为 scope snapshot 表。
 
-    normalized_uids = []
+    这里明确不读取 canal_units.organization_unit_id，也不要求接收端预先存在
+    发送端人工创建的 scope；只按包内冻结快照解析物理 CanalUnit。
+    """
+    if not isinstance(selected_management_scope_uids, list) or not selected_management_scope_uids:
+        raise ValueError("任务没有有效的分管范围。")
 
-    for raw_uid in (
-        selected_canal_uids
-    ):
-        uid = _require_text(
-            raw_uid,
-            "渠系 UID",
-        )
+    office = connection.execute(
+        """
+        SELECT organization_unit_uid
+        FROM organization_units
+        WHERE id = ?
+        """,
+        (int(organization_unit_id),),
+    ).fetchone()
+    if office is None:
+        raise ValueError("本机找不到任务管理单位。")
 
-        if uid not in normalized_uids:
-            normalized_uids.append(
-                uid
-            )
+    office_uid = _require_text(office["organization_unit_uid"], "任务管理单位 UID")
+
+    scope_by_uid = {}
+    for item in management_scopes:
+        uid = _require_text(item.get("management_scope_uid"), "management_scope_uid")
+        if uid in scope_by_uid:
+            raise ValueError("任务分管范围快照包含重复 UID。")
+        scope_by_uid[uid] = item
 
     resolved = []
+    for raw_uid in selected_management_scope_uids:
+        uid = _require_text(raw_uid, "management_scope_uid")
+        item = scope_by_uid.get(uid)
+        if item is None:
+            raise ValueError(f"任务缺少选定分管范围快照：{uid}。")
 
-    for uid in normalized_uids:
+        item_office_uid = _require_text(
+            item.get("organization_unit_uid"),
+            "分管范围管理单位 UID",
+        )
+        if item_office_uid != office_uid:
+            raise ValueError("任务分管范围与管理单位不一致。")
+
+        canal_uid = _require_text(item.get("canal_uid"), "分管范围 canal_uid")
         row = connection.execute(
             """
-            SELECT
-                id,
-                name,
-                status,
-                organization_unit_id
+            SELECT id, name, status
             FROM canal_units
             WHERE canal_unit_uid = ?
             """,
-            (
-                uid,
-            ),
+            (canal_uid,),
         ).fetchone()
-
         if row is None:
-            raise ValueError(
-                "本机正式主数据中找不到任务渠系："
-                f"{uid}。"
-            )
-
+            raise ValueError(f"本机正式主数据中找不到任务渠系：{canal_uid}。")
         if row["status"] != "active":
-            raise ValueError(
-                "任务包含已停用渠系："
-                f"{row['name']}。"
-            )
+            raise ValueError(f"任务包含已停用渠系：{row['name']}。")
 
-        if (
-            row[
-                "organization_unit_id"
-            ]
-            is None
-            or int(
-                row[
-                    "organization_unit_id"
-                ]
-            )
-            != int(
-                organization_unit_id
-            )
-        ):
-            raise ValueError(
-                "任务渠系与管理单位关系"
-                "和本机正式主数据不一致："
-                f"{row['name']}。"
-            )
+        canal_id = int(row["id"])
+        if canal_id not in resolved:
+            resolved.append(canal_id)
 
-        resolved.append(
-            int(
-                row["id"]
-            )
-        )
-
-    return tuple(
-        resolved
-    )
+    return tuple(resolved)
 
 
 def _validate_local_forms(
@@ -1051,17 +1033,7 @@ def receive_survey_task_package(
         )
 
         canal_ids = (
-            _resolve_selected_canals(
-                connection,
-                selected_canal_uids=(
-                    scope.get(
-                        "selected_canal_uids"
-                    )
-                ),
-                organization_unit_id=(
-                    organization_unit_id
-                ),
-            )
+            _resolve_selected_canals(connection, selected_management_scope_uids=scope.get('selected_management_scope_uids'), management_scopes=contents.management_scopes, organization_unit_id=organization_unit_id)
         )
 
         _validate_local_forms(
@@ -1237,8 +1209,13 @@ def receive_survey_task_package(
                         "task_name"
                     ]
                 ),
-                selected_canal_count=(
-                    len(canal_ids)
+                selected_management_scope_count=(
+                    len(
+                    scope.get(
+                        "selected_management_scope_uids"
+                    )
+                    or []
+                )
                 ),
                 managed_package_path=(
                     managed_absolute_path
@@ -1330,17 +1307,7 @@ def receive_survey_task_package(
             )
 
             canal_ids = (
-                _resolve_selected_canals(
-                    connection,
-                    selected_canal_uids=(
-                        scope[
-                            "selected_canal_uids"
-                        ]
-                    ),
-                    organization_unit_id=(
-                        organization_unit_id
-                    ),
-                )
+                _resolve_selected_canals(connection, selected_management_scope_uids=scope.get('selected_management_scope_uids'), management_scopes=contents.management_scopes, organization_unit_id=organization_unit_id)
             )
 
             if make_current:
@@ -1457,8 +1424,13 @@ def receive_survey_task_package(
             ),
             "任务名称",
         ),
-        selected_canal_count=(
-            len(canal_ids)
+        selected_management_scope_count=(
+            len(
+                    scope.get(
+                        "selected_management_scope_uids"
+                    )
+                    or []
+                )
         ),
         managed_package_path=(
             managed_absolute_path

@@ -30,10 +30,12 @@ from PySide6.QtWidgets import (
 
 from database import (
     get_canal_lineage,
-    get_canal_units_for_organization,
     get_current_context,
     get_departments,
     get_water_offices,
+)
+from services.canal_management_scope import (
+    get_management_scopes_for_organization,
 )
 from services.master_data_integrity import (
     check_master_data_integrity,
@@ -58,6 +60,17 @@ _CANAL_LEVEL_NAMES = {
     "03": "支渠",
     "04": "分支渠",
 }
+
+def _format_scope_range(scope):
+    mode = str(scope.get("range_mode") or "")
+    if mode == "whole":
+        return "全渠"
+    if mode == "segment_unknown":
+        return "边界未知"
+    start = scope.get("start_stake_text") or scope.get("start_stake_value") or "?"
+    end = scope.get("end_stake_text") or scope.get("end_stake_value") or "?"
+    return f"{start}～{end}"
+
 
 def _safe_filename(value):
     value = str(
@@ -143,7 +156,7 @@ class SurveyTaskPage(QWidget):
         root.setSpacing(16)
 
         intro = QLabel(
-            "调查任务包（.ydtask）用于明确某个管理单位本次需要调查的渠系范围，"
+            "调查任务包（.ydtask）用于明确某个管理单位本次需要调查的分管范围，"
             "并随包携带必要的组织、渠系和附表参考信息。"
             "任务包本身不包含调查结果，不会预生成工程台账或调查记录。"
         )
@@ -221,15 +234,15 @@ class SurveyTaskPage(QWidget):
         )
 
         scope_group = QGroupBox(
-            "三、调查渠系范围"
+            "三、调查分管范围"
         )
         scope_layout = QVBoxLayout(
             scope_group
         )
 
         scope_hint = QLabel(
-            "选择管理单位后，系统自动列出该单位当前明确管理的启用渠系，"
-            "并默认全部勾选。导出时，上级渠系会作为参考信息自动随包携带。"
+            "选择管理单位后，系统自动列出该单位当前启用的分管范围，"
+            "并默认全部勾选。导出时，物理渠道及上级渠系仅作为参考信息随包携带。"
         )
         scope_hint.setWordWrap(True)
         scope_hint.setStyleSheet(
@@ -278,9 +291,9 @@ class SurveyTaskPage(QWidget):
             [
                 "选择",
                 "渠道名称",
+                "类型",
+                "管理范围",
                 "上级渠道",
-                "渠道级别",
-                "渠道类型",
                 "备注",
             ]
         )
@@ -599,7 +612,7 @@ class SurveyTaskPage(QWidget):
             f"{office['name']}调查任务"
         )
 
-        self._load_office_canals(
+        self._load_office_scopes(
             office["id"]
         )
 
@@ -617,110 +630,48 @@ class SurveyTaskPage(QWidget):
         )
         self._update_scope_count()
 
-    def _load_office_canals(
-        self,
-        office_id,
-    ):
-        self.canal_tree.blockSignals(
-            True
-        )
+    def _load_office_scopes(self, office_id):
+        self.canal_tree.blockSignals(True)
         self.canal_tree.clear()
 
-        canals = list(
-            get_canal_units_for_organization(
-                office_id
-            )
-        )
-
-        canals.sort(
+        scopes = list(get_management_scopes_for_organization(office_id))
+        scopes.sort(
             key=lambda row: (
-                int(
-                    row["sort_order"]
-                    or 0
-                )
-                or (
-                    1000000
-                    + int(row["id"])
-                ),
+                int(row.get("canal_sort_order") or 0)
+                or (1000000 + int(row["canal_unit_id"])),
+                int(row.get("sort_order") or 0),
                 int(row["id"]),
             )
         )
 
-        for canal in canals:
+        for scope in scopes:
             item = QTreeWidgetItem()
-
             item.setData(
                 0,
                 Qt.ItemDataRole.UserRole,
-                int(canal["id"]),
+                {
+                    "management_scope_uid": scope["management_scope_uid"],
+                    "canal_unit_id": int(scope["canal_unit_id"]),
+                },
             )
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Checked)
 
-            item.setFlags(
-                item.flags()
-                | Qt.ItemFlag.ItemIsUserCheckable
-            )
-            item.setCheckState(
-                0,
-                Qt.CheckState.Checked,
-            )
-
-            canal_level = str(
-                canal["canal_level"]
-                or ""
-            )
-
+            canal_id = int(scope["canal_unit_id"])
             parent_name = ""
-
-            lineage = (
-                get_canal_lineage(
-                    int(canal["id"])
-                )
-            )
-
+            lineage = get_canal_lineage(canal_id)
             if len(lineage) >= 2:
-                parent_name = str(
-                    lineage[-2]["name"]
-                    or ""
-                )
+                parent_name = str(lineage[-2]["name"] or "")
 
-            item.setText(
-                1,
-                str(
-                    canal["name"]
-                    or ""
-                ),
-            )
-            item.setText(
-                2,
-                parent_name,
-            )
-            item.setText(
-                3,
-                canal_level,
-            )
-            item.setText(
-                4,
-                _CANAL_LEVEL_NAMES.get(
-                    canal_level,
-                    "",
-                ),
-            )
-            item.setText(
-                5,
-                str(
-                    canal["description"]
-                    or ""
-                ),
-            )
+            mode = str(scope["range_mode"] or "")
+            item.setText(1, str(scope["canal_name"] or ""))
+            item.setText(2, "全渠" if mode == "whole" else "分管段")
+            item.setText(3, _format_scope_range(scope))
+            item.setText(4, parent_name)
+            item.setText(5, str(scope["description"] or ""))
+            self.canal_tree.addTopLevelItem(item)
 
-            self.canal_tree.addTopLevelItem(
-                item
-            )
-
-        self.canal_tree.blockSignals(
-            False
-        )
-
+        self.canal_tree.blockSignals(False)
         self._update_scope_count()
 
     def _set_all_checked(
@@ -755,131 +706,58 @@ class SurveyTaskPage(QWidget):
 
         self._update_scope_count()
 
-    def selected_canal_ids(self):
+    def selected_management_scope_uids(self):
         result = []
-
-        for index in range(
-            self.canal_tree.topLevelItemCount()
-        ):
-            item = (
-                self.canal_tree
-                .topLevelItem(index)
-            )
-
-            if (
-                item.checkState(0)
-                == Qt.CheckState.Checked
-            ):
-                result.append(
-                    int(
-                        item.data(
-                            0,
-                            Qt.ItemDataRole.UserRole,
-                        )
-                    )
-                )
-
+        for index in range(self.canal_tree.topLevelItemCount()):
+            item = self.canal_tree.topLevelItem(index)
+            if item.checkState(0) != Qt.CheckState.Checked:
+                continue
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if not isinstance(data, dict):
+                continue
+            uid = str(data.get("management_scope_uid") or "").strip()
+            if uid:
+                result.append(uid)
         return tuple(result)
 
-    def _update_scope_count(
-        self,
-        *args,
-    ):
-        count = len(
-            self.selected_canal_ids()
-        )
-
-        total = (
-            self.canal_tree
-            .topLevelItemCount()
-        )
-
-        self.scope_count_label.setText(
-            f"已选择 {count} / {total} 条"
-        )
+    def _update_scope_count(self, *args):
+        count = len(self.selected_management_scope_uids())
+        total = self.canal_tree.topLevelItemCount()
+        self.scope_count_label.setText(f"已选择 {count} / {total} 项")
 
     # =========================================================
     # 导出
     # =========================================================
 
-    def _build_request(
-        self,
-        output_path,
-    ):
+    def _build_request(self, output_path):
         if not self.current_context:
-            raise ValueError(
-                "当前没有可用项目和调查批次。"
-            )
+            raise ValueError("当前没有可用项目和调查批次。")
 
-        project_id = (
-            self.current_context.get(
-                "project_id"
-            )
-        )
-        batch_id = (
-            self.current_context.get(
-                "batch_id"
-            )
-        )
+        project_id = self.current_context.get("project_id")
+        batch_id = self.current_context.get("batch_id")
+        if project_id is None or batch_id is None:
+            raise ValueError("当前没有可用项目和调查批次。")
 
-        if (
-            project_id is None
-            or batch_id is None
-        ):
-            raise ValueError(
-                "当前没有可用项目和调查批次。"
-            )
-
-        office = (
-            self.office_combo
-            .currentData()
-        )
-
+        office = self.office_combo.currentData()
         if not office:
-            raise ValueError(
-                "请选择管理单位。"
-            )
+            raise ValueError("请选择管理单位。")
 
-        task_name = (
-            self.task_name_edit
-            .text()
-            .strip()
-        )
-
+        task_name = self.task_name_edit.text().strip()
         if not task_name:
-            raise ValueError(
-                "任务名称不能为空。"
-            )
+            raise ValueError("任务名称不能为空。")
 
-        canal_ids = (
-            self.selected_canal_ids()
-        )
-
-        if not canal_ids:
-            raise ValueError(
-                "至少选择一条调查渠系。"
-            )
+        scope_uids = self.selected_management_scope_uids()
+        if not scope_uids:
+            raise ValueError("至少选择一个调查分管范围。")
 
         return SurveyTaskExportRequest(
-            project_id=int(
-                project_id
-            ),
-            survey_batch_id=int(
-                batch_id
-            ),
-            organization_unit_id=int(
-                office["id"]
-            ),
-            canal_ids=canal_ids,
+            project_id=int(project_id),
+            survey_batch_id=int(batch_id),
+            organization_unit_id=int(office["id"]),
+            management_scope_uids=scope_uids,
             task_name=task_name,
-            notes=(
-                self.notes_edit
-                .text()
-                .strip()
-            ),
-            output_path=Path(
-                output_path
-            ),
+            notes=self.notes_edit.text().strip(),
+            output_path=Path(output_path),
         )
 
     def export_task_package(self):
@@ -973,7 +851,7 @@ class SurveyTaskPage(QWidget):
                 (
                     "调查任务包已生成并通过完整性检查。\n\n"
                     f"管理单位：{result.organization_name}\n"
-                    f"选定渠系：{result.selected_canal_count} 条\n"
+                    f"选定分管范围：{result.selected_management_scope_count} 项\n"
                     f"参考渠系：{result.reference_canal_count} 条\n"
                     f"附表参考：{result.form_count} 项\n\n"
                     f"文件：{result.output_path}"
