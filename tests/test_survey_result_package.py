@@ -252,11 +252,14 @@ class SurveyResultPackageTestCase(
             connection.execute(
                 """
                 UPDATE survey_records
-                SET source_task_uid = ?
+                SET
+                    source_task_uid = ?,
+                    source_management_scope_uid = ?
                 WHERE id = ?
                 """,
                 (
                     "task-demo-001",
+                    "scope-demo-001",
                     self.record_id,
                 ),
             )
@@ -440,6 +443,46 @@ class SurveyResultPackageTestCase(
                 ),
                 self.media_bytes,
             )
+
+    def test_result_v2_serializes_record_scope_provenance(
+        self,
+    ):
+        result = self._export()
+
+        with zipfile.ZipFile(
+            result.output_path,
+            "r",
+        ) as archive:
+            manifest = json.loads(
+                archive.read("manifest.json")
+            )
+            result_document = json.loads(
+                archive.read("result.json")
+            )
+            records = json.loads(
+                archive.read(
+                    "data/survey_records.json"
+                )
+            )["items"]
+
+        self.assertEqual(
+            manifest["result_schema_version"],
+            "2.0",
+        )
+        self.assertEqual(
+            result_document["result_schema_version"],
+            "2.0",
+        )
+        self.assertEqual(
+            records[0]["source_task_uid"],
+            "task-demo-001",
+        )
+        self.assertEqual(
+            records[0][
+                "source_management_scope_uid"
+            ],
+            "scope-demo-001",
+        )
 
     def test_manifest_tracks_all_payload_and_media_hashes(
         self,

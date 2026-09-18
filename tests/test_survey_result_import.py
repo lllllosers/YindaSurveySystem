@@ -328,11 +328,14 @@ class SurveyResultImportTestCase(
             connection.execute(
                 """
                 UPDATE survey_records
-                SET source_task_uid = ?
+                SET
+                    source_task_uid = ?,
+                    source_management_scope_uid = ?
                 WHERE id = ?
                 """,
                 (
                     "child-task-001",
+                    "child-scope-001",
                     self.source_record_id,
                 ),
             )
@@ -617,6 +620,126 @@ class SurveyResultImportTestCase(
                 ),
             )
 
+        self._seed_child_issue_history()
+
+    def _seed_child_issue_history(
+        self,
+    ):
+        from services.survey_task_issue_history import (
+            record_issued_survey_task,
+        )
+
+        with database.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    cu.canal_unit_uid,
+                    cu.name AS canal_name,
+                    cu.canal_level,
+                    ou.organization_unit_uid,
+                    ou.name AS organization_name,
+                    dept.organization_unit_uid
+                        AS department_uid,
+                    dept.name AS department_name
+                FROM canal_units AS cu
+                JOIN organization_units AS ou
+                  ON ou.master_key = ?
+                JOIN organization_units AS dept
+                  ON dept.id = ou.parent_id
+                WHERE cu.master_key = ?
+                """,
+                (
+                    "ORG-D01-O03",
+                    "CANAL-S001",
+                ),
+            ).fetchone()
+
+        manifest = {
+            "task_uid": "child-task-001",
+            "task_schema_version": "2.0",
+            "app_version": "0.7.0",
+            "project_uid": self.project_uid,
+            "survey_batch_uid": self.batch_uid,
+        }
+
+        task_document = {
+            "task_schema_version": "2.0",
+            "task_uid": "child-task-001",
+            "task_name": "下级来源任务",
+            "notes": None,
+            "project": {
+                "project_uid": self.project_uid,
+                "name": "2026汇总测试项目",
+                "short_name": "汇总测试",
+            },
+            "survey_batch": {
+                "survey_batch_uid": self.batch_uid,
+                "batch_name": "2026汇总测试批次",
+                "batch_code": "MERGE-2026",
+                "start_date": None,
+                "end_date": None,
+            },
+            "assignment": {
+                "department_uid": row[
+                    "department_uid"
+                ],
+                "department_name": row[
+                    "department_name"
+                ],
+                "organization_unit_uid": row[
+                    "organization_unit_uid"
+                ],
+                "organization_name": row[
+                    "organization_name"
+                ],
+            },
+            "scope": {
+                "selected_management_scope_uids": [
+                    "child-scope-001",
+                ],
+                "selected_management_scope_count": 1,
+            },
+            "created_at": "2026-09-18T18:00:00+08:00",
+        }
+
+        record_issued_survey_task(
+            package_uid="child-issued-package-001",
+            manifest=manifest,
+            task_document=task_document,
+            management_scopes=[
+                {
+                    "management_scope_uid": "child-scope-001",
+                    "canal_uid": row[
+                        "canal_unit_uid"
+                    ],
+                    "organization_unit_uid": row[
+                        "organization_unit_uid"
+                    ],
+                    "range_mode": "segment_unknown",
+                    "start_stake_text": None,
+                    "start_stake_value": None,
+                    "end_stake_text": None,
+                    "end_stake_value": None,
+                    "sort_order": 1,
+                    "status": "active",
+                    "description": "下级任务冻结分管段",
+                }
+            ],
+            canal_units=[
+                {
+                    "canal_uid": row[
+                        "canal_unit_uid"
+                    ],
+                    "name": row[
+                        "canal_name"
+                    ],
+                    "canal_level": row[
+                        "canal_level"
+                    ],
+                }
+            ],
+        )
+
     def _fake_backup(self):
         path = (
             self.target_data_dir
@@ -687,7 +810,8 @@ class SurveyResultImportTestCase(
                 """
                 SELECT
                     id,
-                    source_task_uid
+                    source_task_uid,
+                    source_management_scope_uid
                 FROM survey_records
                 WHERE survey_record_uid = ?
                 """,
@@ -706,6 +830,12 @@ class SurveyResultImportTestCase(
                     "source_task_uid"
                 ],
                 "child-task-001",
+            )
+            self.assertEqual(
+                record[
+                    "source_management_scope_uid"
+                ],
+                "child-scope-001",
             )
 
             media = connection.execute(

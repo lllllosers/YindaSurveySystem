@@ -270,6 +270,166 @@ def _lookup_canal(
     ).fetchone()
 
 
+
+def _load_issued_task_authority(
+    connection,
+    task_uid,
+):
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            task_uid,
+            project_uid,
+            survey_batch_uid,
+            organization_unit_uid
+        FROM survey_task_issues
+        WHERE task_uid = ?
+        LIMIT 1
+        """,
+        (
+            task_uid,
+        ),
+    ).fetchone()
+
+    return _row_to_dict(
+        row
+    )
+
+
+def _load_issued_scope_authority(
+    connection,
+    task_issue_id,
+    management_scope_uid,
+):
+    row = connection.execute(
+        """
+        SELECT
+            management_scope_uid,
+            canal_unit_uid,
+            organization_unit_uid,
+            range_mode,
+            start_stake_text,
+            start_stake_value,
+            end_stake_text,
+            end_stake_value,
+            source_scope_status
+        FROM survey_task_issue_scopes
+        WHERE task_issue_id = ?
+          AND management_scope_uid = ?
+        LIMIT 1
+        """,
+        (
+            task_issue_id,
+            management_scope_uid,
+        ),
+    ).fetchone()
+
+    return _row_to_dict(
+        row
+    )
+
+
+def _load_current_management_scope(
+    connection,
+    management_scope_uid,
+):
+    row = connection.execute(
+        """
+        SELECT
+            cms.management_scope_uid,
+            cu.canal_unit_uid,
+            ou.organization_unit_uid,
+            cms.range_mode,
+            cms.start_stake_text,
+            cms.start_stake_value,
+            cms.end_stake_text,
+            cms.end_stake_value,
+            cms.status
+                AS source_scope_status
+        FROM canal_management_scopes AS cms
+        JOIN canal_units AS cu
+          ON cu.id = cms.canal_unit_id
+        JOIN organization_units AS ou
+          ON ou.id = cms.organization_unit_id
+        WHERE cms.management_scope_uid = ?
+        LIMIT 1
+        """,
+        (
+            management_scope_uid,
+        ),
+    ).fetchone()
+
+    return _row_to_dict(
+        row
+    )
+
+
+def _scope_authority_signature(
+    item,
+):
+    return {
+        "management_scope_uid": (
+            _clean_text(
+                item.get(
+                    "management_scope_uid"
+                )
+            )
+        ),
+        "canal_unit_uid": (
+            _clean_text(
+                item.get(
+                    "canal_unit_uid"
+                )
+            )
+        ),
+        "organization_unit_uid": (
+            _clean_text(
+                item.get(
+                    "organization_unit_uid"
+                )
+            )
+        ),
+        "range_mode": (
+            _clean_text(
+                item.get(
+                    "range_mode"
+                )
+            )
+        ),
+        "start_stake_text": (
+            _optional_text(
+                item.get(
+                    "start_stake_text"
+                )
+            )
+        ),
+        "start_stake_value": (
+            item.get(
+                "start_stake_value"
+            )
+        ),
+        "end_stake_text": (
+            _optional_text(
+                item.get(
+                    "end_stake_text"
+                )
+            )
+        ),
+        "end_stake_value": (
+            item.get(
+                "end_stake_value"
+            )
+        ),
+        "source_scope_status": (
+            _clean_text(
+                item.get(
+                    "source_scope_status"
+                )
+            )
+        ),
+    }
+
 def _lookup_form_version(
     connection,
     form_code,
@@ -489,6 +649,7 @@ def _load_local_record(
             sr.id,
             sr.survey_record_uid,
             sr.source_task_uid,
+            sr.source_management_scope_uid,
             p.project_uid,
             sb.survey_batch_uid,
             fd.form_code,
@@ -575,6 +736,13 @@ def _record_signature(item):
             _optional_text(
                 item.get(
                     "source_task_uid"
+                )
+            )
+        ),
+        "source_management_scope_uid": (
+            _optional_text(
+                item.get(
+                    "source_management_scope_uid"
                 )
             )
         ),
@@ -1419,34 +1587,330 @@ def preflight_survey_result_import(
                 )
 
         # -----------------------------------------------------
-        # 来源任务这里只做信息检查，不要求上级库必须有 workspace。
-        # 创建任务的上级数据库当前未必持久化 task workspace，
-        # 因此不能把“找不到 task_uid”当成错误。
+        # 来源任务权威校验。
+        #
+        # 真值来源只允许是“上级当初下发任务时保存的冻结快照”：
+        # survey_task_issues + survey_task_issue_scopes。
+        #
+        # current CanalManagementScope 仅用于提示历史与当前是否有变化，
+        # 绝不作为历史任务合法性的判定依据。
         # -----------------------------------------------------
 
-        source_task_uids = {
-            _clean_text(
-                item.get(
-                    "source_task_uid"
-                )
-            )
-            for item in contents.survey_records
-            if _clean_text(
-                item.get(
-                    "source_task_uid"
-                )
-            )
-        }
+        issued_task_cache = {}
+        issued_scope_cache = {}
+        current_scope_cache = {}
+        verified_pairs = set()
 
-        if source_task_uids:
+        for record in contents.survey_records:
+            task_uid = _clean_text(
+                record.get(
+                    "source_task_uid"
+                )
+            )
+            scope_uid = _clean_text(
+                record.get(
+                    "source_management_scope_uid"
+                )
+            )
+
+            if not task_uid:
+                continue
+
+            record_uid = _clean_text(
+                record.get(
+                    "survey_record_uid"
+                )
+            )
+
+            if task_uid not in issued_task_cache:
+                issued_task_cache[
+                    task_uid
+                ] = (
+                    _load_issued_task_authority(
+                        connection,
+                        task_uid,
+                    )
+                )
+
+            issued_task = issued_task_cache[
+                task_uid
+            ]
+
+            if issued_task is None:
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_TASK_ISSUE_MISSING",
+                    (
+                        "成果记录声明了来源任务，"
+                        "但当前上级数据库没有该任务的"
+                        "已下发冻结历史。"
+                    ),
+                    entity_uid=record_uid,
+                )
+                continue
+
+            if (
+                _clean_text(
+                    issued_task.get(
+                        "project_uid"
+                    )
+                )
+                != _clean_text(
+                    record.get(
+                        "project_uid"
+                    )
+                )
+            ):
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_TASK_PROJECT_MISMATCH",
+                    (
+                        "成果记录所属项目与原始下发任务"
+                        "冻结项目不一致。"
+                    ),
+                    entity_uid=record_uid,
+                )
+
+            if (
+                _clean_text(
+                    issued_task.get(
+                        "survey_batch_uid"
+                    )
+                )
+                != _clean_text(
+                    record.get(
+                        "survey_batch_uid"
+                    )
+                )
+            ):
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_TASK_BATCH_MISMATCH",
+                    (
+                        "成果记录所属调查批次与原始下发任务"
+                        "冻结批次不一致。"
+                    ),
+                    entity_uid=record_uid,
+                )
+
+            scope_key = (
+                int(
+                    issued_task[
+                        "id"
+                    ]
+                ),
+                scope_uid,
+            )
+
+            if (
+                scope_key
+                not in issued_scope_cache
+            ):
+                issued_scope_cache[
+                    scope_key
+                ] = (
+                    _load_issued_scope_authority(
+                        connection,
+                        scope_key[0],
+                        scope_uid,
+                    )
+                )
+
+            issued_scope = (
+                issued_scope_cache[
+                    scope_key
+                ]
+            )
+
+            if issued_scope is None:
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_SCOPE_ISSUE_MISSING",
+                    (
+                        "成果记录声明的分管范围"
+                        "不在该来源任务的下发冻结范围中。"
+                    ),
+                    entity_uid=record_uid,
+                )
+                continue
+
+            record_org_uid = (
+                _clean_text(
+                    record.get(
+                        "organization_unit_uid"
+                    )
+                )
+            )
+
+            if (
+                _clean_text(
+                    issued_task.get(
+                        "organization_unit_uid"
+                    )
+                )
+                != record_org_uid
+                or _clean_text(
+                    issued_scope.get(
+                        "organization_unit_uid"
+                    )
+                )
+                != record_org_uid
+            ):
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_SCOPE_ORGANIZATION_MISMATCH",
+                    (
+                        "成果记录管理单位与原始下发任务"
+                        "及其分管范围冻结快照不一致。"
+                    ),
+                    entity_uid=record_uid,
+                )
+
+            if (
+                _clean_text(
+                    issued_scope.get(
+                        "canal_unit_uid"
+                    )
+                )
+                != _clean_text(
+                    record.get(
+                        "canal_unit_uid"
+                    )
+                )
+            ):
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SOURCE_SCOPE_CANAL_MISMATCH",
+                    (
+                        "成果记录物理渠系与原始下发任务"
+                        "分管范围冻结快照不一致。"
+                    ),
+                    entity_uid=record_uid,
+                )
+
+            authority_ok = (
+                _clean_text(
+                    issued_task.get(
+                        "project_uid"
+                    )
+                )
+                == _clean_text(
+                    record.get(
+                        "project_uid"
+                    )
+                )
+                and _clean_text(
+                    issued_task.get(
+                        "survey_batch_uid"
+                    )
+                )
+                == _clean_text(
+                    record.get(
+                        "survey_batch_uid"
+                    )
+                )
+                and _clean_text(
+                    issued_task.get(
+                        "organization_unit_uid"
+                    )
+                )
+                == record_org_uid
+                and _clean_text(
+                    issued_scope.get(
+                        "organization_unit_uid"
+                    )
+                )
+                == record_org_uid
+                and _clean_text(
+                    issued_scope.get(
+                        "canal_unit_uid"
+                    )
+                )
+                == _clean_text(
+                    record.get(
+                        "canal_unit_uid"
+                    )
+                )
+            )
+
+            if authority_ok:
+                verified_pairs.add(
+                    (
+                        task_uid,
+                        scope_uid,
+                    )
+                )
+
+            if (
+                scope_uid
+                not in current_scope_cache
+            ):
+                current_scope_cache[
+                    scope_uid
+                ] = (
+                    _load_current_management_scope(
+                        connection,
+                        scope_uid,
+                    )
+                )
+
+            current_scope = (
+                current_scope_cache[
+                    scope_uid
+                ]
+            )
+
+            if current_scope is None:
+                _append(
+                    issues,
+                    SEVERITY_WARNING,
+                    "SOURCE_SCOPE_CURRENT_MASTER_MISSING",
+                    (
+                        "该历史任务分管范围当前已不在"
+                        "CanalManagementScope 主数据中；"
+                        "仍以原始下发冻结快照作为历史真值。"
+                    ),
+                    entity_uid=scope_uid,
+                )
+
+            elif (
+                _canonical_json(
+                    _scope_authority_signature(
+                        current_scope
+                    )
+                )
+                !=
+                _canonical_json(
+                    _scope_authority_signature(
+                        issued_scope
+                    )
+                )
+            ):
+                _append(
+                    issues,
+                    SEVERITY_WARNING,
+                    "SOURCE_SCOPE_CURRENT_MASTER_CHANGED",
+                    (
+                        "该分管范围当前主数据与下发时冻结快照"
+                        "已经不同；历史成果仍按原始下发事实校验。"
+                    ),
+                    entity_uid=scope_uid,
+                )
+
+        if verified_pairs:
             _append(
                 issues,
                 SEVERITY_INFO,
-                "SOURCE_TASK_PROVENANCE_PRESENT",
+                "SOURCE_TASK_PROVENANCE_VERIFIED",
                 (
-                    "成果记录携带 "
-                    f"{len(source_task_uids)} 个来源任务 UID；"
-                    "后续导入必须原样保留这些来源信息。"
+                    "已按上级端原始下发冻结历史核验 "
+                    f"{len(verified_pairs)} 个任务/分管范围来源组合。"
                 ),
             )
 
