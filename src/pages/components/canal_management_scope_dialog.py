@@ -63,9 +63,9 @@ class _ScopeEditDialog(QDialog):
         self.scope = scope
 
         self.setWindowTitle(
-            "新增管理范围"
+            "新增分管段"
             if scope is None
-            else "编辑管理范围"
+            else "编辑分管段"
         )
 
         self.resize(
@@ -451,7 +451,7 @@ class CanalManagementScopeDialog(QDialog):
             )
 
         self.setWindowTitle(
-            "渠道管理范围"
+            "渠道分管段"
         )
 
         self.resize(
@@ -495,7 +495,7 @@ class CanalManagementScopeDialog(QDialog):
         button_layout = QHBoxLayout()
 
         add_button = QPushButton(
-            "新增范围"
+            "新增分管段"
         )
         add_button.clicked.connect(
             self.add_scope
