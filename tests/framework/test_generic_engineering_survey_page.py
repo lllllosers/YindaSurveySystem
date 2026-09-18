@@ -635,7 +635,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     @patch(
         "pages.components."
         "generic_engineering_survey_page."
-        "get_canal_units_for_organization"
+        "get_managed_canals_for_organization"
     )
     @patch("pages.components." "generic_engineering_survey_page." "get_water_offices")
     @patch("pages.components." "generic_engineering_survey_page." "get_departments")
@@ -884,7 +884,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     @patch(
         "pages.components."
         "generic_engineering_survey_page."
-        "get_canal_units_for_organization"
+        "get_managed_canals_for_organization"
     )
     @patch("pages.components." "generic_engineering_survey_page." "get_water_offices")
     @patch("pages.components." "generic_engineering_survey_page." "get_departments")

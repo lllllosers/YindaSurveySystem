@@ -63,7 +63,7 @@ class SurveyTaskReceivePanel(QWidget):
 
         description = QLabel(
             "收到 .ydtask 后，从这里接收。"
-            "系统会校验任务包，将项目、调查批次、管理单位和渠系范围"
+            "系统会校验任务包，将项目、调查批次、管理单位和分管范围"
             "建立为本机当前任务工作区，并把原任务包复制到本地托管目录。"
         )
         description.setWordWrap(True)
@@ -118,7 +118,7 @@ class SurveyTaskReceivePanel(QWidget):
         self.organization_label = QLabel(
             "-"
         )
-        self.canals_label = QLabel(
+        self.scope_summary_label = QLabel(
             "-"
         )
         self.received_at_label = QLabel(
@@ -129,7 +129,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.task_name_label,
             self.project_batch_label,
             self.organization_label,
-            self.canals_label,
+            self.scope_summary_label,
             self.received_at_label,
         ):
             label.setWordWrap(True)
@@ -150,8 +150,8 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label,
         )
         current_form.addRow(
-            "任务渠系：",
-            self.canals_label,
+            "任务分管范围：",
+            self.scope_summary_label,
         )
         current_form.addRow(
             "接收时间：",
@@ -262,14 +262,14 @@ class SurveyTaskReceivePanel(QWidget):
             )
         )
 
-        canal_count = scope.get(
-            "selected_canal_count"
+        scope_count = scope.get(
+            "selected_management_scope_count"
         )
 
-        if canal_count is None:
-            canal_count = len(
+        if scope_count is None:
+            scope_count = len(
                 scope.get(
-                    "selected_canal_uids"
+                    "selected_management_scope_uids"
                 )
                 or []
             )
@@ -280,7 +280,7 @@ class SurveyTaskReceivePanel(QWidget):
             f"调查批次：{batch_name}\n"
             f"基层处：{department_name}\n"
             f"管理单位：{organization_name}\n"
-            f"渠系范围：{canal_count} 条\n\n"
+            f"分管范围：{scope_count} 项\n\n"
             "确认接收并切换到该任务工作区吗？"
         )
 
@@ -395,8 +395,8 @@ class SurveyTaskReceivePanel(QWidget):
         message = (
             f"{action_text}\n\n"
             f"任务：{result.task_name}\n"
-            f"渠系范围："
-            f"{result.selected_canal_count} 条\n"
+            f"分管范围："
+            f"{result.selected_management_scope_count} 条\n"
             f"本地托管："
             f"{result.managed_package_path}"
         )
@@ -436,7 +436,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label.setText(
                 "-"
             )
-            self.canals_label.setText(
+            self.scope_summary_label.setText(
                 "-"
             )
             self.received_at_label.setText(
@@ -457,7 +457,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.organization_label.setText(
                 "-"
             )
-            self.canals_label.setText(
+            self.scope_summary_label.setText(
                 "-"
             )
             self.received_at_label.setText(
@@ -492,38 +492,80 @@ class SurveyTaskReceivePanel(QWidget):
             )
         )
 
-        canals = tuple(
+        scopes = tuple(
             workspace.get(
-                "canals"
+                "management_scopes"
             )
             or ()
         )
 
-        canal_names = [
-            str(
-                item[
-                    "name"
-                ]
-            )
-            for item in canals
-        ]
+        labels = []
 
-        if not canal_names:
-            canal_text = "-"
-        elif len(canal_names) <= 6:
-            canal_text = "、".join(
-                canal_names
+        for item in scopes:
+            canal_name = str(
+                item.get(
+                    "canal_name"
+                )
+                or "-"
+            )
+
+            range_mode = str(
+                item.get(
+                    "range_mode"
+                )
+                or ""
+            )
+
+            if range_mode == "whole":
+                range_text = "全渠"
+            elif (
+                range_mode
+                == "segment_unknown"
+            ):
+                range_text = "边界未知"
+            else:
+                start = (
+                    item.get(
+                        "start_stake_text"
+                    )
+                    or item.get(
+                        "start_stake_value"
+                    )
+                    or "?"
+                )
+                end = (
+                    item.get(
+                        "end_stake_text"
+                    )
+                    or item.get(
+                        "end_stake_value"
+                    )
+                    or "?"
+                )
+                range_text = (
+                    f"{start}～{end}"
+                )
+
+            labels.append(
+                f"{canal_name}（{range_text}）"
+            )
+
+        if not labels:
+            scope_text = "-"
+        elif len(labels) <= 6:
+            scope_text = "、".join(
+                labels
             )
         else:
-            canal_text = (
+            scope_text = (
                 "、".join(
-                    canal_names[:6]
+                    labels[:6]
                 )
-                + f" 等 {len(canal_names)} 条"
+                + f" 等 {len(labels)} 项"
             )
 
-        self.canals_label.setText(
-            canal_text
+        self.scope_summary_label.setText(
+            scope_text
         )
 
         self.received_at_label.setText(

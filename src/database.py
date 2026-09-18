@@ -389,6 +389,645 @@ def _ensure_official_master_data_schema(
     )
 
 
+
+_CANAL_UNIT_LEGACY_OWNER_COLUMN = (
+    "organization_unit_id"
+)
+
+_CANAL_UNIT_REBUILD_TABLE = (
+    "canal_units__physical_schema_v2"
+)
+
+_CANAL_UNIT_KNOWN_SCHEMA_OBJECTS = {
+    "uq_canal_units_canal_unit_uid",
+    "trg_canal_units_canal_unit_uid_insert",
+    "trg_canal_units_canal_unit_uid_immutable",
+    "uq_canal_units_master_key",
+    "idx_canal_units_sort_order",
+}
+
+
+_STALE_TASK_WORKSPACE_TABLE = (
+    "survey_task_workspace_canals"
+)
+
+_KNOWN_TASK_SCOPE_TRIGGER_NAMES = {
+    "trg_survey_records_task_scope_insert",
+    "trg_survey_records_task_source_insert",
+    "trg_survey_records_task_scope_update",
+    "trg_survey_records_source_task_uid_immutable",
+    "trg_survey_records_source_management_scope_uid_immutable",
+}
+
+
+def _drop_stale_task_scope_triggers(
+    connection,
+):
+    """
+    删除仍引用已退役 workspace_canals 表的已知任务约束触发器。
+
+    这是数据库结构迁移前的窄范围修复：
+    - 只检查 trigger SQL 中明确引用旧表名的触发器；
+    - 只允许删除当前版本已知的任务触发器名称；
+    - 遇到未知触发器时拒绝迁移，不做猜测；
+    - 当前版本触发器引用 workspace_scopes，不会被删除。
+
+    应用 bootstrap 后续会由
+    ensure_survey_task_record_scope_schema()
+    重新建立当前版本触发器。
+    """
+
+    rows = connection.execute(
+        """
+        SELECT
+            name,
+            sql
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND sql IS NOT NULL
+          AND instr(
+                lower(sql),
+                lower(?)
+              ) > 0
+        ORDER BY name
+        """,
+        (
+            _STALE_TASK_WORKSPACE_TABLE,
+        ),
+    ).fetchall()
+
+    if not rows:
+        return ()
+
+    unknown = [
+        str(
+            row["name"]
+        )
+        for row in rows
+        if row["name"]
+        not in _KNOWN_TASK_SCOPE_TRIGGER_NAMES
+    ]
+
+    if unknown:
+        raise RuntimeError(
+            "检测到引用已退役任务工作区表的"
+            "未知触发器："
+            + "、".join(
+                unknown
+            )
+            + "。为避免误删自定义数据库逻辑，"
+            "本次 schema 迁移已停止。"
+        )
+
+    removed = []
+
+    for row in rows:
+        trigger_name = str(
+            row["name"]
+        )
+
+        # trigger_name 已通过固定白名单验证。
+        connection.execute(
+            (
+                'DROP TRIGGER IF EXISTS "'
+                + trigger_name
+                + '"'
+            )
+        )
+
+        removed.append(
+            trigger_name
+        )
+
+    return tuple(
+        removed
+    )
+
+
+def _ensure_canal_unit_physical_schema(
+    connection,
+):
+    """
+    将既有 canal_units 收口为纯物理渠道表。
+
+    当前版本不再允许 CanalUnit 保存管理单位归属。
+    对仍带 organization_unit_id 的开发阶段数据库：
+    1. 先确认旧归属已经存在等价 CanalManagementScope；
+    2. 拒绝存在未知 canal_units 索引/触发器的数据库；
+    3. 在单个 SQLite 事务内重建 canal_units；
+    4. 保留 ID、层级、状态、稳定 UID、master_key 和排序；
+    5. 事务提交前执行 foreign_key_check。
+
+    新数据库已经使用目标 schema，因此本函数直接返回。
+    """
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(canal_units)"
+        ).fetchall()
+    }
+
+    if (
+        _CANAL_UNIT_LEGACY_OWNER_COLUMN
+        not in columns
+    ):
+        return {
+            "rebuilt": False,
+            "legacy_assignment_count": 0,
+        }
+
+    required_columns = {
+        "id",
+        "parent_id",
+        "name",
+        "canal_level",
+        "status",
+        "description",
+        "created_at",
+        "updated_at",
+    }
+
+    missing_required = sorted(
+        required_columns - columns
+    )
+
+    if missing_required:
+        raise RuntimeError(
+            "canal_units 结构不完整，"
+            "无法安全执行物理 schema 收口："
+            + "、".join(missing_required)
+            + "。"
+        )
+
+    schema_objects = connection.execute(
+        """
+        SELECT
+            type,
+            name
+        FROM sqlite_master
+        WHERE tbl_name = 'canal_units'
+          AND type IN ('index', 'trigger')
+          AND sql IS NOT NULL
+        ORDER BY type, name
+        """
+    ).fetchall()
+
+    unknown_objects = [
+        (
+            str(row["type"]),
+            str(row["name"]),
+        )
+        for row in schema_objects
+        if row["name"]
+        not in _CANAL_UNIT_KNOWN_SCHEMA_OBJECTS
+    ]
+
+    if unknown_objects:
+        object_text = "、".join(
+            f"{object_type}:{object_name}"
+            for (
+                object_type,
+                object_name,
+            )
+            in unknown_objects
+        )
+
+        raise RuntimeError(
+            "canal_units 存在当前版本"
+            "无法自动重建的未知索引/触发器："
+            f"{object_text}。"
+        )
+
+    legacy_assignment_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*) AS value
+            FROM canal_units
+            WHERE organization_unit_id
+                IS NOT NULL
+            """
+        ).fetchone()["value"]
+    )
+
+    if legacy_assignment_count:
+        scope_table_exists = (
+            connection.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name =
+                    'canal_management_scopes'
+                """
+            ).fetchone()
+            is not None
+        )
+
+        if not scope_table_exists:
+            raise RuntimeError(
+                "检测到 canal_units 中仍有"
+                "旧管理单位数据，但数据库尚未建立"
+                " CanalManagementScope。"
+                "为避免丢失管理关系，"
+                "本次 schema 迁移已停止。"
+            )
+
+        unmatched = connection.execute(
+            """
+            SELECT
+                canal.id,
+                canal.name,
+                canal.organization_unit_id
+            FROM canal_units AS canal
+            WHERE
+                canal.organization_unit_id
+                    IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM canal_management_scopes
+                        AS cms
+                    WHERE
+                        cms.canal_unit_id
+                            = canal.id
+                        AND
+                        cms.organization_unit_id
+                            = canal.organization_unit_id
+                )
+            ORDER BY canal.id
+            LIMIT 10
+            """
+        ).fetchall()
+
+        if unmatched:
+            details = "；".join(
+                (
+                    f"ID={row['id']} "
+                    f"{row['name']} -> 组织ID "
+                    f"{row['organization_unit_id']}"
+                )
+                for row in unmatched
+            )
+
+            raise RuntimeError(
+                "检测到尚未迁移到 "
+                "CanalManagementScope 的"
+                "旧渠道管理关系："
+                f"{details}。"
+                "为避免数据丢失，"
+                "本次 schema 迁移已停止。"
+            )
+
+    source_expressions = {
+        "canal_unit_uid": (
+            "canal_unit_uid"
+            if "canal_unit_uid" in columns
+            else "NULL"
+        ),
+        "master_key": (
+            "master_key"
+            if "master_key" in columns
+            else "NULL"
+        ),
+        "sort_order": (
+            "COALESCE(sort_order, 0)"
+            if "sort_order" in columns
+            else "0"
+        ),
+    }
+
+    row_count_before = int(
+        connection.execute(
+            """
+            SELECT COUNT(*) AS value
+            FROM canal_units
+            """
+        ).fetchone()["value"]
+    )
+
+    original_foreign_keys = int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    )
+
+    if connection.in_transaction:
+        connection.commit()
+
+    connection.execute(
+        "PRAGMA foreign_keys = OFF"
+    )
+
+    if int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    ) != 0:
+        raise RuntimeError(
+            "SQLite 未能临时关闭 foreign_keys，"
+            "无法安全重建 canal_units。"
+        )
+
+    try:
+        connection.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        # SQLite ALTER TABLE RENAME 会重新解析数据库 schema。
+        # 若历史 trigger 仍引用已经删除的
+        # survey_task_workspace_canals，会导致与 CanalUnit
+        # 无关的 rename 也失败，因此先在同一事务内清掉
+        # 这些已知陈旧 trigger。
+        _drop_stale_task_scope_triggers(
+            connection
+        )
+
+        connection.execute(
+            f"""
+            DROP TABLE IF EXISTS
+                {_CANAL_UNIT_REBUILD_TABLE}
+            """
+        )
+
+        connection.execute(
+            f"""
+            CREATE TABLE
+                {_CANAL_UNIT_REBUILD_TABLE} (
+                    id INTEGER PRIMARY KEY
+                        AUTOINCREMENT,
+
+                    parent_id INTEGER,
+
+                    name TEXT NOT NULL,
+
+                    canal_level TEXT NOT NULL
+                        CHECK (
+                            canal_level IN (
+                                '01',
+                                '02',
+                                '03',
+                                '04'
+                            )
+                        ),
+
+                    status TEXT NOT NULL
+                        DEFAULT 'active'
+                        CHECK (
+                            status IN (
+                                'active',
+                                'inactive'
+                            )
+                        ),
+
+                    description TEXT,
+
+                    created_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+
+                    updated_at TEXT NOT NULL
+                        DEFAULT (
+                            datetime(
+                                'now',
+                                'localtime'
+                            )
+                        ),
+
+                    canal_unit_uid TEXT,
+                    master_key TEXT,
+
+                    sort_order INTEGER
+                        NOT NULL DEFAULT 0,
+
+                    FOREIGN KEY (parent_id)
+                        REFERENCES
+                            {_CANAL_UNIT_REBUILD_TABLE}(id)
+                )
+            """
+        )
+
+        connection.execute(
+            f"""
+            INSERT INTO
+                {_CANAL_UNIT_REBUILD_TABLE} (
+                    id,
+                    parent_id,
+                    name,
+                    canal_level,
+                    status,
+                    description,
+                    created_at,
+                    updated_at,
+                    canal_unit_uid,
+                    master_key,
+                    sort_order
+                )
+            SELECT
+                id,
+                parent_id,
+                name,
+                canal_level,
+                status,
+                description,
+                created_at,
+                updated_at,
+                {source_expressions['canal_unit_uid']},
+                {source_expressions['master_key']},
+                {source_expressions['sort_order']}
+            FROM canal_units
+            ORDER BY id
+            """
+        )
+
+        row_count_after_copy = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*) AS value
+                FROM {_CANAL_UNIT_REBUILD_TABLE}
+                """
+            ).fetchone()["value"]
+        )
+
+        if (
+            row_count_after_copy
+            != row_count_before
+        ):
+            raise RuntimeError(
+                "canal_units 重建复制行数不一致，"
+                "迁移已回滚。"
+            )
+
+        connection.execute(
+            "DROP TABLE canal_units"
+        )
+
+        connection.execute(
+            f"""
+            ALTER TABLE
+                {_CANAL_UNIT_REBUILD_TABLE}
+            RENAME TO canal_units
+            """
+        )
+
+        migrated_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(canal_units)"
+            ).fetchall()
+        }
+
+        if (
+            _CANAL_UNIT_LEGACY_OWNER_COLUMN
+            in migrated_columns
+        ):
+            raise RuntimeError(
+                "canal_units 旧管理字段"
+                "仍然存在，迁移已回滚。"
+            )
+
+        parent_foreign_keys = [
+            dict(row)
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(canal_units)"
+            ).fetchall()
+        ]
+
+        invalid_parent_fk = [
+            row
+            for row in parent_foreign_keys
+            if (
+                row["from"] == "parent_id"
+                and row["table"]
+                != "canal_units"
+            )
+        ]
+
+        if invalid_parent_fk:
+            raise RuntimeError(
+                "canal_units 自引用外键"
+                "在重建后指向异常，"
+                "迁移已回滚。"
+            )
+
+        foreign_key_violations = connection.execute(
+            "PRAGMA foreign_key_check"
+        ).fetchall()
+
+        if foreign_key_violations:
+            preview = "；".join(
+                (
+                    f"{row[0]} rowid={row[1]} "
+                    f"parent={row[2]}"
+                )
+                for row in foreign_key_violations[:10]
+            )
+
+            raise RuntimeError(
+                "canal_units 重建后"
+                "外键一致性检查失败："
+                f"{preview}。"
+                "迁移已回滚。"
+            )
+
+        connection.commit()
+
+    except Exception:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+
+    finally:
+        connection.execute(
+            (
+                "PRAGMA foreign_keys = ON"
+                if original_foreign_keys
+                else
+                "PRAGMA foreign_keys = OFF"
+            )
+        )
+
+    restored_foreign_keys = int(
+        connection.execute(
+            "PRAGMA foreign_keys"
+        ).fetchone()[0]
+    )
+
+    if (
+        restored_foreign_keys
+        != original_foreign_keys
+    ):
+        raise RuntimeError(
+            "canal_units schema 迁移完成后"
+            "未能恢复 SQLite foreign_keys 状态。"
+        )
+
+    return {
+        "rebuilt": True,
+        "legacy_assignment_count": (
+            legacy_assignment_count
+        ),
+        "row_count": row_count_before,
+    }
+
+def _ensure_survey_record_provenance_schema(
+    connection,
+):
+    """
+    保证 SurveyRecord 任务来源字段属于 database.py 核心 schema。
+
+    新数据库的 CREATE TABLE 已包含这些列；
+    对开发阶段已有数据库则在 init_database() 中幂等补齐。
+    """
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(survey_records)"
+        ).fetchall()
+    }
+
+    if "source_task_uid" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN source_task_uid TEXT
+            """
+        )
+
+    if "source_management_scope_uid" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN source_management_scope_uid TEXT
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_survey_records_source_task_uid
+        ON survey_records(
+            source_task_uid,
+            id
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_survey_records_source_scope_uid
+        ON survey_records(
+            source_task_uid,
+            source_management_scope_uid,
+            id
+        )
+        """
+    )
+
 def init_database():
     """
     初始化数据库。
@@ -509,7 +1148,6 @@ def init_database():
                         )
                     ),
 
-                organization_unit_id INTEGER,
 
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (
@@ -528,10 +1166,7 @@ def init_database():
                     DEFAULT (datetime('now', 'localtime')),
 
                 FOREIGN KEY (parent_id)
-                    REFERENCES canal_units(id),
-
-                FOREIGN KEY (organization_unit_id)
-                    REFERENCES organization_units(id)
+                    REFERENCES canal_units(id)
             );
 
 
@@ -594,7 +1229,7 @@ def init_database():
                     REFERENCES form_definitions(id)
             );
 
-            
+
             CREATE TABLE IF NOT EXISTS engineering_assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -673,6 +1308,10 @@ def init_database():
 
                 organization_unit_id INTEGER,
                 canal_unit_id INTEGER,
+
+                source_task_uid TEXT,
+                source_management_scope_uid TEXT,
+
                 engineering_asset_id INTEGER,
 
                 business_code TEXT,
@@ -834,6 +1473,14 @@ def init_database():
             );
 
             """)
+
+        _ensure_canal_unit_physical_schema(
+            connection
+        )
+
+        _ensure_survey_record_provenance_schema(
+            connection
+        )
 
         _ensure_stable_identity_schema(connection)
 
@@ -1607,8 +2254,10 @@ def get_organization_unit_usage(
     """
     获取组织机构引用情况。
 
-    基层处的业务引用同时包括
-    其直属水管所产生的工程和调查记录。
+    渠道管理关系只读取 CanalManagementScope。
+    CanalUnit 不再保存组织管理归属。
+    基层处的业务引用同时包括直属末级管理单位产生的
+    工程和调查记录。
     """
 
     with get_connection() as connection:
@@ -1624,7 +2273,9 @@ def get_organization_unit_usage(
         ).fetchone()
 
         if unit is None:
-            raise ValueError("没有找到指定组织机构。")
+            raise ValueError(
+                "没有找到指定组织机构。"
+            )
 
         child_count = connection.execute(
             """
@@ -1635,14 +2286,31 @@ def get_organization_unit_usage(
             (unit_id,),
         ).fetchone()[0]
 
-        canal_count = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM canal_units
-            WHERE organization_unit_id = ?
-            """,
-            (unit_id,),
-        ).fetchone()[0]
+        scope_table_exists = (
+            connection.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name = 'canal_management_scopes'
+                """
+            ).fetchone()
+            is not None
+        )
+
+        management_scope_count = 0
+
+        if scope_table_exists:
+            management_scope_count = (
+                connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM canal_management_scopes
+                    WHERE organization_unit_id = ?
+                    """,
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
         asset_count = connection.execute(
             """
@@ -1666,27 +2334,31 @@ def get_organization_unit_usage(
         descendant_survey_count = 0
 
         if unit["unit_type"] == "department":
-            descendant_asset_count = connection.execute(
-                """
+            descendant_asset_count = (
+                connection.execute(
+                    """
                     SELECT COUNT(*)
                     FROM engineering_assets AS ea
                     JOIN organization_units AS ou
-                        ON ea.organization_unit_id = ou.id
+                      ON ea.organization_unit_id = ou.id
                     WHERE ou.parent_id = ?
                     """,
-                (unit_id,),
-            ).fetchone()[0]
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
-            descendant_survey_count = connection.execute(
-                """
+            descendant_survey_count = (
+                connection.execute(
+                    """
                     SELECT COUNT(*)
                     FROM survey_records AS sr
                     JOIN organization_units AS ou
-                        ON sr.organization_unit_id = ou.id
+                      ON sr.organization_unit_id = ou.id
                     WHERE ou.parent_id = ?
                     """,
-                (unit_id,),
-            ).fetchone()[0]
+                    (unit_id,),
+                ).fetchone()[0]
+            )
 
         business_reference_count = (
             asset_count
@@ -1696,17 +2368,33 @@ def get_organization_unit_usage(
         )
 
         return {
-            "child_count": int(child_count),
-            "canal_count": int(canal_count),
-            "asset_count": int(asset_count),
-            "survey_count": int(survey_count),
-            "descendant_asset_count": int(descendant_asset_count),
-            "descendant_survey_count": int(descendant_survey_count),
-            "business_reference_count": int(business_reference_count),
-            "business_code_locked": (business_reference_count > 0),
+            "child_count": int(
+                child_count
+            ),
+            "management_scope_count": int(
+                management_scope_count
+            ),
+            "asset_count": int(
+                asset_count
+            ),
+            "survey_count": int(
+                survey_count
+            ),
+            "descendant_asset_count": int(
+                descendant_asset_count
+            ),
+            "descendant_survey_count": int(
+                descendant_survey_count
+            ),
+            "business_reference_count": int(
+                business_reference_count
+            ),
+            "business_code_locked": (
+                business_reference_count > 0
+            ),
             "can_delete": (
                 child_count == 0
-                and canal_count == 0
+                and management_scope_count == 0
                 and asset_count == 0
                 and survey_count == 0
             ),
@@ -1900,31 +2588,48 @@ def delete_organization_unit(
     """
     物理删除未被使用的组织机构。
 
-    已存在下属机构、管理渠系、
+    已存在下属机构、渠道管理范围、
     工程台账或调查记录时禁止删除。
     """
 
-    usage = get_organization_unit_usage(unit_id)
+    usage = get_organization_unit_usage(
+        unit_id
+    )
 
     if not usage["can_delete"]:
         reasons = []
 
         if usage["child_count"]:
-            reasons.append(f"下属机构 {usage['child_count']} 个")
+            reasons.append(
+                f"下属机构 {usage['child_count']} 个"
+            )
 
-        if usage["canal_count"]:
-            reasons.append(f"管理渠系 {usage['canal_count']} 个")
+        if usage[
+            "management_scope_count"
+        ]:
+            reasons.append(
+                "渠道管理范围 "
+                f"{usage['management_scope_count']} 条"
+            )
 
         if usage["asset_count"]:
-            reasons.append(f"工程对象 {usage['asset_count']} 个")
+            reasons.append(
+                f"工程对象 {usage['asset_count']} 个"
+            )
 
         if usage["survey_count"]:
-            reasons.append(f"调查记录 {usage['survey_count']} 条")
+            reasons.append(
+                f"调查记录 {usage['survey_count']} 条"
+            )
 
-        reason_text = "、".join(reasons)
+        reason_text = "、".join(
+            reasons
+        )
 
         raise ValueError(
-            "该组织机构不能物理删除，" f"当前存在：{reason_text}。" "请改为停用。"
+            "该组织机构不能物理删除，"
+            f"当前存在：{reason_text}。"
+            "请改为停用。"
         )
 
     with get_connection() as connection:
@@ -2005,36 +2710,49 @@ def get_canal_lineage(
 
 def get_canal_units():
     """
-    获取全部渠系。
+    获取全部物理渠系。
+
+    渠道管理单位不再从 canal_units 读取；
+    管理关系统一由 CanalManagementScope 提供。
     """
+
     with get_connection() as connection:
-        return connection.execute("""
-            SELECT
-                c.*,
-                o.name AS organization_name
-            FROM canal_units AS c
-            LEFT JOIN organization_units AS o
-                ON c.organization_unit_id = o.id
-            ORDER BY c.id
-            """).fetchall()
+        return connection.execute(
+            """
+            SELECT *
+            FROM canal_units
+            ORDER BY id
+            """
+        ).fetchall()
 
 
 def create_canal_unit(
     name,
     canal_level,
     parent_id=None,
-    organization_unit_id=None,
     description=None,
 ):
     """
-    新增渠系。
+    新增物理渠系。
+
+    CanalUnit 只描述渠道实体和层级；
+    管理单位/分管范围必须通过 CanalManagementScope 维护。
     """
 
     if not name or not name.strip():
-        raise ValueError("渠道名称不能为空。")
+        raise ValueError(
+            "渠道名称不能为空。"
+        )
 
-    if canal_level not in ("01", "02", "03", "04"):
-        raise ValueError("无效的渠道层级。")
+    if canal_level not in (
+        "01",
+        "02",
+        "03",
+        "04",
+    ):
+        raise ValueError(
+            "无效的渠道层级。"
+        )
 
     with get_connection() as connection:
         cursor = connection.execute(
@@ -2043,17 +2761,19 @@ def create_canal_unit(
                 parent_id,
                 name,
                 canal_level,
-                organization_unit_id,
                 description
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
             """,
             (
                 parent_id,
                 name.strip(),
                 canal_level,
-                organization_unit_id,
-                description.strip() if description else None,
+                (
+                    description.strip()
+                    if description
+                    else None
+                ),
             ),
         )
 
@@ -2125,15 +2845,42 @@ def get_canal_unit_usage(
             (canal_unit_id,),
         ).fetchone()[0]
 
+        scope_table_exists = connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'canal_management_scopes'
+            """
+        ).fetchone() is not None
+
+        management_scope_count = 0
+
+        if scope_table_exists:
+            management_scope_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM canal_management_scopes
+                WHERE canal_unit_id = ?
+                """,
+                (canal_unit_id,),
+            ).fetchone()[0]
+
         business_reference_count = asset_count + survey_count
 
         return {
             "child_count": int(child_count),
             "asset_count": int(asset_count),
             "survey_count": int(survey_count),
+            "management_scope_count": int(management_scope_count),
             "business_reference_count": int(business_reference_count),
             "structure_locked": (business_reference_count > 0),
-            "can_delete": (child_count == 0 and asset_count == 0 and survey_count == 0),
+            "can_delete": (
+                child_count == 0
+                and management_scope_count == 0
+                and asset_count == 0
+                and survey_count == 0
+            ),
         }
 
 
@@ -2142,23 +2889,33 @@ def update_canal_unit(
     name,
     canal_level,
     parent_id=None,
-    organization_unit_id=None,
     description=None,
 ):
     """
-    修改渠系。
+    修改物理渠系。
 
     已产生工程/调查数据后：
     - 名称、备注允许修改；
-    - 渠道层级、上级渠道、管理单位锁定。
+    - 渠道层级、上级渠道锁定。
+
+    管理单位/分管范围不属于 CanalUnit 编辑职责，
+    统一由 CanalManagementScope 维护。
     """
 
-    name = str(name or "").strip()
+    name = str(
+        name or ""
+    ).strip()
 
-    description = str(description).strip() if description is not None else ""
+    description = (
+        str(description).strip()
+        if description is not None
+        else ""
+    )
 
     if not name:
-        raise ValueError("渠道名称不能为空。")
+        raise ValueError(
+            "渠道名称不能为空。"
+        )
 
     if canal_level not in (
         "01",
@@ -2166,45 +2923,71 @@ def update_canal_unit(
         "03",
         "04",
     ):
-        raise ValueError("无效的渠道层级。")
+        raise ValueError(
+            "无效的渠道层级。"
+        )
 
-    current = get_canal_unit(canal_unit_id)
-
-    if current is None:
-        raise ValueError("没有找到指定渠系。")
-
-    if parent_id == canal_unit_id:
-        raise ValueError("渠道不能把自己设为上级渠道。")
-
-    usage = get_canal_unit_usage(canal_unit_id)
-
-    structure_changed = (
-        canal_level != current["canal_level"]
-        or parent_id != current["parent_id"]
-        or organization_unit_id != current["organization_unit_id"]
+    current = get_canal_unit(
+        canal_unit_id
     )
 
-    if structure_changed and usage["structure_locked"]:
+    if current is None:
+        raise ValueError(
+            "没有找到指定渠系。"
+        )
+
+    if parent_id == canal_unit_id:
+        raise ValueError(
+            "渠道不能把自己设为上级渠道。"
+        )
+
+    usage = get_canal_unit_usage(
+        canal_unit_id
+    )
+
+    structure_changed = (
+        canal_level
+        != current["canal_level"]
+        or parent_id
+        != current["parent_id"]
+    )
+
+    if (
+        structure_changed
+        and usage["structure_locked"]
+    ):
         raise ValueError(
             "该渠系已经产生工程或调查数据，"
-            "渠道层级、上级渠道和管理单位"
-            "不能再修改。"
+            "渠道层级和上级渠道不能再修改。"
         )
 
     with get_connection() as connection:
-        # 上级渠道必须存在，
-        # 同时防止形成循环引用。
         current_parent_id = parent_id
         visited_ids = set()
 
-        while current_parent_id is not None:
-            if current_parent_id == canal_unit_id:
-                raise ValueError("渠系层级不能形成循环引用。")
+        while (
+            current_parent_id
+            is not None
+        ):
+            if (
+                current_parent_id
+                == canal_unit_id
+            ):
+                raise ValueError(
+                    "渠系层级不能形成循环引用。"
+                )
 
-            if current_parent_id in visited_ids:
-                raise ValueError("渠系层级存在循环引用。")
+            if (
+                current_parent_id
+                in visited_ids
+            ):
+                raise ValueError(
+                    "渠系层级存在循环引用。"
+                )
 
-            visited_ids.add(current_parent_id)
+            visited_ids.add(
+                current_parent_id
+            )
 
             parent = connection.execute(
                 """
@@ -2214,26 +2997,19 @@ def update_canal_unit(
                 FROM canal_units
                 WHERE id = ?
                 """,
-                (current_parent_id,),
+                (
+                    current_parent_id,
+                ),
             ).fetchone()
 
             if parent is None:
-                raise ValueError("上级渠道不存在。")
+                raise ValueError(
+                    "上级渠道不存在。"
+                )
 
-            current_parent_id = parent["parent_id"]
-
-        if organization_unit_id is not None:
-            organization = connection.execute(
-                """
-                SELECT id
-                FROM organization_units
-                WHERE id = ?
-                """,
-                (organization_unit_id,),
-            ).fetchone()
-
-            if organization is None:
-                raise ValueError("管理单位不存在。")
+            current_parent_id = (
+                parent["parent_id"]
+            )
 
         connection.execute(
             """
@@ -2242,7 +3018,6 @@ def update_canal_unit(
                 parent_id = ?,
                 name = ?,
                 canal_level = ?,
-                organization_unit_id = ?,
                 description = ?,
                 updated_at = datetime(
                     'now',
@@ -2254,7 +3029,6 @@ def update_canal_unit(
                 parent_id,
                 name,
                 canal_level,
-                organization_unit_id,
                 description or None,
                 canal_unit_id,
             ),
@@ -2324,6 +3098,11 @@ def delete_canal_unit(
         if usage["child_count"]:
             reasons.append(f"下级渠道 {usage['child_count']} 个")
 
+        if usage["management_scope_count"]:
+            reasons.append(
+                f"渠道管理范围 {usage['management_scope_count']} 条"
+            )
+
         if usage["asset_count"]:
             reasons.append(f"工程对象 {usage['asset_count']} 个")
 
@@ -2344,25 +3123,6 @@ def delete_canal_unit(
             """,
             (canal_unit_id,),
         )
-
-
-def get_canal_units_for_organization(
-    organization_unit_id,
-):
-    """
-    获取某个管理单位下启用的渠系。
-    """
-    with get_connection() as connection:
-        return connection.execute(
-            """
-            SELECT *
-            FROM canal_units
-            WHERE organization_unit_id = ?
-            AND status = 'active'
-            ORDER BY id
-            """,
-            (organization_unit_id,),
-        ).fetchall()
 
 
 def get_engineering_business_codes(
@@ -2912,6 +3672,7 @@ def create_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    source_management_scope_uid=None,
 ):
     """
     第一次调查时，同时创建：
@@ -2935,7 +3696,6 @@ def create_engineering_survey(
     )
 
     with get_connection() as connection:
-
         duplicate = _find_duplicate_engineering_survey(
             connection=connection,
             project_id=project_id,
@@ -2996,7 +3756,9 @@ def create_engineering_survey(
             ),
         )
 
-        engineering_asset_id = asset_cursor.lastrowid
+        engineering_asset_id = (
+            asset_cursor.lastrowid
+        )
 
         record_cursor = connection.execute(
             """
@@ -3007,6 +3769,7 @@ def create_engineering_survey(
                 record_type,
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3015,7 +3778,10 @@ def create_engineering_survey(
                 record_status,
                 record_data_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?
+            )
             """,
             (
                 project_id,
@@ -3024,6 +3790,7 @@ def create_engineering_survey(
                 "engineering",
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3034,7 +3801,9 @@ def create_engineering_survey(
             ),
         )
 
-        survey_record_id = record_cursor.lastrowid
+        survey_record_id = (
+            record_cursor.lastrowid
+        )
 
         if inspection_results is not None:
             _replace_inspection_results(
@@ -3044,8 +3813,12 @@ def create_engineering_survey(
             )
 
         return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
+            "engineering_asset_id": (
+                engineering_asset_id
+            ),
+            "survey_record_id": (
+                survey_record_id
+            ),
             "business_code": business_code,
         }
 
@@ -3170,16 +3943,11 @@ def create_range_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    source_management_scope_uid=None,
 ):
     """
     第一次保存区间型工程调查时，
-    同时创建：
-
-    1. EngineeringAsset；
-    2. SurveyRecord。
-
-    当前供附表2.5、2.7等
-    起止桩号工程共同使用。
+    同时创建 EngineeringAsset 和 SurveyRecord。
     """
 
     if not asset_name or not asset_name.strip():
@@ -3194,15 +3962,23 @@ def create_range_engineering_survey(
     )
 
     with get_connection() as connection:
-        duplicate = _find_duplicate_range_engineering_survey(
-            connection=connection,
-            project_id=project_id,
-            survey_batch_id=survey_batch_id,
-            form_version_id=form_version_id,
-            organization_unit_id=(organization_unit_id),
-            canal_unit_id=canal_unit_id,
-            start_stake_value=(start_stake_value),
-            end_stake_value=(end_stake_value),
+        duplicate = (
+            _find_duplicate_range_engineering_survey(
+                connection=connection,
+                project_id=project_id,
+                survey_batch_id=survey_batch_id,
+                form_version_id=form_version_id,
+                organization_unit_id=(
+                    organization_unit_id
+                ),
+                canal_unit_id=canal_unit_id,
+                start_stake_value=(
+                    start_stake_value
+                ),
+                end_stake_value=(
+                    end_stake_value
+                ),
+            )
         )
 
         if duplicate is not None:
@@ -3275,7 +4051,9 @@ def create_range_engineering_survey(
             ),
         )
 
-        engineering_asset_id = asset_cursor.lastrowid
+        engineering_asset_id = (
+            asset_cursor.lastrowid
+        )
 
         record_cursor = connection.execute(
             """
@@ -3286,6 +4064,7 @@ def create_range_engineering_survey(
                 record_type,
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3295,7 +4074,7 @@ def create_range_engineering_survey(
                 record_data_json
             )
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?
             )
             """,
@@ -3306,6 +4085,7 @@ def create_range_engineering_survey(
                 "engineering",
                 organization_unit_id,
                 canal_unit_id,
+                source_management_scope_uid,
                 engineering_asset_id,
                 business_code,
                 survey_date,
@@ -3316,7 +4096,9 @@ def create_range_engineering_survey(
             ),
         )
 
-        survey_record_id = record_cursor.lastrowid
+        survey_record_id = (
+            record_cursor.lastrowid
+        )
 
         if inspection_results is not None:
             _replace_inspection_results(
@@ -3326,8 +4108,12 @@ def create_range_engineering_survey(
             )
 
         return {
-            "engineering_asset_id": (engineering_asset_id),
-            "survey_record_id": (survey_record_id),
+            "engineering_asset_id": (
+                engineering_asset_id
+            ),
+            "survey_record_id": (
+                survey_record_id
+            ),
             "business_code": business_code,
         }
 
@@ -3727,12 +4513,6 @@ def get_point_engineering_record(
 ):
     """
     获取一条点状工程调查记录。
-
-    当前供附表2.2、2.3等使用单桩号的
-    工程调查表共同使用。
-
-    form_code 用于保证：
-    调查页面只能打开属于自己的调查记录。
     """
 
     with get_connection() as connection:
@@ -3741,6 +4521,8 @@ def get_point_engineering_record(
             SELECT
                 sr.id AS survey_record_id,
                 sr.record_status,
+                sr.source_task_uid,
+                sr.source_management_scope_uid,
                 sr.business_code,
                 sr.record_data_json,
                 sr.survey_date,
@@ -3793,27 +4575,61 @@ def get_point_engineering_record(
             return None
 
         try:
-            record_data = json.loads(row["record_data_json"] or "{}")
+            record_data = json.loads(
+                row["record_data_json"]
+                or "{}"
+            )
         except json.JSONDecodeError:
             record_data = {}
 
         return {
-            "survey_record_id": (row["survey_record_id"]),
-            "engineering_asset_id": (row["engineering_asset_id"]),
-            "record_status": (row["record_status"]),
-            "business_code": (row["business_code"] or ""),
-            "asset_name": (row["asset_name"] or ""),
-            "asset_type": (row["asset_type"]),
-            "form_code": (row["form_code"]),
-            "single_stake_text": (row["single_stake_text"]),
-            "single_stake_value": (row["single_stake_value"]),
-            "department_id": (row["department_id"]),
-            "office_id": (row["office_id"]),
-            "canal_id": (row["canal_id"]),
+            "survey_record_id": (
+                row["survey_record_id"]
+            ),
+            "engineering_asset_id": (
+                row["engineering_asset_id"]
+            ),
+            "record_status": (
+                row["record_status"]
+            ),
+            "source_task_uid": (
+                row["source_task_uid"]
+            ),
+            "source_management_scope_uid": (
+                row[
+                    "source_management_scope_uid"
+                ]
+            ),
+            "business_code": (
+                row["business_code"]
+                or ""
+            ),
+            "asset_name": (
+                row["asset_name"]
+                or ""
+            ),
+            "asset_type": row["asset_type"],
+            "form_code": row["form_code"],
+            "single_stake_text": (
+                row["single_stake_text"]
+            ),
+            "single_stake_value": (
+                row["single_stake_value"]
+            ),
+            "department_id": (
+                row["department_id"]
+            ),
+            "office_id": row["office_id"],
+            "canal_id": row["canal_id"],
             "record_data": record_data,
-            "survey_date": (row["survey_date"]),
-            "overall_grade": (row["overall_grade"]),
-            "survey_comment": (row["survey_comment"] or ""),
+            "survey_date": row["survey_date"],
+            "overall_grade": (
+                row["overall_grade"]
+            ),
+            "survey_comment": (
+                row["survey_comment"]
+                or ""
+            ),
         }
 
 
@@ -4012,10 +4828,6 @@ def get_range_engineering_record(
 ):
     """
     获取一条区间型工程调查记录。
-
-    返回区间工程公共字段，
-    同时保留组织、渠系及工程身份信息，
-    供附表2.1、2.5、2.7等共同使用。
     """
 
     with get_connection() as connection:
@@ -4033,6 +4845,8 @@ def get_range_engineering_record(
                 sr.canal_unit_id,
 
                 sr.record_status,
+                sr.source_task_uid,
+                sr.source_management_scope_uid,
                 sr.business_code,
                 sr.record_data_json,
                 sr.survey_date,
@@ -4106,36 +4920,88 @@ def get_range_engineering_record(
         return None
 
     try:
-        record_data = json.loads(row["record_data_json"] or "{}")
+        record_data = json.loads(
+            row["record_data_json"]
+            or "{}"
+        )
     except json.JSONDecodeError:
         record_data = {}
 
     return {
-        "survey_record_id": row["survey_record_id"],
-        "engineering_asset_id": row["engineering_asset_id"],
+        "survey_record_id": (
+            row["survey_record_id"]
+        ),
+        "engineering_asset_id": (
+            row["engineering_asset_id"]
+        ),
         "project_id": row["project_id"],
-        "survey_batch_id": row["survey_batch_id"],
-        "form_version_id": row["form_version_id"],
-        "organization_unit_id": row["organization_unit_id"],
-        "canal_unit_id": row["canal_unit_id"],
-        "record_status": row["record_status"],
-        "business_code": row["business_code"] or "",
-        "asset_name": row["asset_name"] or "",
+        "survey_batch_id": (
+            row["survey_batch_id"]
+        ),
+        "form_version_id": (
+            row["form_version_id"]
+        ),
+        "organization_unit_id": (
+            row["organization_unit_id"]
+        ),
+        "canal_unit_id": (
+            row["canal_unit_id"]
+        ),
+        "record_status": (
+            row["record_status"]
+        ),
+        "source_task_uid": (
+            row["source_task_uid"]
+        ),
+        "source_management_scope_uid": (
+            row[
+                "source_management_scope_uid"
+            ]
+        ),
+        "business_code": (
+            row["business_code"]
+            or ""
+        ),
+        "asset_name": (
+            row["asset_name"]
+            or ""
+        ),
         "asset_type": row["asset_type"],
         "form_code": row["form_code"],
-        "single_stake_text": row["single_stake_text"],
-        "single_stake_value": row["single_stake_value"],
-        "start_stake_text": row["start_stake_text"] or "",
-        "start_stake_value": row["start_stake_value"],
-        "end_stake_text": row["end_stake_text"] or "",
-        "end_stake_value": row["end_stake_value"],
-        "department_id": row["department_id"],
+        "single_stake_text": (
+            row["single_stake_text"]
+        ),
+        "single_stake_value": (
+            row["single_stake_value"]
+        ),
+        "start_stake_text": (
+            row["start_stake_text"]
+            or ""
+        ),
+        "start_stake_value": (
+            row["start_stake_value"]
+        ),
+        "end_stake_text": (
+            row["end_stake_text"]
+            or ""
+        ),
+        "end_stake_value": (
+            row["end_stake_value"]
+        ),
+        "department_id": (
+            row["department_id"]
+        ),
         "office_id": row["office_id"],
         "canal_id": row["canal_id"],
         "record_data": record_data,
         "survey_date": row["survey_date"],
-        "overall_grade": row["overall_grade"],
-        "survey_comment": row["survey_comment"] or "",
+        "overall_grade": (
+            row["overall_grade"]
+        ),
+        "survey_comment": (
+            row["survey_comment"]
+            or ""
+        ),
     }
 
 

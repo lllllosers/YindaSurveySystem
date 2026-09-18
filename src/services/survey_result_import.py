@@ -911,6 +911,7 @@ def _insert_record(
         INSERT INTO survey_records (
             survey_record_uid,
             source_task_uid,
+            source_management_scope_uid,
             project_id,
             survey_batch_id,
             form_version_id,
@@ -929,7 +930,7 @@ def _insert_record(
             updated_at
         )
         VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
@@ -940,6 +941,11 @@ def _insert_record(
             _optional_text(
                 item.get(
                     "source_task_uid"
+                )
+            ),
+            _optional_text(
+                item.get(
+                    "source_management_scope_uid"
                 )
             ),
             project_id,

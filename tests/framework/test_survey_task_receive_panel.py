@@ -10,11 +10,9 @@ os.environ.setdefault(
     "offscreen",
 )
 
-
 PROJECT_ROOT = (
     Path(__file__).resolve().parents[2]
 )
-
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -24,9 +22,7 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
-from PySide6.QtWidgets import (
-    QApplication,
-)
+from PySide6.QtWidgets import QApplication
 
 from pages.components.survey_task_receive_panel import (
     SurveyTaskReceivePanel,
@@ -53,9 +49,7 @@ class SurveyTaskReceivePanelTestCase(
         self,
         mock_current,
     ):
-        panel = (
-            SurveyTaskReceivePanel()
-        )
+        panel = SurveyTaskReceivePanel()
 
         try:
             self.assertEqual(
@@ -74,29 +68,45 @@ class SurveyTaskReceivePanelTestCase(
         "survey_task_receive_panel."
         "get_current_task_workspace"
     )
-    def test_current_task_summary_is_displayed(
+    def test_current_task_scope_summary_is_displayed(
         self,
         mock_current,
     ):
         mock_current.return_value = {
-            "task_name": "通远水管所调查任务",
-            "project_name": "2026年调查项目",
-            "batch_name": "2026年调查批次",
-            "organization_name": "通远水管所",
-            "received_at": "2026-09-17 18:00:00",
-            "canals": (
+            "task_name": (
+                "通远水管所调查任务"
+            ),
+            "project_name": (
+                "2026年调查项目"
+            ),
+            "batch_name": (
+                "2026年调查批次"
+            ),
+            "organization_name": (
+                "通远水管所"
+            ),
+            "received_at": (
+                "2026-09-17 18:00:00"
+            ),
+            "management_scopes": (
                 {
-                    "name": "通远支渠",
+                    "canal_name": (
+                        "通远支渠"
+                    ),
+                    "range_mode": "whole",
                 },
                 {
-                    "name": "晓林支渠",
+                    "canal_name": (
+                        "总干渠"
+                    ),
+                    "range_mode": (
+                        "segment_unknown"
+                    ),
                 },
             ),
         }
 
-        panel = (
-            SurveyTaskReceivePanel()
-        )
+        panel = SurveyTaskReceivePanel()
 
         try:
             self.assertEqual(
@@ -112,12 +122,12 @@ class SurveyTaskReceivePanelTestCase(
                 "通远水管所",
             )
             self.assertIn(
-                "通远支渠",
-                panel.canals_label.text(),
+                "通远支渠（全渠）",
+                panel.scope_summary_label.text(),
             )
             self.assertIn(
-                "晓林支渠",
-                panel.canals_label.text(),
+                "总干渠（边界未知）",
+                panel.scope_summary_label.text(),
             )
         finally:
             panel.deleteLater()

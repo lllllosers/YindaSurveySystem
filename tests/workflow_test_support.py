@@ -386,9 +386,7 @@ class EngineeringWorkflowTestCaseBase(
                     self.CANAL_LEVEL
                 ),
                 parent_id=None,
-                organization_unit_id=(
-                    self.office_id
-                ),
+
                 description=(
                     self.CANAL_DESCRIPTION
                 ),

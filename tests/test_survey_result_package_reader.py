@@ -177,11 +177,14 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
             connection.execute(
                 """
                 UPDATE survey_records
-                SET source_task_uid = ?
+                SET
+                    source_task_uid = ?,
+                    source_management_scope_uid = ?
                 WHERE id = ?
                 """,
                 (
                     "task-001",
+                    "scope-001",
                     self.record_id,
                 ),
             )
@@ -326,6 +329,143 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
             [
                 "task-001",
             ],
+        )
+        self.assertEqual(
+            loaded.result["result_schema_version"],
+            "2.0",
+        )
+        self.assertEqual(
+            loaded.survey_records[0][
+                "source_management_scope_uid"
+            ],
+            "scope-001",
+        )
+
+    def test_old_result_schema_is_rejected(
+        self,
+    ):
+        def mutate(files):
+            result_document = json.loads(
+                files["result.json"].decode("utf-8")
+            )
+            result_document.pop(
+                "result_schema_version",
+                None,
+            )
+            self._rewrite_json_and_manifest(
+                files,
+                "result.json",
+                result_document,
+            )
+
+            manifest = json.loads(
+                files["manifest.json"].decode("utf-8")
+            )
+            manifest.pop(
+                "result_schema_version",
+                None,
+            )
+            files["manifest.json"] = (
+                json.dumps(
+                    manifest,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+                + "\n"
+            ).encode("utf-8")
+
+        old_package = self._rewrite_zip(
+            mutate=mutate
+        )
+
+        inspection = inspect_survey_result_package(
+            old_package
+        )
+        codes = {
+            issue.code
+            for issue in inspection.issues
+        }
+
+        self.assertIn(
+            "RESULT_SCHEMA_VERSION_UNSUPPORTED",
+            codes,
+        )
+        self.assertIn(
+            "MANIFEST_RESULT_SCHEMA_VERSION_UNSUPPORTED",
+            codes,
+        )
+
+    def test_missing_record_scope_provenance_is_rejected(
+        self,
+    ):
+        def mutate(files):
+            document = json.loads(
+                files[
+                    "data/survey_records.json"
+                ].decode("utf-8")
+            )
+            document["items"][0].pop(
+                "source_management_scope_uid"
+            )
+            self._rewrite_json_and_manifest(
+                files,
+                "data/survey_records.json",
+                document,
+            )
+
+        tampered = self._rewrite_zip(
+            mutate=mutate
+        )
+        inspection = inspect_survey_result_package(
+            tampered
+        )
+        codes = {
+            issue.code
+            for issue in inspection.issues
+        }
+
+        self.assertIn(
+            "RESULT_RECORD_SOURCE_SCOPE_UID_MISSING",
+            codes,
+        )
+        self.assertIn(
+            "RESULT_RECORD_SOURCE_PROVENANCE_INCOMPLETE",
+            codes,
+        )
+
+    def test_task_without_scope_is_rejected(
+        self,
+    ):
+        def mutate(files):
+            document = json.loads(
+                files[
+                    "data/survey_records.json"
+                ].decode("utf-8")
+            )
+            document["items"][0][
+                "source_management_scope_uid"
+            ] = None
+            self._rewrite_json_and_manifest(
+                files,
+                "data/survey_records.json",
+                document,
+            )
+
+        tampered = self._rewrite_zip(
+            mutate=mutate
+        )
+        inspection = inspect_survey_result_package(
+            tampered
+        )
+        codes = {
+            issue.code
+            for issue in inspection.issues
+        }
+
+        self.assertIn(
+            "RESULT_RECORD_SOURCE_PROVENANCE_INCOMPLETE",
+            codes,
         )
 
     def test_tampered_media_is_rejected(self):

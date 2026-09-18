@@ -29,6 +29,8 @@ SURVEY_RESULT_EXTENSION = (
     ".ydresult"
 )
 
+RESULT_SCHEMA_VERSION = "2.0"
+
 
 @dataclass(frozen=True)
 class SurveyResultExportRequest:
@@ -279,6 +281,7 @@ def _load_export_context(
                     sr.id,
                     sr.survey_record_uid,
                     sr.source_task_uid,
+                    sr.source_management_scope_uid,
                     sr.project_id,
                     p.project_uid,
                     sr.survey_batch_id,
@@ -614,6 +617,34 @@ def _validate_records(
                 f"{row['id']}"
             ),
         )
+
+        source_task_uid = (
+            _optional_text(
+                row[
+                    "source_task_uid"
+                ]
+            )
+        )
+        source_management_scope_uid = (
+            _optional_text(
+                row[
+                    "source_management_scope_uid"
+                ]
+            )
+        )
+
+        if bool(
+            source_task_uid
+        ) != bool(
+            source_management_scope_uid
+        ):
+            raise ValueError(
+                "调查记录的任务来源信息不完整，"
+                "source_task_uid 与 "
+                "source_management_scope_uid "
+                "必须同时存在或同时为空："
+                f"{row['id']}。"
+            )
 
 
 def _validate_assets(
@@ -1055,6 +1086,13 @@ def _serialize_records(
                         ]
                     )
                 ),
+                "source_management_scope_uid": (
+                    _optional_text(
+                        row[
+                            "source_management_scope_uid"
+                        ]
+                    )
+                ),
                 "project_uid": (
                     _require_uid(
                         row[
@@ -1343,6 +1381,9 @@ def export_survey_result_package(
     )
 
     result_document = {
+        "result_schema_version": (
+            RESULT_SCHEMA_VERSION
+        ),
         "result_uid": (
             result_uid
         ),
@@ -1475,6 +1516,9 @@ def export_survey_result_package(
     manifest = {
         "package_kind": (
             SURVEY_RESULT_PACKAGE_KIND
+        ),
+        "result_schema_version": (
+            RESULT_SCHEMA_VERSION
         ),
         "created_at": (
             created_at

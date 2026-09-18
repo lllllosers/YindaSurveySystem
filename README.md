@@ -4,17 +4,22 @@
 
 ## 当前版本
 
-**V0.6.0 测试版**
+**V0.8.0 测试版**
 
-V0.6.0 完成附表2.1～2.14工程现状调查体系的完整接入，并完成一轮甲方生产验收反馈修正。
+V0.8.0 在 V0.7.0 多电脑调查闭环基础上，完成渠道物理实体与管理范围解耦、management scope 冻结任务范围、`SurveyRecord` 的 task + scope provenance、上级 issued-task 冻结快照权威校验以及 `.ydresult` V2 成果回收闭环，并已通过独立双数据库人工生产验收。
 
-当前附表2系列已统一进入 Engineering Form Framework，具备录入、评价、草稿/完成、工程台账、数据查询、详细汇总和正式原表导出等完整业务闭环。
+当前开发分支已完成渠道管理范围与跨库任务 provenance 模型收口：`CanalUnit` 仅表示物理渠道，管理责任统一由 `CanalManagementScope` 表达；调查任务使用冻结的 management scope 快照约束录入范围，成果回收按上级端原始下发任务快照核验来源。
 
 ## 当前已实现
 
 - PySide6 + SQLite 单机本地化运行框架
 - 项目与调查批次管理
-- 组织机构与渠系基础资料
+- 组织机构与物理渠系基础资料
+- CanalManagementScope 渠道管理范围模型
+- 跨数据库稳定 UID
+- `.ydtask` 调查任务包、冻结任务范围与本地任务工作区
+- `.ydresult` V2 调查成果包、来源任务/分管范围校验、成果预检与事务化导入
+- SurveyRecord 任务与管理范围来源追踪（`source_task_uid` + `source_management_scope_uid`）
 - 工程业务编号
 - EngineeringAsset 工程台账
 - SurveyRecord 历次调查记录
@@ -107,9 +112,9 @@ EngineeringFormRegistry
 
 ## 当前开发方向
 
-附表2工程现状调查体系已经完成阶段性闭环。
+附表2工程现状调查体系已经完成阶段性闭环，V0.8.0 已具备基于 `CanalManagementScope` 的任务下发、基层受控录入、成果上报、来源核验和上级事务化汇总链路。
 
-下一阶段不继续为附表2增加无需求的公共抽象，优先进行版本化测试发布、甲方实际数据试录和问题收集；附表1系列作为独立业务域后续单独设计数据模型和录入方式。
+任务范围 provenance 与成果回收校验已完成 Stage 14 自动化与人工双重验收：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。双数据库人工验收已覆盖同一物理渠道多 scope、重复成果幂等、以及 current master 变化后历史成果 warning-only 但仍可合法导入的场景。下一阶段进入甲方实际数据试录和使用反馈收集；附表1系列继续作为独立业务域留待后续单独设计。
 
 ## 技术栈
 

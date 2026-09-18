@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-from services.survey_result_package import SURVEY_RESULT_PACKAGE_KIND
+from services.survey_result_package import (
+    RESULT_SCHEMA_VERSION,
+    SURVEY_RESULT_PACKAGE_KIND,
+)
 from services.yd_package_reader import (
     PackageInspectionIssue,
     SEVERITY_ERROR,
@@ -135,55 +138,29 @@ def _read_source_task_uids(
     *,
     path,
 ):
-    """
-    读取成果包来源任务集合。
-
-    新格式：
-        source_task_uids = [...]
-        source_task_uid 仅作为单来源兼容字段。
-
-    旧格式：
-        只有 source_task_uid。
-
-    返回：
-        (uids, has_multi_source_contract)
-    """
-
+    # Current V2 contract only. Old single-field result packages are rejected.
     if not isinstance(
         document,
         dict,
     ):
         return (
             (),
-            False,
+            True,
         )
 
     if "source_task_uids" not in document:
-        legacy = document.get(
-            "source_task_uid"
-        )
-
-        if legacy is None:
-            return (
-                (),
-                False,
-            )
-
-        legacy_uid = _require_text(
-            legacy,
+        _append(
             issues,
-            "SOURCE_TASK_UID_INVALID",
-            "source_task_uid 必须是非空字符串或 null。",
+            "SOURCE_TASK_UIDS_MISSING",
+            (
+                "当前成果格式要求 source_task_uids；"
+                "旧测试成果包请使用当前版本重新生成。"
+            ),
             path=path,
         )
-
         return (
-            (
-                (legacy_uid,)
-                if legacy_uid
-                else ()
-            ),
-            False,
+            (),
+            True,
         )
 
     raw_values = document.get(
@@ -250,10 +227,10 @@ def _read_source_task_uids(
     ):
         _append(
             issues,
-            "SOURCE_TASK_UID_COMPATIBILITY_MISMATCH",
+            "SOURCE_TASK_UID_SINGLE_MISMATCH",
             (
                 "source_task_uid 与 source_task_uids "
-                "的单来源兼容规则不一致。"
+                "的当前单来源规则不一致。"
             ),
             path=path,
         )
@@ -418,6 +395,63 @@ def inspect_survey_result_package(package_path):
             inspection_results=inspections,
             survey_media=media,
             issues=tuple(issues),
+        )
+
+    # 成果 schema 版本。
+    result_schema_version = (
+        result_document.get(
+            "result_schema_version"
+        )
+    )
+    manifest_schema_version = (
+        manifest.get(
+            "result_schema_version"
+        )
+    )
+
+    if (
+        result_schema_version
+        != RESULT_SCHEMA_VERSION
+    ):
+        _append(
+            issues,
+            "RESULT_SCHEMA_VERSION_UNSUPPORTED",
+            (
+                "result.json 的 result_schema_version "
+                f"必须为 {RESULT_SCHEMA_VERSION}；"
+                "旧测试成果包请使用当前版本重新生成。"
+            ),
+            path="result.json",
+        )
+
+    if (
+        manifest_schema_version
+        != RESULT_SCHEMA_VERSION
+    ):
+        _append(
+            issues,
+            "MANIFEST_RESULT_SCHEMA_VERSION_UNSUPPORTED",
+            (
+                "manifest 的 result_schema_version "
+                f"必须为 {RESULT_SCHEMA_VERSION}；"
+                "旧测试成果包请使用当前版本重新生成。"
+            ),
+            path="manifest.json",
+        )
+
+    if (
+        result_schema_version
+        and manifest_schema_version
+        and result_schema_version
+        != manifest_schema_version
+    ):
+        _append(
+            issues,
+            "RESULT_SCHEMA_VERSION_MISMATCH",
+            (
+                "manifest 与 result.json 的 "
+                "result_schema_version 不一致。"
+            ),
         )
 
     # 顶层 UID 一致性
@@ -616,23 +650,89 @@ def inspect_survey_result_package(package_path):
 
         record_by_uid[uid] = item
 
-        raw_source_task_uid = item.get(
-            "source_task_uid"
-        )
-
-        if raw_source_task_uid is not None:
-            record_source_task_uid = _require_text(
-                raw_source_task_uid,
+        if "source_task_uid" not in item:
+            _append(
                 issues,
-                "RESULT_RECORD_SOURCE_TASK_UID_INVALID",
-                "调查记录 source_task_uid 必须是非空字符串或 null。",
+                "RESULT_RECORD_SOURCE_TASK_UID_MISSING",
+                (
+                    "当前成果格式要求每条调查记录明确包含 "
+                    "source_task_uid（允许为 null）。"
+                ),
+                path="data/survey_records.json",
+            )
+            record_source_task_uid = None
+        else:
+            raw_source_task_uid = item.get(
+                "source_task_uid"
+            )
+
+            if raw_source_task_uid is None:
+                record_source_task_uid = None
+            else:
+                record_source_task_uid = _require_text(
+                    raw_source_task_uid,
+                    issues,
+                    "RESULT_RECORD_SOURCE_TASK_UID_INVALID",
+                    (
+                        "调查记录 source_task_uid "
+                        "必须是非空字符串或 null。"
+                    ),
+                    path="data/survey_records.json",
+                )
+
+        if (
+            "source_management_scope_uid"
+            not in item
+        ):
+            _append(
+                issues,
+                "RESULT_RECORD_SOURCE_SCOPE_UID_MISSING",
+                (
+                    "当前成果格式要求每条调查记录明确包含 "
+                    "source_management_scope_uid（允许为 null）。"
+                ),
+                path="data/survey_records.json",
+            )
+            record_source_scope_uid = None
+        else:
+            raw_source_scope_uid = item.get(
+                "source_management_scope_uid"
+            )
+
+            if raw_source_scope_uid is None:
+                record_source_scope_uid = None
+            else:
+                record_source_scope_uid = _require_text(
+                    raw_source_scope_uid,
+                    issues,
+                    "RESULT_RECORD_SOURCE_SCOPE_UID_INVALID",
+                    (
+                        "调查记录 source_management_scope_uid "
+                        "必须是非空字符串或 null。"
+                    ),
+                    path="data/survey_records.json",
+                )
+
+        if bool(
+            record_source_task_uid
+        ) != bool(
+            record_source_scope_uid
+        ):
+            _append(
+                issues,
+                "RESULT_RECORD_SOURCE_PROVENANCE_INCOMPLETE",
+                (
+                    "任务来源调查记录必须同时携带 "
+                    "source_task_uid 与 "
+                    "source_management_scope_uid。"
+                ),
                 path="data/survey_records.json",
             )
 
-            if record_source_task_uid:
-                record_source_task_uids.add(
-                    record_source_task_uid
-                )
+        if record_source_task_uid:
+            record_source_task_uids.add(
+                record_source_task_uid
+            )
 
         if project_uid and item.get("project_uid") != project_uid:
             _append(

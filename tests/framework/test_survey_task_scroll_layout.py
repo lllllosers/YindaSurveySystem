@@ -34,7 +34,7 @@ class SurveyTaskScrollLayoutTestCase(unittest.TestCase):
 
     @patch(
         "pages.survey_task_page."
-        "get_canal_units_for_organization",
+        "get_management_scopes_for_organization",
         return_value=[],
     )
     @patch(

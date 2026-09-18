@@ -20,10 +20,11 @@ class MasterDataPagesTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    @patch("pages.canal_page.get_management_scopes_for_admin")
     @patch("pages.canal_page.get_canal_sort_order_map")
     @patch("pages.canal_page.get_canal_units")
     def test_canal_page_uses_official_sort_and_description(
-        self, mock_canals, mock_orders
+        self, mock_canals, mock_orders, mock_scopes
     ):
         mock_canals.return_value = [
             {
@@ -46,10 +47,29 @@ class MasterDataPagesTestCase(unittest.TestCase):
             },
         ]
         mock_orders.return_value = {1: 10, 2: 20}
+        mock_scopes.side_effect = lambda canal_id: (
+            [
+                {
+                    "id": 201,
+                    "management_scope_uid": "scope-201",
+                    "organization_name": "测试管理单位",
+                    "range_mode": "whole",
+                    "start_stake_text": None,
+                    "start_stake_value": None,
+                    "end_stake_text": None,
+                    "end_stake_value": None,
+                    "description": None,
+                    "status": "active",
+                }
+            ]
+            if int(canal_id) == 2
+            else []
+        )
         page = CanalPage()
         try:
             self.assertEqual(page.tree.columnCount(), 5)
             self.assertEqual(page.tree.topLevelItem(0).text(0), "先显示")
+            self.assertEqual(page.tree.topLevelItem(1).text(2), "测试管理单位（全渠）")
             self.assertEqual(page.tree.topLevelItem(1).text(3), "备注内容")
             self.assertEqual(page.tree.topLevelItem(1).text(4), "启用")
         finally:

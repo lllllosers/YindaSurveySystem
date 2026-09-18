@@ -193,7 +193,7 @@ class DataQueryTestCase(unittest.TestCase):
         self.canal_id = database.create_canal_unit(
             name="测试总干渠",
             canal_level="01",
-            organization_unit_id=(self.office_id),
+
         )
 
         # =====================================================

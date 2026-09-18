@@ -3,6 +3,54 @@
 引大灌区调查数据采集系统版本变更记录。
 
 ---
+## [Unreleased]
+
+---
+## [0.8.0] - 2026-09-19
+
+### Added
+
+- 新增 `CanalManagementScope` 渠道管理范围模型，支持 `whole`、`segment_known`、`segment_unknown`
+- 调查任务包升级为 management scope 范围合同，并在本地工作区保存下发时冻结快照
+- `SurveyRecord` 增加 `source_management_scope_uid`，与 `source_task_uid` 共同记录任务来源
+- 新增 `survey_task_issues` 与 `survey_task_issue_scopes`，保存上级端不可变的已下发任务及分管范围冻结快照
+- `.ydresult` 增加独立 `result_schema_version = 2.0`，记录级成果同时携带 `source_task_uid` 与 `source_management_scope_uid`
+
+### Changed
+
+- `CanalUnit` 收口为纯物理渠道实体，不再承担管理单位归属
+- 调查入口的渠道可用范围统一从 `CanalManagementScope` 获取
+- 正式渠系主数据与正式管理范围主数据分离维护
+- 任务工作区权限由 `survey_task_workspace_scopes` 作为唯一范围事实
+- 数据库初始化统一保证 SurveyRecord provenance 核心字段
+- 物理删除 `canal_units.organization_unit_id`，现有开发数据库启动时执行受保护的 schema migration
+- 成果预检改为按上级端原始已下发任务冻结快照校验 `task + scope + canal + organization + project + batch`，不再把当前 `CanalManagementScope` 作为历史任务真值
+- 当前管理范围与下发时快照发生变化时仅提示 warning，历史成果合法性继续以原始下发事实为准
+- 成果事务导入原样保留 `source_task_uid + source_management_scope_uid`
+
+### Removed
+
+- 删除旧 CanalUnit 管理归属运行路径及相关过渡测试
+- 删除 `get_canal_units_for_organization()` 旧查询入口
+- 删除 `survey_task_workspace_canals` 旧工作区合同及运行时清理路径
+- 删除 `.ydresult` 旧单 `source_task_uid` fallback；旧测试成果包由 reader 明确拒绝，不继续保留兼容运行路径
+
+### Fixed
+
+- 修复 SurveyRecord provenance 字段只由任务服务补列导致的数据库初始化双源问题
+- 修复组织删除页面继续读取已退役 `canal_count` 合同的问题
+- 清理历史数据库中引用已退役 `survey_task_workspace_canals` 的已知任务触发器，避免 SQLite schema 重建失败
+
+### Notes
+
+- 旧 `.ydtask` 字段仍由 reader 明确拒绝，不作为兼容路径继续运行
+- `.ydresult` V2 来源合同已完成收口，旧来源字段格式仅做明确拒绝，不再兼容读取
+- 当前管理关系唯一事实源为 `CanalManagementScope`
+- Stage 14 已完成任务下发 → 基层接收/录入 → 成果回传 → 上级冻结快照校验 → 事务导入的自动化端到端回归
+- 已完成独立 Parent / Child 双数据库人工生产验收，覆盖同一物理渠道多 `segment_unknown` scope、显式 scope 选择、成果重复导入保护，以及 current master 变化后历史成果 warning-only 但仍可按 issued-task snapshot 合法导入
+- `V0.8.0-test` 作为渠道管理范围、任务范围 provenance 与成果回收权威校验完成收口后的测试基线
+
+---
 ## [0.7.0] - 2026-09-17
 
 ### Added

@@ -51,6 +51,7 @@ def deterministic_master_uid(
     if entity_kind not in {
         "organization",
         "canal",
+        "canal_management_scope",
     }:
         raise ValueError(
             "不支持的正式主数据实体类型。"

@@ -28,72 +28,153 @@ def create_engineering_record(
     canal_unit_id: int,
     business_code: str,
     payload: dict,
+    source_management_scope_uid: str | None = None,
 ) -> dict:
     """
     根据 EngineeringFormDefinition
     创建一条工程调查草稿。
-
-    本函数只负责把通用表单 payload
-    映射到现有数据库 point / range API。
-
-    不负责：
-    - UI校验；
-    - 组织机构选择；
-    - 业务编号生成；
-    - completed状态转换。
     """
 
-    asset_name = payload.get("asset_name")
-    record_data = payload.get("record_data") or {}
-    position = payload.get("position") or {}
+    asset_name = payload.get(
+        "asset_name"
+    )
+    record_data = (
+        payload.get("record_data")
+        or {}
+    )
+    position = (
+        payload.get("position")
+        or {}
+    )
+    inspection_results = (
+        payload.get(
+            "inspection_results"
+        )
+        or []
+    )
 
-    inspection_results = payload.get("inspection_results") or []
+    survey_date = payload.get(
+        "survey_date"
+    )
+    overall_grade = payload.get(
+        "overall_grade"
+    )
+    survey_comment = payload.get(
+        "survey_comment"
+    )
 
-    survey_date = payload.get("survey_date")
-    overall_grade = payload.get("overall_grade")
-    survey_comment = payload.get("survey_comment")
-
-    if definition.position.kind == "point":
+    if (
+        definition.position.kind
+        == "point"
+    ):
         return create_engineering_survey(
             project_id=project_id,
-            survey_batch_id=survey_batch_id,
-            form_version_id=form_version_id,
+            survey_batch_id=(
+                survey_batch_id
+            ),
+            form_version_id=(
+                form_version_id
+            ),
             asset_name=asset_name,
-            asset_type=definition.asset_type,
-            organization_unit_id=organization_unit_id,
-            canal_unit_id=canal_unit_id,
-            business_code=business_code,
+            asset_type=(
+                definition.asset_type
+            ),
+            organization_unit_id=(
+                organization_unit_id
+            ),
+            canal_unit_id=(
+                canal_unit_id
+            ),
+            business_code=(
+                business_code
+            ),
             record_data=record_data,
-            single_stake_text=position.get("single_stake_text"),
-            single_stake_value=position.get("single_stake_value"),
-            inspection_results=inspection_results,
+            single_stake_text=(
+                position.get(
+                    "single_stake_text"
+                )
+            ),
+            single_stake_value=(
+                position.get(
+                    "single_stake_value"
+                )
+            ),
+            inspection_results=(
+                inspection_results
+            ),
             survey_date=survey_date,
             overall_grade=overall_grade,
-            survey_comment=survey_comment,
+            survey_comment=(
+                survey_comment
+            ),
+            source_management_scope_uid=(
+                source_management_scope_uid
+            ),
         )
 
-    if definition.position.kind == "range":
+    if (
+        definition.position.kind
+        == "range"
+    ):
         return create_range_engineering_survey(
             project_id=project_id,
-            survey_batch_id=survey_batch_id,
-            form_version_id=form_version_id,
+            survey_batch_id=(
+                survey_batch_id
+            ),
+            form_version_id=(
+                form_version_id
+            ),
             asset_name=asset_name,
-            asset_type=definition.asset_type,
-            organization_unit_id=organization_unit_id,
-            canal_unit_id=canal_unit_id,
-            business_code=business_code,
+            asset_type=(
+                definition.asset_type
+            ),
+            organization_unit_id=(
+                organization_unit_id
+            ),
+            canal_unit_id=(
+                canal_unit_id
+            ),
+            business_code=(
+                business_code
+            ),
             record_data=record_data,
-            start_stake_text=position.get("start_stake_text"),
-            start_stake_value=position.get("start_stake_value"),
-            end_stake_text=position.get("end_stake_text"),
-            end_stake_value=position.get("end_stake_value"),
-            inspection_results=inspection_results,
+            start_stake_text=(
+                position.get(
+                    "start_stake_text"
+                )
+            ),
+            start_stake_value=(
+                position.get(
+                    "start_stake_value"
+                )
+            ),
+            end_stake_text=(
+                position.get(
+                    "end_stake_text"
+                )
+            ),
+            end_stake_value=(
+                position.get(
+                    "end_stake_value"
+                )
+            ),
+            inspection_results=(
+                inspection_results
+            ),
             survey_date=survey_date,
             overall_grade=overall_grade,
-            survey_comment=survey_comment,
+            survey_comment=(
+                survey_comment
+            ),
+            source_management_scope_uid=(
+                source_management_scope_uid
+            ),
         )
 
-    raise ValueError("暂不支持的工程位置类型：" f"{definition.position.kind}")
+    raise ValueError(
+        "暂不支持的工程位置类型："
+        f"{definition.position.kind}"
+    )
 
 
 def update_engineering_record(

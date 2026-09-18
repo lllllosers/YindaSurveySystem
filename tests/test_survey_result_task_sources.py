@@ -233,11 +233,14 @@ class SurveyResultTaskSourcesTestCase(
                 connection.execute(
                     """
                     UPDATE survey_records
-                    SET source_task_uid = ?
+                    SET
+                        source_task_uid = ?,
+                        source_management_scope_uid = ?
                     WHERE id = ?
                     """,
                     (
                         task_uid,
+                        f"scope-{index}",
                         record_id,
                     ),
                 )
@@ -346,6 +349,19 @@ class SurveyResultTaskSourcesTestCase(
                 for item in records
             },
             set(expected),
+        )
+
+        self.assertEqual(
+            {
+                item[
+                    "source_management_scope_uid"
+                ]
+                for item in records
+            },
+            {
+                "scope-1",
+                "scope-2",
+            },
         )
 
         inspection = (

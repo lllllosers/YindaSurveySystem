@@ -7,478 +7,175 @@ import unittest
 from pathlib import Path
 import zipfile
 
-
-PROJECT_ROOT = (
-    Path(__file__).resolve().parents[1]
-)
-
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
-
 if str(SRC_DIR) not in sys.path:
-    sys.path.insert(
-        0,
-        str(SRC_DIR),
-    )
-
+    sys.path.insert(0, str(SRC_DIR))
 
 import database
-
-from services.application_bootstrap import (
-    initialize_application_database,
-)
+from services.application_bootstrap import initialize_application_database
 from services.survey_task_package import (
     SurveyTaskExportRequest,
     export_survey_task_package,
 )
 
 
-class SurveyTaskPackageTestCase(
-    unittest.TestCase,
-):
+class SurveyTaskPackageTestCase(unittest.TestCase):
     def setUp(self):
-        self.temp_directory = (
-            tempfile.TemporaryDirectory()
-        )
-
-        self.temp_root = Path(
-            self.temp_directory.name
-        )
-
-        self.original_data_dir = (
-            database.DATA_DIR
-        )
-        self.original_db_path = (
-            database.DB_PATH
-        )
-
-        database.DATA_DIR = (
-            self.temp_root
-            / "local_data"
-        )
-
-        database.DB_PATH = (
-            database.DATA_DIR
-            / "task_package.db"
-        )
-
+        self.temp_directory = tempfile.TemporaryDirectory()
+        self.temp_root = Path(self.temp_directory.name)
+        self.original_data_dir = database.DATA_DIR
+        self.original_db_path = database.DB_PATH
+        database.DATA_DIR = self.temp_root / "local_data"
+        database.DB_PATH = database.DATA_DIR / "task_package.db"
         initialize_application_database()
 
         with database.get_connection() as connection:
             project = connection.execute(
-                """
-                INSERT INTO projects (
-                    name,
-                    short_name,
-                    status
-                )
-                VALUES (?, ?, ?)
-                """,
-                (
-                    "2026年引大入秦灌区现状调查",
-                    "2026现状调查",
-                    "active",
-                ),
+                "INSERT INTO projects (name, short_name, status) VALUES (?, ?, 'active')",
+                ("2026年引大入秦灌区现状调查", "2026现状调查"),
             )
-
-            self.project_id = int(
-                project.lastrowid
-            )
-
+            self.project_id = int(project.lastrowid)
             batch = connection.execute(
                 """
                 INSERT INTO survey_batches (
-                    project_id,
-                    batch_name,
-                    batch_code,
-                    status
-                )
-                VALUES (?, ?, ?, ?)
+                    project_id, batch_name, batch_code, status
+                ) VALUES (?, ?, ?, 'active')
                 """,
-                (
-                    self.project_id,
-                    "2026年调查批次",
-                    "2026",
-                    "active",
-                ),
+                (self.project_id, "2026年调查批次", "2026"),
             )
-
-            self.batch_id = int(
-                batch.lastrowid
-            )
-
+            self.batch_id = int(batch.lastrowid)
             office = connection.execute(
-                """
-                SELECT id
-                FROM organization_units
-                WHERE master_key = ?
-                """,
-                (
-                    "ORG-D01-O03",
-                ),
+                "SELECT id FROM organization_units WHERE master_key = ?",
+                ("ORG-D01-O03",),
             ).fetchone()
-
-            self.office_id = int(
-                office["id"]
-            )
-
-            canals = connection.execute(
+            self.office_id = int(office["id"])
+            rows = connection.execute(
                 """
-                SELECT id
-                FROM canal_units
+                SELECT management_scope_uid
+                FROM canal_management_scopes
                 WHERE master_key IN (
-                    'CANAL-S001',
-                    'CANAL-S002'
+                    'CMS-CANAL-S001-ORG-D01-O03',
+                    'CMS-CANAL-S002-ORG-D01-O03'
                 )
-                ORDER BY sort_order
+                ORDER BY sort_order, id
                 """
             ).fetchall()
+            self.scope_uids = tuple(row["management_scope_uid"] for row in rows)
 
-            self.canal_ids = tuple(
-                int(row["id"])
-                for row in canals
-            )
+        self.assertEqual(len(self.scope_uids), 2)
 
     def tearDown(self):
         gc.collect()
-
-        database.DATA_DIR = (
-            self.original_data_dir
-        )
-        database.DB_PATH = (
-            self.original_db_path
-        )
-
+        database.DATA_DIR = self.original_data_dir
+        database.DB_PATH = self.original_db_path
         self.temp_directory.cleanup()
 
-    def _export(
-        self,
-        filename="通远水管所任务.ydtask",
-        canal_ids=None,
-    ):
-        output_path = (
-            self.temp_root
-            / filename
-        )
-
-        result = (
-            export_survey_task_package(
-                SurveyTaskExportRequest(
-                    project_id=(
-                        self.project_id
-                    ),
-                    survey_batch_id=(
-                        self.batch_id
-                    ),
-                    organization_unit_id=(
-                        self.office_id
-                    ),
-                    canal_ids=(
-                        tuple(
-                            canal_ids
-                            if canal_ids
-                            is not None
-                            else self.canal_ids
-                        )
-                    ),
-                    task_name=(
-                        "通远水管所调查任务"
-                    ),
-                    notes=(
-                        "纸质外业调查任务范围"
-                    ),
-                    output_path=(
-                        output_path
-                    ),
-                )
+    def _export(self, filename="通远水管所任务.ydtask", scope_uids=None):
+        return export_survey_task_package(
+            SurveyTaskExportRequest(
+                project_id=self.project_id,
+                survey_batch_id=self.batch_id,
+                organization_unit_id=self.office_id,
+                management_scope_uids=tuple(
+                    self.scope_uids if scope_uids is None else scope_uids
+                ),
+                task_name="通远水管所调查任务",
+                notes="分管范围调查任务",
+                output_path=self.temp_root / filename,
             )
         )
 
-        return result
-
-    def test_exports_expected_package_structure(
-        self,
-    ):
+    def test_exports_new_scope_package_structure(self):
         result = self._export()
-
-        self.assertTrue(
-            result.output_path.exists()
-        )
-
-        self.assertEqual(
-            result.output_path.suffix,
-            ".ydtask",
-        )
-
-        with zipfile.ZipFile(
-            result.output_path,
-            "r",
-        ) as archive:
-            names = set(
-                archive.namelist()
-            )
-
+        with zipfile.ZipFile(result.output_path, "r") as archive:
+            names = set(archive.namelist())
         self.assertEqual(
             names,
             {
                 "manifest.json",
                 "task.json",
-                (
-                    "reference/"
-                    "organization_units.json"
-                ),
-                (
-                    "reference/"
-                    "canal_units.json"
-                ),
-                (
-                    "reference/"
-                    "forms.json"
-                ),
+                "reference/organization_units.json",
+                "reference/canal_units.json",
+                "reference/canal_management_scopes.json",
+                "reference/forms.json",
             },
         )
+        self.assertEqual(result.selected_management_scope_count, 2)
 
-    def test_manifest_hashes_every_payload_file(
-        self,
-    ):
+    def test_manifest_hashes_every_payload_file(self):
         result = self._export()
+        with zipfile.ZipFile(result.output_path, "r") as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            self.assertEqual(manifest["package_kind"], "survey_task")
+            self.assertEqual(manifest["task_schema_version"], "2.0")
+            for entry in manifest["files"]:
+                content = archive.read(entry["path"])
+                self.assertEqual(len(content), entry["size"])
+                self.assertEqual(sha256(content).hexdigest(), entry["sha256"])
 
-        with zipfile.ZipFile(
-            result.output_path,
-            "r",
-        ) as archive:
-            manifest = json.loads(
-                archive.read(
-                    "manifest.json"
-                )
-            )
-
-            self.assertEqual(
-                manifest[
-                    "package_kind"
-                ],
-                "survey_task",
-            )
-
-            self.assertEqual(
-                manifest[
-                    "package_format_version"
-                ],
-                "1.0",
-            )
-
-            self.assertEqual(
-                manifest[
-                    "package_uid"
-                ],
-                result.package_uid,
-            )
-
-            for entry in manifest[
-                "files"
-            ]:
-                content = archive.read(
-                    entry["path"]
-                )
-
-                self.assertEqual(
-                    len(content),
-                    entry["size"],
-                )
-
-                self.assertEqual(
-                    sha256(
-                        content
-                    ).hexdigest(),
-                    entry["sha256"],
-                )
-
-    def test_task_uses_stable_uids_not_local_ids(
-        self,
-    ):
+    def test_task_uses_scope_uids_and_physical_canals_have_no_owner(self):
         result = self._export()
-
-        with zipfile.ZipFile(
-            result.output_path,
-            "r",
-        ) as archive:
-            task = json.loads(
-                archive.read(
-                    "task.json"
-                )
-            )
-
-            organizations = json.loads(
-                archive.read(
-                    (
-                        "reference/"
-                        "organization_units.json"
-                    )
-                )
-            )
-
+        with zipfile.ZipFile(result.output_path, "r") as archive:
+            task = json.loads(archive.read("task.json"))
             canals = json.loads(
-                archive.read(
-                    (
-                        "reference/"
-                        "canal_units.json"
-                    )
-                )
-            )
-
-        self.assertIn(
-            "project_uid",
-            task["project"],
-        )
-        self.assertIn(
-            "survey_batch_uid",
-            task["survey_batch"],
-        )
-
-        self.assertNotIn(
-            "project_id",
-            task["project"],
-        )
-        self.assertNotIn(
-            "survey_batch_id",
-            task["survey_batch"],
-        )
-
-        for item in organizations[
-            "items"
-        ]:
-            self.assertIn(
-                "organization_uid",
-                item,
-            )
-            self.assertNotIn(
-                "id",
-                item,
-            )
-
-        for item in canals[
-            "items"
-        ]:
-            self.assertIn(
-                "canal_uid",
-                item,
-            )
-            self.assertNotIn(
-                "id",
-                item,
-            )
-
-    def test_reference_canals_include_selected_ancestors(
-        self,
-    ):
-        result = self._export(
-            canal_ids=(
-                self.canal_ids[:1]
-            )
-        )
-
-        with zipfile.ZipFile(
-            result.output_path,
-            "r",
-        ) as archive:
-            canals = json.loads(
-                archive.read(
-                    (
-                        "reference/"
-                        "canal_units.json"
-                    )
-                )
+                archive.read("reference/canal_units.json")
+            )["items"]
+            scopes = json.loads(
+                archive.read("reference/canal_management_scopes.json")
             )["items"]
 
-        names = {
-            item["name"]
-            for item in canals
-        }
-
-        self.assertIn(
-            "通远支渠",
-            names,
-        )
-        self.assertIn(
-            "总干渠",
-            names,
-        )
-
+        self.assertEqual(task["task_schema_version"], "2.0")
+        self.assertNotIn("selected_canal_uids", task["scope"])
         self.assertEqual(
-            result.selected_canal_count,
-            1,
+            set(task["scope"]["selected_management_scope_uids"]),
+            set(self.scope_uids),
         )
+        for item in canals:
+            self.assertNotIn("management_organization_uid", item)
         self.assertEqual(
-            result.reference_canal_count,
-            2,
+            {item["management_scope_uid"] for item in scopes},
+            set(self.scope_uids),
         )
 
-    def test_cannot_export_canal_owned_by_another_office(
-        self,
-    ):
+    def test_reference_canals_include_selected_ancestors(self):
+        result = self._export(scope_uids=self.scope_uids[:1])
+        with zipfile.ZipFile(result.output_path, "r") as archive:
+            canals = json.loads(
+                archive.read("reference/canal_units.json")
+            )["items"]
+        names = {item["name"] for item in canals}
+        self.assertIn("通远支渠", names)
+        self.assertIn("总干渠", names)
+        self.assertEqual(result.selected_management_scope_count, 1)
+        self.assertEqual(result.reference_canal_count, 2)
+
+    def test_cannot_export_scope_of_another_office(self):
         with database.get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT id
-                FROM canal_units
-                WHERE master_key = ?
+                SELECT management_scope_uid
+                FROM canal_management_scopes
+                WHERE organization_unit_id != ? AND status = 'active'
+                ORDER BY id LIMIT 1
                 """,
-                ("CANAL-S004",),
+                (self.office_id,),
             ).fetchone()
+        self.assertIsNotNone(row)
+        with self.assertRaises(ValueError) as context:
+            self._export(scope_uids=(row["management_scope_uid"],))
+        self.assertIn("不属于当前管理单位", str(context.exception))
 
-        wrong_canal_id = int(
-            row["id"]
-        )
-
-        with self.assertRaises(
-            ValueError
-        ) as context:
-            self._export(
-                canal_ids=(
-                    wrong_canal_id,
-                )
-            )
-
-        self.assertIn(
-            "不属于当前管理单位",
-            str(context.exception),
-        )
-
-    def test_existing_target_is_not_overwritten(
-        self,
-    ):
+    def test_existing_target_is_not_overwritten(self):
         result = self._export()
-
-        before = (
-            result.output_path
-            .read_bytes()
-        )
-
-        with self.assertRaises(
-            FileExistsError
-        ):
+        before = result.output_path.read_bytes()
+        with self.assertRaises(FileExistsError):
             self._export()
+        self.assertEqual(before, result.output_path.read_bytes())
 
-        after = (
-            result.output_path
-            .read_bytes()
-        )
-
-        self.assertEqual(
-            before,
-            after,
-        )
-
-    def test_missing_extension_is_added(
-        self,
-    ):
-        result = self._export(
-            filename="任务包"
-        )
-
-        self.assertEqual(
-            result.output_path.name,
-            "任务包.ydtask",
-        )
+    def test_missing_extension_is_added(self):
+        result = self._export(filename="任务包")
+        self.assertEqual(result.output_path.name, "任务包.ydtask")
 
 
 if __name__ == "__main__":

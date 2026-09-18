@@ -22,15 +22,23 @@ from database import (
     get_canal_unit,
     get_canal_unit_usage,
     get_canal_units,
-    get_departments,
-    get_organization_unit,
-    get_water_offices,
     set_canal_unit_status,
     update_canal_unit,
 )
 
 from services.master_data_admin import (
     get_canal_sort_order_map,
+)
+from services.canal_management_scope import (
+    RANGE_MODE_SEGMENT_KNOWN,
+    RANGE_MODE_SEGMENT_UNKNOWN,
+    RANGE_MODE_WHOLE,
+)
+from services.canal_management_scope_admin import (
+    get_management_scopes_for_admin,
+)
+from pages.components.canal_management_scope_dialog import (
+    CanalManagementScopeDialog,
 )
 
 CANAL_LEVEL_NAMES = {
@@ -39,6 +47,69 @@ CANAL_LEVEL_NAMES = {
     "03": "支渠",
     "04": "分支渠",
 }
+
+_SCOPE_TYPE_LABEL = "分管段"
+
+
+def _format_scope_range(scope):
+    mode = str(scope.get("range_mode") or "")
+
+    if mode == RANGE_MODE_WHOLE:
+        return "全渠"
+
+    if mode == RANGE_MODE_SEGMENT_UNKNOWN:
+        return "边界未知"
+
+    start = (
+        scope.get("start_stake_text")
+        or scope.get("start_stake_value")
+        or "?"
+    )
+    end = (
+        scope.get("end_stake_text")
+        or scope.get("end_stake_value")
+        or "?"
+    )
+    return f"{start}～{end}"
+
+
+def _format_scope_management_text(scope):
+    office_name = str(
+        scope.get("organization_name") or ""
+    ).strip()
+
+    detail = _format_scope_range(scope)
+
+    if str(scope.get("status") or "") != "active":
+        detail += "，停用"
+
+    if office_name:
+        return f"{office_name}（{detail}）"
+
+    return f"未指定管理单位（{detail}）"
+
+
+def _format_scope_node_name(canal_name, scope):
+    mode = str(scope.get("range_mode") or "")
+    office_name = str(
+        scope.get("organization_name") or ""
+    ).strip()
+
+    if mode == RANGE_MODE_SEGMENT_KNOWN:
+        return (
+            f"{canal_name}"
+            f"（{_format_scope_range(scope)}）"
+        )
+
+    if mode == RANGE_MODE_WHOLE:
+        if office_name:
+            return f"{canal_name}（{office_name}全渠）"
+        return f"{canal_name}（全渠）"
+
+    if office_name:
+        return f"{canal_name}（{office_name}分管段）"
+
+    return f"{canal_name}（分管段）"
 
 
 class CanalPage(QWidget):
@@ -55,10 +126,11 @@ class CanalPage(QWidget):
 
         description = QLabel(
             "维护干渠、分干渠、支渠和分支渠基础资料。"
-            "正式主数据按甲方确认顺序显示；"
-            "甲方基础表中的说明统一使用渠道“备注”字段维护。"
+            "渠道实体与管理单位分开维护；"
+            "请通过“管理分管段”配置全渠或分段管理关系。"
+            "无法取得正式边界桩号时，可登记为分段管理（边界未知）。"
             "已被工程或调查数据引用的渠系仍可修改名称和备注，"
-            "但渠道层级、上级渠道和管理单位将受到保护。"
+            "但渠道层级和上级渠道将受到保护。"
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #607080; font-size: 15px;")
@@ -79,6 +151,11 @@ class CanalPage(QWidget):
         self.delete_button = QPushButton("删除选中")
         self.delete_button.clicked.connect(self.delete_selected)
 
+        self.management_scope_button = QPushButton("管理分管段")
+        self.management_scope_button.clicked.connect(
+            self.manage_selected_scope
+        )
+
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
@@ -91,7 +168,7 @@ class CanalPage(QWidget):
         button_layout.addWidget(self.status_button)
 
         button_layout.addWidget(self.delete_button)
-
+        button_layout.addWidget(self.management_scope_button)
         button_layout.addWidget(refresh_button)
 
         button_layout.addStretch()
@@ -103,22 +180,22 @@ class CanalPage(QWidget):
 
         self.tree.itemSelectionChanged.connect(self.update_action_buttons)
 
-        self.tree.itemDoubleClicked.connect(lambda item, column: self.edit_selected())
+        self.tree.itemDoubleClicked.connect(self._handle_item_double_clicked)
 
         self.tree.setHeaderLabels(
             [
                 "渠道名称",
-                "渠道层级",
-                "管理单位",
+                "类型",
+                "管理单位（范围）",
                 "备注",
                 "状态",
             ]
         )
 
-        self.tree.setColumnWidth(0, 280)
+        self.tree.setColumnWidth(0, 360)
         self.tree.setColumnWidth(1, 100)
-        self.tree.setColumnWidth(2, 220)
-        self.tree.setColumnWidth(3, 300)
+        self.tree.setColumnWidth(2, 280)
+        self.tree.setColumnWidth(3, 240)
 
         root_layout.addWidget(self.tree, 1)
 
@@ -126,17 +203,17 @@ class CanalPage(QWidget):
 
     def load_data(self):
         """
-        从 SQLite 读取渠系，并按照 parent_id 构建树形结构。
+        从 SQLite 读取渠系并构建树形结构。
+
+        CanalUnit 始终表示唯一物理渠道。
+        只有存在多个 scope，或存在 segment_known /
+        segment_unknown 时，才在渠道节点下显示“分管段”虚拟节点。
+        单一 whole scope 直接紧凑显示在渠道节点上。
         """
         self.tree.clear()
 
-        sort_order_map = (
-            get_canal_sort_order_map()
-        )
-
-        canals = list(
-            get_canal_units()
-        )
+        sort_order_map = get_canal_sort_order_map()
+        canals = list(get_canal_units())
 
         canals.sort(
             key=lambda canal: (
@@ -146,35 +223,54 @@ class CanalPage(QWidget):
                         0,
                     )
                 )
-                or (
-                    1000000
-                    + int(canal["id"])
-                ),
+                or (1000000 + int(canal["id"])),
                 int(canal["id"]),
             )
         )
 
+        scope_map = {}
+        for canal in canals:
+            canal_id = int(canal["id"])
+            scope_map[canal_id] = list(
+                get_management_scopes_for_admin(
+                    canal_id
+                )
+            )
+
         item_map: dict[int, QTreeWidgetItem] = {}
 
-        # 第一遍：先创建所有节点
+        # 第一遍：创建真实 CanalUnit 节点。
         for canal in canals:
             canal_id = int(canal["id"])
             canal_name = str(canal["name"] or "")
             canal_level = str(canal["canal_level"] or "")
-            organization_name = str(canal["organization_name"] or "")
-            status = str(canal["status"] or "")
+            canal_status = str(canal["status"] or "")
+            description = str(canal["description"] or "")
 
-            description = str(
-                canal["description"] or ""
+            scopes = scope_map[canal_id]
+
+            show_scope_children = (
+                len(scopes) > 1
+                or any(
+                    str(scope.get("range_mode") or "")
+                    != RANGE_MODE_WHOLE
+                    for scope in scopes
+                )
             )
+
+            if not scopes:
+                management_text = "未配置"
+            elif show_scope_children:
+                management_text = f"{len(scopes)} 个分管段"
+            else:
+                management_text = (
+                    _format_scope_management_text(
+                        scopes[0]
+                    )
+                )
 
             item = QTreeWidgetItem()
-
-            item.setText(
-                0,
-                canal_name,
-            )
-
+            item.setText(0, canal_name)
             item.setText(
                 1,
                 CANAL_LEVEL_NAMES.get(
@@ -182,34 +278,103 @@ class CanalPage(QWidget):
                     canal_level,
                 ),
             )
-
-            item.setText(
-                2,
-                organization_name,
-            )
-
-            item.setText(
-                3,
-                description,
-            )
-
+            item.setText(2, management_text)
+            item.setText(3, description)
             item.setText(
                 4,
-                "启用" if status == "active" else "停用",
+                (
+                    "启用"
+                    if canal_status == "active"
+                    else "停用"
+                ),
             )
+            item.setToolTip(2, management_text)
+            item.setToolTip(3, description)
 
             item.setData(
                 0,
                 Qt.ItemDataRole.UserRole,
                 {
+                    "node_type": "canal",
                     "id": canal_id,
-                    "status": status,
+                    "canal_id": canal_id,
+                    "status": canal_status,
                 },
             )
 
             item_map[canal_id] = item
 
-        # 第二遍：建立父子关系
+        # 第二遍：将需要展开显示的 scope 作为虚拟“分管段”节点。
+        # 分管段不是新的 CanalUnit。
+        for canal in canals:
+            canal_id = int(canal["id"])
+            canal_name = str(canal["name"] or "")
+            parent_item = item_map[canal_id]
+            scopes = scope_map[canal_id]
+
+            show_scope_children = (
+                len(scopes) > 1
+                or any(
+                    str(scope.get("range_mode") or "")
+                    != RANGE_MODE_WHOLE
+                    for scope in scopes
+                )
+            )
+
+            if not show_scope_children:
+                continue
+
+            for scope in scopes:
+                child = QTreeWidgetItem()
+                node_name = _format_scope_node_name(
+                    canal_name,
+                    scope,
+                )
+                management_text = (
+                    _format_scope_management_text(
+                        scope
+                    )
+                )
+                description = str(
+                    scope.get("description") or ""
+                )
+                scope_status = str(
+                    scope.get("status") or ""
+                )
+
+                child.setText(0, node_name)
+                child.setText(1, _SCOPE_TYPE_LABEL)
+                child.setText(2, management_text)
+                child.setText(3, description)
+                child.setText(
+                    4,
+                    (
+                        "启用"
+                        if scope_status == "active"
+                        else "停用"
+                    ),
+                )
+                child.setToolTip(2, management_text)
+                child.setToolTip(3, description)
+
+                child.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "node_type": "management_scope",
+                        "canal_id": canal_id,
+                        "management_scope_uid": (
+                            scope.get(
+                                "management_scope_uid"
+                            )
+                        ),
+                        "status": scope_status,
+                    },
+                )
+
+                parent_item.addChild(child)
+
+        # 第三遍：建立真实渠道上下级关系。
         for canal in canals:
             canal_id = int(canal["id"])
             item = item_map[canal_id]
@@ -219,46 +384,121 @@ class CanalPage(QWidget):
             if parent_id is not None:
                 parent_id = int(parent_id)
 
-            if parent_id is not None and parent_id in item_map:
+            if (
+                parent_id is not None
+                and parent_id in item_map
+            ):
                 item_map[parent_id].addChild(item)
             else:
                 self.tree.addTopLevelItem(item)
 
         self.tree.expandAll()
-
         self.update_action_buttons()
 
-    def _get_selected_canal_data(self):
+    def _get_selected_node_data(self):
         """
-        获取当前选中的渠系节点信息。
-        """
+        获取当前树节点的数据。
 
+        node_type:
+        - canal：真实 CanalUnit
+        - management_scope：分管段虚拟节点
+        """
         selected_items = self.tree.selectedItems()
 
         if not selected_items:
             return None
 
-        return selected_items[0].data(
+        data = selected_items[0].data(
             0,
             Qt.ItemDataRole.UserRole,
         )
 
+        if not isinstance(data, dict):
+            return None
+
+        return data
+
+    def _get_selected_canal_data(self):
+        """
+        统一获取当前节点所属 CanalUnit 标识。
+        分管段节点解析回其所属物理渠道，不创建假渠道身份。
+        """
+        data = self._get_selected_node_data()
+
+        if data is None:
+            return None
+
+        canal_id = data.get("canal_id")
+
+        if canal_id is None:
+            canal_id = data.get("id")
+
+        if canal_id is None:
+            return None
+
+        return {
+            "id": int(canal_id),
+            "status": data.get("status"),
+            "node_type": data.get(
+                "node_type",
+                "canal",
+            ),
+        }
+
+    def _handle_item_double_clicked(
+        self,
+        item,
+        column,
+    ):
+        del column
+
+        data = item.data(
+            0,
+            Qt.ItemDataRole.UserRole,
+        )
+
+        if (
+            isinstance(data, dict)
+            and data.get("node_type")
+            == "management_scope"
+        ):
+            self.manage_selected_scope()
+            return
+
+        self.edit_selected()
+
     def _require_selected_canal(self):
         """
-        获取当前选中的渠系记录。
-        """
+        获取当前节点所属的真实 CanalUnit。
 
-        data = self._get_selected_canal_data()
+        即使选中“分管段”虚拟节点，也只解析回所属 CanalUnit。
+        """
+        data = self._get_selected_node_data()
 
         if data is None:
             QMessageBox.information(
                 self,
                 "请选择渠系",
-                "请先在列表中选择一个渠系节点。",
+                "请先在列表中选择一个渠道或分管段节点。",
             )
             return None
 
-        canal = get_canal_unit(data["id"])
+        canal_id = data.get("canal_id")
+
+        if canal_id is None:
+            canal_id = data.get("id")
+
+        if canal_id is None:
+            QMessageBox.warning(
+                self,
+                "数据异常",
+                "当前节点缺少所属渠道标识，请刷新列表。",
+            )
+            return None
+
+        canal = get_canal_unit(
+            int(canal_id)
+        )
 
         if canal is None:
             QMessageBox.warning(
@@ -266,33 +506,58 @@ class CanalPage(QWidget):
                 "数据不存在",
                 "选中的渠系已经不存在，请刷新列表。",
             )
-
             self.load_data()
-
             return None
 
         return canal
 
     def update_action_buttons(self):
         """
-        根据当前选中渠系更新操作按钮。
+        根据当前树节点类型更新操作按钮。
+
+        渠道节点允许渠道编辑/启停/删除；
+        分管段节点只允许进入分管段维护。
         """
+        data = self._get_selected_node_data()
 
-        data = self._get_selected_canal_data()
-
-        has_selection = data is not None
-
-        self.edit_button.setEnabled(has_selection)
-
-        self.status_button.setEnabled(has_selection)
-
-        self.delete_button.setEnabled(has_selection)
-
-        if not has_selection:
+        if data is None:
+            self.edit_button.setEnabled(False)
+            self.status_button.setEnabled(False)
+            self.delete_button.setEnabled(False)
+            self.management_scope_button.setEnabled(False)
             self.status_button.setText("停用选中")
+            self.management_scope_button.setText(
+                "管理分管段"
+            )
             return
 
-        if data["status"] == "active":
+        is_scope = (
+            data.get("node_type")
+            == "management_scope"
+        )
+
+        self.management_scope_button.setEnabled(
+            True
+        )
+
+        if is_scope:
+            self.edit_button.setEnabled(False)
+            self.status_button.setEnabled(False)
+            self.delete_button.setEnabled(False)
+            self.status_button.setText("停用选中")
+            self.management_scope_button.setText(
+                "编辑分管段"
+            )
+            return
+
+        self.edit_button.setEnabled(True)
+        self.status_button.setEnabled(True)
+        self.delete_button.setEnabled(True)
+        self.management_scope_button.setText(
+            "管理分管段"
+        )
+
+        if data.get("status") == "active":
             self.status_button.setText("停用选中")
         else:
             self.status_button.setText("启用选中")
@@ -391,68 +656,6 @@ class CanalPage(QWidget):
                 parent_combo.setCurrentIndex(parent_combo.count() - 1)
 
         # =========================
-        # 管理单位
-        # 继续沿用当前页面已有规则：
-        # 新建/编辑时从水管所中选择。
-        # =========================
-
-        organization_combo = QComboBox()
-
-        organization_combo.addItem(
-            "暂不指定",
-            None,
-        )
-
-        current_organization_id = canal["organization_unit_id"]
-
-        current_org_found = False
-
-        departments = get_departments()
-
-        for department in departments:
-            offices = get_water_offices(department["id"])
-
-            for office in offices:
-                office_id = int(office["id"])
-
-                # 新选择只提供有效机构。
-                # 当前已有的停用机构仍需显示，
-                # 否则编辑名称时会误改管理单位。
-                if (
-                    department["status"] != "active" or office["status"] != "active"
-                ) and office_id != current_organization_id:
-                    continue
-
-                display_name = f"{department['name']} / " f"{office['name']}"
-
-                if department["status"] != "active" or office["status"] != "active":
-                    display_name += "（停用）"
-
-                organization_combo.addItem(
-                    display_name,
-                    office_id,
-                )
-
-                if office_id == current_organization_id:
-                    current_org_found = True
-
-                    organization_combo.setCurrentIndex(organization_combo.count() - 1)
-
-        # 兼容已有数据：
-        # 如果当前管理单位不在现有水管所列表中，
-        # 至少把原值显示出来，避免编辑名称时误清空。
-        if current_organization_id is not None and not current_org_found:
-            current_org = get_organization_unit(current_organization_id)
-
-            if current_org is not None:
-                organization_combo.addItem(
-                    (f"{current_org['name']}" "（当前管理单位）"),
-                    current_organization_id,
-                )
-
-                organization_combo.setCurrentIndex(organization_combo.count() - 1)
-
-        # =========================
         # 备注
         # =========================
 
@@ -478,11 +681,6 @@ class CanalPage(QWidget):
         )
 
         form.addRow(
-            "管理单位：",
-            organization_combo,
-        )
-
-        form.addRow(
             "备注：",
             description_edit,
         )
@@ -496,17 +694,13 @@ class CanalPage(QWidget):
         if usage["structure_locked"]:
             level_combo.setEnabled(False)
             parent_combo.setEnabled(False)
-            organization_combo.setEnabled(False)
-
             locked_tip = (
                 "该渠系已经产生工程或调查数据，"
-                "渠道层级、上级渠道和管理单位"
-                "不能再修改。"
+                "渠道层级和上级渠道不能再修改。"
             )
 
             level_combo.setToolTip(locked_tip)
             parent_combo.setToolTip(locked_tip)
-            organization_combo.setToolTip(locked_tip)
 
         info_label = QLabel()
 
@@ -514,7 +708,7 @@ class CanalPage(QWidget):
             info_label.setText(
                 "该渠系已有业务数据引用。"
                 "渠道名称和备注仍可修改；"
-                "渠道层级、上级渠道和管理单位已锁定。"
+                "渠道层级和上级渠道已锁定。"
             )
         else:
             info_label.setText("当前渠系尚未产生工程或调查数据，" "结构信息允许修改。")
@@ -545,7 +739,7 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=(level_combo.currentData()),
                 parent_id=(parent_combo.currentData()),
-                organization_unit_id=(organization_combo.currentData()),
+
                 description=(description_edit.toPlainText()),
             )
 
@@ -561,6 +755,30 @@ class CanalPage(QWidget):
             QMessageBox.warning(
                 self,
                 "保存失败",
+                str(error),
+            )
+
+    def manage_selected_scope(self):
+        """维护当前渠道的管理单位及全渠/分段范围。"""
+
+        canal = self._require_selected_canal()
+
+        if canal is None:
+            return
+
+        try:
+            dialog = CanalManagementScopeDialog(
+                canal["id"],
+                self,
+            )
+
+            dialog.exec()
+            self.load_data()
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "管理范围打开失败",
                 str(error),
             )
 
@@ -641,6 +859,12 @@ class CanalPage(QWidget):
 
             if usage["child_count"]:
                 reasons.append(f"下级渠道 " f"{usage['child_count']} 个")
+
+            if usage.get("management_scope_count"):
+                reasons.append(
+                    f"渠道管理范围 "
+                    f"{usage['management_scope_count']} 条"
+                )
 
             if usage["asset_count"]:
                 reasons.append(f"工程对象 " f"{usage['asset_count']} 个")
@@ -732,28 +956,6 @@ class CanalPage(QWidget):
                 canal["id"],
             )
 
-        organization_combo = QComboBox()
-        organization_combo.addItem(
-            "暂不指定",
-            None,
-        )
-
-        departments = get_departments()
-
-        for department in departments:
-            if department["status"] != "active":
-                continue
-
-            offices = get_water_offices(department["id"])
-
-            for office in offices:
-                if office["status"] != "active":
-                    continue
-                organization_combo.addItem(
-                    (f"{department['name']} / " f"{office['name']}"),
-                    office["id"],
-                )
-
         description_edit = QTextEdit()
         description_edit.setMaximumHeight(90)
 
@@ -770,11 +972,6 @@ class CanalPage(QWidget):
         form.addRow(
             "上级渠道：",
             parent_combo,
-        )
-
-        form.addRow(
-            "管理水管所：",
-            organization_combo,
         )
 
         form.addRow(
@@ -802,7 +999,7 @@ class CanalPage(QWidget):
                 name=name_edit.text(),
                 canal_level=level_combo.currentData(),
                 parent_id=parent_combo.currentData(),
-                organization_unit_id=(organization_combo.currentData()),
+
                 description=(description_edit.toPlainText()),
             )
 
@@ -811,7 +1008,7 @@ class CanalPage(QWidget):
             QMessageBox.information(
                 self,
                 "保存成功",
-                "渠道已保存。",
+                "渠道已保存。请通过“管理范围”配置管理单位及范围。",
             )
 
         except Exception as error:
