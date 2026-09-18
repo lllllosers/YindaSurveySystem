@@ -1,5 +1,4 @@
-﻿from sqlalchemy.orm import DeclarativeBase
+from app.db.base_class import Base
+from app.models.project import Project, SurveyBatch
 
-
-class Base(DeclarativeBase):
-    pass
+__all__ = ["Base", "Project", "SurveyBatch"]

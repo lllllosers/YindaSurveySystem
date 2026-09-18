@@ -1,0 +1,8 @@
+*.py text eol=lf
+*.vue text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.bat text eol=crlf

@@ -185,3 +185,53 @@ select {
   align-items: center;
   gap: 10px;
 }
+
+.module-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.module-header h1 {
+  margin: 0;
+  color: #1f2d3d;
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.module-header p {
+  margin: 8px 0 0;
+  color: #687482;
+  font-size: 14px;
+}
+
+.business-card {
+  border: 1px solid #e8ebef;
+  border-radius: 10px;
+}
+
+.batches-card {
+  margin-top: 18px;
+}
+
+.selected-hint {
+  margin-left: 14px;
+  color: #9098a3;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.mono {
+  font-family: Consolas, "SFMono-Regular", monospace;
+  color: #5b6572;
+  font-size: 12px;
+}
+
+.date-separator {
+  display: inline-block;
+  width: 6%;
+  color: #9098a3;
+  text-align: center;
+}
