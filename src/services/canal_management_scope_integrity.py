@@ -92,7 +92,7 @@ def _issue(
 
 def check_canal_management_scope_integrity():
     """
-    检查 Stage 14 的渠道管理关系模型。
+    检查当前渠道管理关系模型。
 
     CanalManagementScope 是渠道管理关系的唯一事实源。
     物理 CanalUnit 不参与管理归属一致性判断。

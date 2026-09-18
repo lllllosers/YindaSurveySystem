@@ -47,8 +47,8 @@ def get_confirmed_official_scope_specs():
     """
     返回当前已经有明确依据的正式渠道管理关系。
 
-    Stage 14.1 当前事实来源：
-    - 支渠/分支渠既有正式管理单位归属 -> whole；
+    当前正式事实来源：
+    - 支渠/分支渠已确认正式管理单位归属 -> whole；
     - 干渠/分干渠没有明确分段单位时不生成关系；
     - 后续确认的骨干渠分段关系通过
       OFFICIAL_SEGMENT_SCOPE_SPECS 显式补充。

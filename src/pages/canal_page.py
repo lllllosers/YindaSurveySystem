@@ -420,7 +420,7 @@ class CanalPage(QWidget):
 
     def _get_selected_canal_data(self):
         """
-        兼容获取当前节点所属 CanalUnit 标识。
+        统一获取当前节点所属 CanalUnit 标识。
         分管段节点解析回其所属物理渠道，不创建假渠道身份。
         """
         data = self._get_selected_node_data()

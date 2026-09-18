@@ -3,6 +3,42 @@
 引大灌区调查数据采集系统版本变更记录。
 
 ---
+## [Unreleased]
+
+### Added
+
+- 新增 `CanalManagementScope` 渠道管理范围模型，支持 `whole`、`segment_known`、`segment_unknown`
+- 调查任务包升级为 management scope 范围合同，并在本地工作区保存下发时冻结快照
+- `SurveyRecord` 增加 `source_management_scope_uid`，与 `source_task_uid` 共同记录任务来源
+
+### Changed
+
+- `CanalUnit` 收口为纯物理渠道实体，不再承担管理单位归属
+- 调查入口的渠道可用范围统一从 `CanalManagementScope` 获取
+- 正式渠系主数据与正式管理范围主数据分离维护
+- 任务工作区权限由 `survey_task_workspace_scopes` 作为唯一范围事实
+- 数据库初始化统一保证 SurveyRecord provenance 核心字段
+- 物理删除 `canal_units.organization_unit_id`，现有开发数据库启动时执行受保护的 schema migration
+
+### Removed
+
+- 删除旧 CanalUnit 管理归属运行路径及相关过渡测试
+- 删除 `get_canal_units_for_organization()` 旧查询入口
+- 删除 `survey_task_workspace_canals` 旧工作区合同及运行时清理路径
+
+### Fixed
+
+- 修复 SurveyRecord provenance 字段只由任务服务补列导致的数据库初始化双源问题
+- 修复组织删除页面继续读取已退役 `canal_count` 合同的问题
+- 清理历史数据库中引用已退役 `survey_task_workspace_canals` 的已知任务触发器，避免 SQLite schema 重建失败
+
+### Notes
+
+- 旧 `.ydtask` 字段仍由 reader 明确拒绝，不作为兼容路径继续运行
+- `.ydresult` 的旧来源字段兼容清理留到成果合同收口阶段处理
+- 当前管理关系唯一事实源为 `CanalManagementScope`
+
+---
 ## [0.7.0] - 2026-09-17
 
 ### Added

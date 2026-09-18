@@ -36,7 +36,8 @@ def initialize_application_database():
     official_master_data 的种子本身具有版本记录：
     - 新数据库首次启动会自动写入；
     - 已成功写入过的数据库不会重复覆盖；
-    - 甲方后续人工修改的名称、管理单位、备注等会保留。
+    - 甲方后续人工修改的组织/渠系名称、备注等会保留；
+    - 渠道管理关系由 CanalManagementScope 独立维护。
     """
 
     init_database()
