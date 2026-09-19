@@ -216,7 +216,7 @@ class GenericEngineeringSummaryExportTestCase(
                 worksheet.cell(
                     row=2,
                     column=(
-                        overall_grade_column + 3
+                        overall_grade_column + 7
                     ),
                 ).value,
                 "录入完成",

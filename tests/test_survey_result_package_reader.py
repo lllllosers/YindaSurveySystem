@@ -332,13 +332,71 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
         )
         self.assertEqual(
             loaded.result["result_schema_version"],
-            "2.0",
+            "2.1",
         )
         self.assertEqual(
             loaded.survey_records[0][
                 "source_management_scope_uid"
             ],
             "scope-001",
+        )
+
+    def test_result_schema_2_0_is_still_accepted(
+        self,
+    ):
+        def mutate(files):
+            result_document = json.loads(
+                files["result.json"].decode("utf-8")
+            )
+            result_document[
+                "result_schema_version"
+            ] = "2.0"
+
+            self._rewrite_json_and_manifest(
+                files,
+                "result.json",
+                result_document,
+            )
+
+            manifest = json.loads(
+                files["manifest.json"].decode("utf-8")
+            )
+            manifest[
+                "result_schema_version"
+            ] = "2.0"
+
+            files["manifest.json"] = (
+                json.dumps(
+                    manifest,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+                + "\n"
+            ).encode("utf-8")
+
+        package_path = self._rewrite_zip(
+            mutate=mutate
+        )
+
+        inspection = inspect_survey_result_package(
+            package_path
+        )
+
+        self.assertTrue(
+            inspection.valid,
+            inspection.format_text(),
+        )
+
+        loaded = load_survey_result_package(
+            package_path
+        )
+
+        self.assertEqual(
+            loaded.result[
+                "result_schema_version"
+            ],
+            "2.0",
         )
 
     def test_old_result_schema_is_rejected(

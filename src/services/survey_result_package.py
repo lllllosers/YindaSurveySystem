@@ -29,7 +29,11 @@ SURVEY_RESULT_EXTENSION = (
     ".ydresult"
 )
 
-RESULT_SCHEMA_VERSION = "2.0"
+RESULT_SCHEMA_VERSION = "2.1"
+SUPPORTED_RESULT_SCHEMA_VERSIONS = (
+    "2.0",
+    RESULT_SCHEMA_VERSION,
+)
 
 
 @dataclass(frozen=True)
@@ -306,6 +310,10 @@ def _load_export_context(
                     sr.survey_date,
                     sr.overall_grade,
                     sr.survey_comment,
+                    sr.surveyor_signatures,
+                    sr.water_office_manager_signature,
+                    sr.engineering_section_chief_signature,
+                    sr.department_head_signature,
                     sr.record_status,
                     sr.record_data_json,
                     sr.void_reason,
@@ -1178,6 +1186,18 @@ def _serialize_records(
                 ),
                 "survey_comment": (
                     row["survey_comment"]
+                ),
+                "surveyor_signatures": (
+                    row["surveyor_signatures"]
+                ),
+                "water_office_manager_signature": (
+                    row["water_office_manager_signature"]
+                ),
+                "engineering_section_chief_signature": (
+                    row["engineering_section_chief_signature"]
+                ),
+                "department_head_signature": (
+                    row["department_head_signature"]
                 ),
                 "record_status": (
                     row["record_status"]

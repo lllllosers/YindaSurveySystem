@@ -467,11 +467,11 @@ class SurveyResultPackageTestCase(
 
         self.assertEqual(
             manifest["result_schema_version"],
-            "2.0",
+            "2.1",
         )
         self.assertEqual(
             result_document["result_schema_version"],
-            "2.0",
+            "2.1",
         )
         self.assertEqual(
             records[0]["source_task_uid"],

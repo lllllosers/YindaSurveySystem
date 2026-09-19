@@ -6,6 +6,7 @@ import re
 
 from services.survey_result_package import (
     RESULT_SCHEMA_VERSION,
+    SUPPORTED_RESULT_SCHEMA_VERSIONS,
     SURVEY_RESULT_PACKAGE_KIND,
 )
 from services.yd_package_reader import (
@@ -411,30 +412,32 @@ def inspect_survey_result_package(package_path):
 
     if (
         result_schema_version
-        != RESULT_SCHEMA_VERSION
+        not in SUPPORTED_RESULT_SCHEMA_VERSIONS
     ):
         _append(
             issues,
             "RESULT_SCHEMA_VERSION_UNSUPPORTED",
             (
                 "result.json 的 result_schema_version "
-                f"必须为 {RESULT_SCHEMA_VERSION}；"
-                "旧测试成果包请使用当前版本重新生成。"
+                "必须为受支持版本："
+                + "/".join(SUPPORTED_RESULT_SCHEMA_VERSIONS)
+                + "。"
             ),
             path="result.json",
         )
 
     if (
         manifest_schema_version
-        != RESULT_SCHEMA_VERSION
+        not in SUPPORTED_RESULT_SCHEMA_VERSIONS
     ):
         _append(
             issues,
             "MANIFEST_RESULT_SCHEMA_VERSION_UNSUPPORTED",
             (
                 "manifest 的 result_schema_version "
-                f"必须为 {RESULT_SCHEMA_VERSION}；"
-                "旧测试成果包请使用当前版本重新生成。"
+                "必须为受支持版本："
+                + "/".join(SUPPORTED_RESULT_SCHEMA_VERSIONS)
+                + "。"
             ),
             path="manifest.json",
         )

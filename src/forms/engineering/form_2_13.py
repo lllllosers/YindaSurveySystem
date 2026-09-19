@@ -525,6 +525,10 @@ FORM_2_13 = EngineeringFormDefinition(
         conclusion_binding=OriginalFormConclusionBinding(
             survey_comment_cell='C14',
             overall_grade_cell='J14',
+            surveyor_signatures_cell='B15',
+            water_office_manager_signature_cell='D15',
+            engineering_section_chief_signature_cell='F15',
+            department_head_signature_cell='H15',
             survey_date_cell='J15',
         ),
         print_settings=OriginalFormPrintSettings(

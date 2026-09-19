@@ -662,6 +662,10 @@ def _load_local_record(
             sr.survey_date,
             sr.overall_grade,
             sr.survey_comment,
+            sr.surveyor_signatures,
+            sr.water_office_manager_signature,
+            sr.engineering_section_chief_signature,
+            sr.department_head_signature,
             sr.record_status,
             sr.record_data_json,
             sr.void_reason
@@ -835,6 +839,18 @@ def _record_signature(item):
                     "survey_comment"
                 )
             )
+        ),
+        "surveyor_signatures": (
+            _optional_text(item.get("surveyor_signatures"))
+        ),
+        "water_office_manager_signature": (
+            _optional_text(item.get("water_office_manager_signature"))
+        ),
+        "engineering_section_chief_signature": (
+            _optional_text(item.get("engineering_section_chief_signature"))
+        ),
+        "department_head_signature": (
+            _optional_text(item.get("department_head_signature"))
         ),
         "record_status": (
             _clean_text(

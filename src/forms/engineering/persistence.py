@@ -62,6 +62,14 @@ def create_engineering_record(
     survey_comment = payload.get(
         "survey_comment"
     )
+    surveyor_signatures = payload.get("surveyor_signatures")
+    water_office_manager_signature = payload.get(
+        "water_office_manager_signature"
+    )
+    engineering_section_chief_signature = payload.get(
+        "engineering_section_chief_signature"
+    )
+    department_head_signature = payload.get("department_head_signature")
 
     if (
         definition.position.kind
@@ -107,6 +115,10 @@ def create_engineering_record(
             survey_comment=(
                 survey_comment
             ),
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
             source_management_scope_uid=(
                 source_management_scope_uid
             ),
@@ -166,6 +178,10 @@ def create_engineering_record(
             survey_comment=(
                 survey_comment
             ),
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
             source_management_scope_uid=(
                 source_management_scope_uid
             ),
@@ -201,6 +217,10 @@ def update_engineering_record(
     survey_date = payload.get("survey_date")
     overall_grade = payload.get("overall_grade")
     survey_comment = payload.get("survey_comment")
+    surveyor_signatures = payload.get("surveyor_signatures")
+    water_office_manager_signature = payload.get("water_office_manager_signature")
+    engineering_section_chief_signature = payload.get("engineering_section_chief_signature")
+    department_head_signature = payload.get("department_head_signature")
 
     if definition.position.kind == "point":
         return update_point_engineering_survey(
@@ -214,6 +234,10 @@ def update_engineering_record(
             survey_date=survey_date,
             overall_grade=overall_grade,
             survey_comment=survey_comment,
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
         )
 
     if definition.position.kind == "range":
@@ -230,6 +254,10 @@ def update_engineering_record(
             survey_date=survey_date,
             overall_grade=overall_grade,
             survey_comment=survey_comment,
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
         )
 
     raise ValueError("暂不支持的工程位置类型：" f"{definition.position.kind}")

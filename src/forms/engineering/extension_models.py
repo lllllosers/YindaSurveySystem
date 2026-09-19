@@ -428,12 +428,20 @@ class OriginalFormConclusionBinding:
 
     survey_comment_cell: str
     overall_grade_cell: str
+    surveyor_signatures_cell: str
+    water_office_manager_signature_cell: str
+    engineering_section_chief_signature_cell: str
+    department_head_signature_cell: str
     survey_date_cell: str
 
     def __post_init__(self):
         cells = (
             self.survey_comment_cell,
             self.overall_grade_cell,
+            self.surveyor_signatures_cell,
+            self.water_office_manager_signature_cell,
+            self.engineering_section_chief_signature_cell,
+            self.department_head_signature_cell,
             self.survey_date_cell,
         )
 

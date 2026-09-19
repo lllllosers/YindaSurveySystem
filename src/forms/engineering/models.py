@@ -808,6 +808,18 @@ class EngineeringFormDefinition:
                     .overall_grade_cell,
                     original_definition
                     .conclusion_binding
+                    .surveyor_signatures_cell,
+                    original_definition
+                    .conclusion_binding
+                    .water_office_manager_signature_cell,
+                    original_definition
+                    .conclusion_binding
+                    .engineering_section_chief_signature_cell,
+                    original_definition
+                    .conclusion_binding
+                    .department_head_signature_cell,
+                    original_definition
+                    .conclusion_binding
                     .survey_date_cell,
                 }
             )

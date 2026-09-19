@@ -310,6 +310,34 @@ def export_engineering_original_form(
         )
 
         worksheet[
+            conclusion.surveyor_signatures_cell
+        ] = (
+            record.get("surveyor_signatures")
+            or ""
+        )
+
+        worksheet[
+            conclusion.water_office_manager_signature_cell
+        ] = (
+            record.get("water_office_manager_signature")
+            or ""
+        )
+
+        worksheet[
+            conclusion.engineering_section_chief_signature_cell
+        ] = (
+            record.get("engineering_section_chief_signature")
+            or ""
+        )
+
+        worksheet[
+            conclusion.department_head_signature_cell
+        ] = (
+            record.get("department_head_signature")
+            or ""
+        )
+
+        worksheet[
             conclusion.survey_date_cell
         ] = (
             record["survey_date"]

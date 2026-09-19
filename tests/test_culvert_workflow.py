@@ -739,7 +739,8 @@ class CulvertWorkflowTestCase(
 
         # =========================
         # 调查结论
-        # AG ～ AK
+        # AG ～ AO
+        # AG类别 / AH时间 / AI意见 / AJ～AM四项签字 / AN状态 / AO修改时间
         # =========================
 
         self.assertEqual(
@@ -758,7 +759,7 @@ class CulvertWorkflowTestCase(
         )
 
         self.assertEqual(
-            worksheet["AJ2"].value,
+            worksheet["AN2"].value,
             "草稿",
         )
 

@@ -1620,6 +1620,10 @@ class GenericEngineeringSurveyPage(QWidget):
             survey_date=(record.get("survey_date")),
             overall_grade=(record.get("overall_grade")),
             survey_comment=(record.get("survey_comment")),
+            surveyor_signatures=(record.get("surveyor_signatures")),
+            water_office_manager_signature=(record.get("water_office_manager_signature")),
+            engineering_section_chief_signature=(record.get("engineering_section_chief_signature")),
+            department_head_signature=(record.get("department_head_signature")),
         )
 
         # =====================================================
@@ -1740,6 +1744,10 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_date_edit.textEdited.connect(self._mark_dirty)
 
         self.survey_comment_edit.textChanged.connect(self._mark_dirty)
+        self.surveyor_signatures_edit.textEdited.connect(self._mark_dirty)
+        self.water_office_manager_signature_edit.textEdited.connect(self._mark_dirty)
+        self.engineering_section_chief_signature_edit.textEdited.connect(self._mark_dirty)
+        self.department_head_signature_edit.textEdited.connect(self._mark_dirty)
 
         for grade, button in self.overall_grade_buttons.items():
             button.clicked.connect(
@@ -2165,6 +2173,18 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.survey_comment_edit.setTabChangesFocus(True)
 
+        self.surveyor_signatures_edit = QLineEdit()
+        self.surveyor_signatures_edit.setProperty("uiWidthRole", "form")
+        self.surveyor_signatures_edit.setPlaceholderText(
+            "可填写多人姓名，用顿号、逗号或空格分隔"
+        )
+        self.water_office_manager_signature_edit = QLineEdit()
+        self.water_office_manager_signature_edit.setProperty("uiWidthRole", "form")
+        self.engineering_section_chief_signature_edit = QLineEdit()
+        self.engineering_section_chief_signature_edit.setProperty("uiWidthRole", "form")
+        self.department_head_signature_edit = QLineEdit()
+        self.department_head_signature_edit.setProperty("uiWidthRole", "form")
+
         layout.addRow(
             "判定方式：",
             self.auto_overall_grade_checkbox,
@@ -2184,6 +2204,11 @@ class GenericEngineeringSurveyPage(QWidget):
             "调查意见与建议：",
             self.survey_comment_edit,
         )
+
+        layout.addRow("调查人签字：", self.surveyor_signatures_edit)
+        layout.addRow("水管所负责人：", self.water_office_manager_signature_edit)
+        layout.addRow("工程科科长：", self.engineering_section_chief_signature_edit)
+        layout.addRow("基层处负责人：", self.department_head_signature_edit)
 
         self.form_layout.addWidget(group)
 
@@ -2557,6 +2582,10 @@ class GenericEngineeringSurveyPage(QWidget):
             ),
             "overall_grade": (self.get_overall_grade()),
             "survey_comment": (self.survey_comment_edit.toPlainText().strip() or None),
+            "surveyor_signatures": (self.surveyor_signatures_edit.text().strip() or None),
+            "water_office_manager_signature": (self.water_office_manager_signature_edit.text().strip() or None),
+            "engineering_section_chief_signature": (self.engineering_section_chief_signature_edit.text().strip() or None),
+            "department_head_signature": (self.department_head_signature_edit.text().strip() or None),
         }
 
     def load_conclusion_data(
@@ -2565,6 +2594,10 @@ class GenericEngineeringSurveyPage(QWidget):
         survey_date=None,
         overall_grade=None,
         survey_comment=None,
+        surveyor_signatures=None,
+        water_office_manager_signature=None,
+        engineering_section_chief_signature=None,
+        department_head_signature=None,
     ):
         self.survey_date_edit.setText(
             survey_date or ""
@@ -2594,6 +2627,18 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.survey_comment_edit.setPlainText(
             survey_comment or ""
+        )
+        self.surveyor_signatures_edit.setText(
+            surveyor_signatures or ""
+        )
+        self.water_office_manager_signature_edit.setText(
+            water_office_manager_signature or ""
+        )
+        self.engineering_section_chief_signature_edit.setText(
+            engineering_section_chief_signature or ""
+        )
+        self.department_head_signature_edit.setText(
+            department_head_signature or ""
         )
 
     # =========================================================
@@ -2678,6 +2723,10 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_date_edit.clear()
 
         self.survey_comment_edit.clear()
+        self.surveyor_signatures_edit.clear()
+        self.water_office_manager_signature_edit.clear()
+        self.engineering_section_chief_signature_edit.clear()
+        self.department_head_signature_edit.clear()
 
         self.business_code_edit.clear()
 
@@ -2774,6 +2823,10 @@ class GenericEngineeringSurveyPage(QWidget):
         survey_date=None,
         overall_grade=None,
         survey_comment=None,
+        surveyor_signatures=None,
+        water_office_manager_signature=None,
+        engineering_section_chief_signature=None,
+        department_head_signature=None,
     ):
         self.load_record_data(record_data)
 
@@ -2783,6 +2836,10 @@ class GenericEngineeringSurveyPage(QWidget):
             survey_date=survey_date,
             overall_grade=overall_grade,
             survey_comment=survey_comment,
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
         )
 
     # =========================================================

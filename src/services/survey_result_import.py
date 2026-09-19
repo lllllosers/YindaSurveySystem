@@ -923,6 +923,10 @@ def _insert_record(
             survey_date,
             overall_grade,
             survey_comment,
+            surveyor_signatures,
+            water_office_manager_signature,
+            engineering_section_chief_signature,
+            department_head_signature,
             record_status,
             record_data_json,
             void_reason,
@@ -931,7 +935,7 @@ def _insert_record(
         )
         VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         (
@@ -971,6 +975,18 @@ def _insert_record(
             ),
             item.get(
                 "survey_comment"
+            ),
+            item.get(
+                "surveyor_signatures"
+            ),
+            item.get(
+                "water_office_manager_signature"
+            ),
+            item.get(
+                "engineering_section_chief_signature"
+            ),
+            item.get(
+                "department_head_signature"
             ),
             item.get(
                 "record_status"

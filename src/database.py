@@ -1028,6 +1028,36 @@ def _ensure_survey_record_provenance_schema(
         """
     )
 
+_SURVEY_RECORD_SIGNATURE_COLUMNS = (
+    "surveyor_signatures",
+    "water_office_manager_signature",
+    "engineering_section_chief_signature",
+    "department_head_signature",
+)
+
+
+def _ensure_survey_record_signature_schema(
+    connection,
+):
+    # V1.0.1: 附表2公共签字字段。
+    # 调查人可能不止一人，surveyor_signatures 保存原样多人文本。
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(survey_records)"
+        ).fetchall()
+    }
+
+    for column_name in _SURVEY_RECORD_SIGNATURE_COLUMNS:
+        if column_name in columns:
+            continue
+
+        connection.execute(
+            "ALTER TABLE survey_records "
+            f"ADD COLUMN {column_name} TEXT"
+        )
+
+
 def init_database():
     """
     初始化数据库。
@@ -1331,6 +1361,11 @@ def init_database():
 
                 survey_comment TEXT,
 
+                surveyor_signatures TEXT,
+                water_office_manager_signature TEXT,
+                engineering_section_chief_signature TEXT,
+                department_head_signature TEXT,
+
                 record_status TEXT NOT NULL DEFAULT 'draft'
                     CHECK (
                         record_status IN (
@@ -1479,6 +1514,10 @@ def init_database():
         )
 
         _ensure_survey_record_provenance_schema(
+            connection
+        )
+
+        _ensure_survey_record_signature_schema(
             connection
         )
 
@@ -3672,6 +3711,10 @@ def create_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    surveyor_signatures=None,
+    water_office_manager_signature=None,
+    engineering_section_chief_signature=None,
+    department_head_signature=None,
     source_management_scope_uid=None,
 ):
     """
@@ -3775,12 +3818,16 @@ def create_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 record_status,
                 record_data_json
             )
             VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
@@ -3796,6 +3843,10 @@ def create_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 "draft",
                 record_json,
             ),
@@ -3943,6 +3994,10 @@ def create_range_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    surveyor_signatures=None,
+    water_office_manager_signature=None,
+    engineering_section_chief_signature=None,
+    department_head_signature=None,
     source_management_scope_uid=None,
 ):
     """
@@ -4070,12 +4125,16 @@ def create_range_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 record_status,
                 record_data_json
             )
             VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
@@ -4091,6 +4150,10 @@ def create_range_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 "draft",
                 record_json,
             ),
@@ -4528,6 +4591,10 @@ def get_point_engineering_record(
                 sr.survey_date,
                 sr.overall_grade,
                 sr.survey_comment,
+                sr.surveyor_signatures,
+                sr.water_office_manager_signature,
+                sr.engineering_section_chief_signature,
+                sr.department_head_signature,
 
                 ea.id AS engineering_asset_id,
                 ea.asset_name,
@@ -4630,6 +4697,18 @@ def get_point_engineering_record(
                 row["survey_comment"]
                 or ""
             ),
+            "surveyor_signatures": (
+                row["surveyor_signatures"] or ""
+            ),
+            "water_office_manager_signature": (
+                row["water_office_manager_signature"] or ""
+            ),
+            "engineering_section_chief_signature": (
+                row["engineering_section_chief_signature"] or ""
+            ),
+            "department_head_signature": (
+                row["department_head_signature"] or ""
+            ),
         }
 
 
@@ -4668,6 +4747,10 @@ def update_point_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    surveyor_signatures=None,
+    water_office_manager_signature=None,
+    engineering_section_chief_signature=None,
+    department_head_signature=None,
 ):
     """
     修改已有点状工程调查记录。
@@ -4798,6 +4881,10 @@ def update_point_engineering_survey(
                 survey_date = ?,
                 overall_grade = ?,
                 survey_comment = ?,
+                surveyor_signatures = ?,
+                water_office_manager_signature = ?,
+                engineering_section_chief_signature = ?,
+                department_head_signature = ?,
                 record_data_json = ?,
                 updated_at = datetime(
                     'now',
@@ -4809,6 +4896,10 @@ def update_point_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 record_json,
                 survey_record_id,
             ),
@@ -4852,6 +4943,10 @@ def get_range_engineering_record(
                 sr.survey_date,
                 sr.overall_grade,
                 sr.survey_comment,
+                sr.surveyor_signatures,
+                sr.water_office_manager_signature,
+                sr.engineering_section_chief_signature,
+                sr.department_head_signature,
 
                 ea.id
                     AS engineering_asset_id,
@@ -5002,6 +5097,18 @@ def get_range_engineering_record(
             row["survey_comment"]
             or ""
         ),
+        "surveyor_signatures": (
+            row["surveyor_signatures"] or ""
+        ),
+        "water_office_manager_signature": (
+            row["water_office_manager_signature"] or ""
+        ),
+        "engineering_section_chief_signature": (
+            row["engineering_section_chief_signature"] or ""
+        ),
+        "department_head_signature": (
+            row["department_head_signature"] or ""
+        ),
     }
 
 
@@ -5018,6 +5125,10 @@ def update_range_engineering_survey(
     survey_date=None,
     overall_grade=None,
     survey_comment=None,
+    surveyor_signatures=None,
+    water_office_manager_signature=None,
+    engineering_section_chief_signature=None,
+    department_head_signature=None,
     organization_unit_id=None,
     canal_unit_id=None,
     business_code=None,
@@ -5196,6 +5307,10 @@ def update_range_engineering_survey(
                 survey_date = ?,
                 overall_grade = ?,
                 survey_comment = ?,
+                surveyor_signatures = ?,
+                water_office_manager_signature = ?,
+                engineering_section_chief_signature = ?,
+                department_head_signature = ?,
                 record_data_json = ?,
 
                 updated_at = datetime(
@@ -5212,6 +5327,10 @@ def update_range_engineering_survey(
                 survey_date,
                 overall_grade,
                 survey_comment,
+                surveyor_signatures,
+                water_office_manager_signature,
+                engineering_section_chief_signature,
+                department_head_signature,
                 record_json,
                 survey_record_id,
             ),
