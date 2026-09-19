@@ -134,10 +134,11 @@ class SurveyResultPackagePanel(QWidget):
         root.setSpacing(10)
 
         description = QLabel(
-            "数据交换成果包（.ydresult）用于把当前范围中的已完成工程调查记录、"
+            "调查成果包（.ydresult）用于把当前范围中的录入完成工程调查记录、"
             "工程对象、分项评价和托管影像打包移交。"
             "任务来源由调查记录自动追踪，无需手动关联 .ydtask。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(True)
         description.setStyleSheet(
             "color: #607080;"
@@ -145,20 +146,25 @@ class SurveyResultPackagePanel(QWidget):
         root.addWidget(description)
 
         form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
 
         self.result_name_edit = (
             QLineEdit()
         )
+        self.result_name_edit.setProperty("uiWidthRole", "form")
         self.result_name_edit.setPlaceholderText(
             "例如：通远水管所2026调查成果"
         )
 
         self.creator_edit = QLineEdit()
+        self.creator_edit.setProperty("uiWidthRole", "form")
         self.creator_edit.setPlaceholderText(
             "可选"
         )
 
         self.notes_edit = QLineEdit()
+        self.notes_edit.setProperty("uiWidthRole", "form")
         self.notes_edit.setPlaceholderText(
             "可选：交接说明"
         )
@@ -181,6 +187,7 @@ class SurveyResultPackagePanel(QWidget):
         self.scope_summary_label = QLabel(
             "当前范围尚未检查。"
         )
+        self.scope_summary_label.setObjectName("workflowSummary")
         self.scope_summary_label.setWordWrap(
             True
         )
@@ -191,11 +198,13 @@ class SurveyResultPackagePanel(QWidget):
         action_row = QHBoxLayout()
 
         self.inspect_button = QPushButton(
-            "检查已有 .ydresult"
+            "检查已有成果包"
         )
+        self.inspect_button.setProperty("uiRole", "secondary")
         self.export_button = QPushButton(
-            "导出当前范围 .ydresult"
+            "生成调查成果包"
         )
+        self.export_button.setProperty("uiRole", "primary")
 
         self.inspect_button.clicked.connect(
             self.inspect_existing_package
@@ -221,6 +230,7 @@ class SurveyResultPackagePanel(QWidget):
         self.status_label = QLabel(
             "等待操作。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -395,7 +405,7 @@ class SurveyResultPackagePanel(QWidget):
             self.scope_summary_label.setText(
                 (
                     "当前筛选范围可打包 "
-                    f"{len(record_ids)} 条已完成工程调查记录。"
+                    f"{len(record_ids)} 条录入完成工程调查记录。"
                 )
             )
 
@@ -468,7 +478,7 @@ class SurveyResultPackagePanel(QWidget):
 
             if not record_ids:
                 raise ValueError(
-                    "当前成果范围没有已完成工程调查记录。"
+                    "当前成果范围没有录入完成的工程调查记录。"
                 )
 
             result_name = (
@@ -560,7 +570,7 @@ class SurveyResultPackagePanel(QWidget):
         )
         self.status_label.setText(
             (
-                "正在生成 .ydresult，"
+                "正在生成调查成果包，"
                 "并校验调查数据和托管影像..."
             )
         )

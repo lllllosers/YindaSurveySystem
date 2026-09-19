@@ -1,5 +1,9 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+)
 from PySide6.QtWidgets import (
+    QFrame,
     QAbstractItemView,
     QComboBox,
     QFileDialog,
@@ -39,6 +43,11 @@ from services.query_export import (
 
 
 class DataQueryPage(QWidget):
+    open_survey_record_requested = Signal(
+        str,
+        int,
+    )
+
     """
     工程调查统一数据查询。
 
@@ -84,8 +93,9 @@ class DataQueryPage(QWidget):
         )
 
         description.setWordWrap(True)
-
-        description.setStyleSheet("color: #607080;" "font-size: 14px;")
+        description.setObjectName(
+            "pageDescription"
+        )
 
         root_layout.addWidget(description)
 
@@ -93,16 +103,31 @@ class DataQueryPage(QWidget):
         # 第一行
         # =====================================================
 
+        filter_card = QFrame()
+        filter_card.setObjectName("filterCard")
+        filter_panel_layout = QVBoxLayout(filter_card)
+        filter_panel_layout.setContentsMargins(16, 14, 16, 14)
+        filter_panel_layout.setSpacing(10)
+
+        filter_title = QLabel("筛选条件")
+        filter_title.setObjectName("filterTitle")
+        filter_panel_layout.addWidget(filter_title)
+
         filter_row_1 = QHBoxLayout()
+        filter_row_1.setSpacing(10)
+        filter_row_1_section_label = QLabel("调查范围")
+        filter_row_1_section_label.setObjectName("filterRowLabel")
+        filter_row_1_section_label.setFixedWidth(72)
+        filter_row_1.addWidget(filter_row_1_section_label)
 
         self.batch_combo = QComboBox()
-        self.batch_combo.setMinimumWidth(210)
+        self.batch_combo.setProperty("uiWidthRole", "filter")
 
         self.form_combo = QComboBox()
-        self.form_combo.setMinimumWidth(280)
+        self.form_combo.setProperty("uiWidthRole", "filter")
 
         self.keyword_edit = QLineEdit()
-        self.keyword_edit.setMinimumWidth(220)
+        self.keyword_edit.setProperty("uiWidthRole", "filter")
 
         self.keyword_edit.setPlaceholderText("业务编号 / 工程名称 / 桩号")
 
@@ -115,22 +140,28 @@ class DataQueryPage(QWidget):
         filter_row_1.addWidget(QLabel("关键词："))
         filter_row_1.addWidget(self.keyword_edit)
 
-        root_layout.addLayout(filter_row_1)
+        filter_row_1.addStretch()
+        filter_panel_layout.addLayout(filter_row_1)
 
         # =====================================================
         # 第二行
         # =====================================================
 
         filter_row_2 = QHBoxLayout()
+        filter_row_2.setSpacing(10)
+        filter_row_2_section_label = QLabel("组织范围")
+        filter_row_2_section_label.setObjectName("filterRowLabel")
+        filter_row_2_section_label.setFixedWidth(72)
+        filter_row_2.addWidget(filter_row_2_section_label)
 
         self.department_combo = QComboBox()
-        self.department_combo.setMinimumWidth(130)
+        self.department_combo.setProperty("uiWidthRole", "filter")
 
         self.office_combo = QComboBox()
-        self.office_combo.setMinimumWidth(130)
+        self.office_combo.setProperty("uiWidthRole", "filter")
 
         self.canal_combo = QComboBox()
-        self.canal_combo.setMinimumWidth(150)
+        self.canal_combo.setProperty("uiWidthRole", "filter")
 
         filter_row_2.addWidget(QLabel("基层处："))
         filter_row_2.addWidget(self.department_combo)
@@ -141,15 +172,22 @@ class DataQueryPage(QWidget):
         filter_row_2.addWidget(QLabel("渠系："))
         filter_row_2.addWidget(self.canal_combo)
 
-        root_layout.addLayout(filter_row_2)
+        filter_row_2.addStretch()
+        filter_panel_layout.addLayout(filter_row_2)
 
         # =====================================================
         # 第三行
         # =====================================================
 
         filter_row_3 = QHBoxLayout()
+        filter_row_3.setSpacing(10)
+        filter_row_3_section_label = QLabel("记录状态")
+        filter_row_3_section_label.setObjectName("filterRowLabel")
+        filter_row_3_section_label.setFixedWidth(72)
+        filter_row_3.addWidget(filter_row_3_section_label)
 
         self.status_combo = QComboBox()
+        self.status_combo.setProperty("uiWidthRole", "filter")
 
         self.status_combo.addItem(
             "全部状态",
@@ -167,22 +205,36 @@ class DataQueryPage(QWidget):
         )
 
         self.grade_combo = QComboBox()
+        self.grade_combo.setProperty("uiWidthRole", "filter")
 
         query_button = QPushButton("查询")
-
+        query_button.setProperty("uiRole", "primary")
         query_button.clicked.connect(self.apply_filters)
 
         reset_button = QPushButton("重置")
-
+        reset_button.setProperty("uiRole", "secondary")
         reset_button.clicked.connect(self.reset_filters)
 
         refresh_button = QPushButton("刷新数据")
-
+        refresh_button.setProperty("uiRole", "secondary")
         refresh_button.clicked.connect(self.load_data)
 
         export_button = QPushButton("导出查询结果")
-
+        export_button.setProperty("uiRole", "secondary")
         export_button.clicked.connect(self.export_query_results)
+
+        self.open_record_button = QPushButton(
+            "打开完整调查表"
+        )
+        self.open_record_button.setProperty("uiRole", "secondary")
+        self.open_record_button.setProperty(
+            "role",
+            "primary",
+        )
+        self.open_record_button.setEnabled(False)
+        self.open_record_button.clicked.connect(
+            self.open_selected_record
+        )
 
         self.keyword_edit.returnPressed.connect(self.apply_filters)
 
@@ -200,23 +252,33 @@ class DataQueryPage(QWidget):
 
         filter_row_3.addWidget(self.grade_combo)
 
-        filter_row_3.addWidget(query_button)
 
-        filter_row_3.addWidget(reset_button)
 
-        filter_row_3.addWidget(refresh_button)
 
-        filter_row_3.addWidget(export_button)
 
         filter_row_3.addStretch()
 
-        root_layout.addLayout(filter_row_3)
+
+        filter_panel_layout.addLayout(filter_row_3)
+
+        filter_action_row = QHBoxLayout()
+        filter_action_row.setSpacing(8)
+        filter_action_row.addWidget(export_button)
+        filter_action_row.addWidget(self.open_record_button)
+        filter_action_row.addStretch()
+        filter_action_row.addWidget(refresh_button)
+        filter_action_row.addWidget(reset_button)
+        filter_action_row.addWidget(query_button)
+        filter_panel_layout.addLayout(filter_action_row)
+        root_layout.addWidget(filter_card)
 
         # =====================================================
         # 统计
         # =====================================================
 
         self.statistics_label = QLabel()
+        self.statistics_label.setObjectName("summaryLabel")
+        self.statistics_label.setMinimumHeight(42)
 
         self.statistics_label.setStyleSheet("color: #52606d;" "font-size: 14px;")
 
@@ -227,6 +289,13 @@ class DataQueryPage(QWidget):
         # =====================================================
 
         self.table = QTableWidget()
+
+        self.table.cellDoubleClicked.connect(
+            self.open_selected_record
+        )
+        self.table.itemSelectionChanged.connect(
+            self._update_open_record_button
+        )
 
         self.table.setColumnCount(12)
 
@@ -609,12 +678,68 @@ class DataQueryPage(QWidget):
                         Qt.ItemDataRole.UserRole,
                         record["survey_record_id"],
                     )
+                    item.setData(
+                        Qt.ItemDataRole.UserRole + 1,
+                        record["form_code"],
+                    )
 
                 self.table.setItem(
                     row_index,
                     column,
                     item,
                 )
+
+        self._update_open_record_button()
+
+    def _selected_record_identity(self):
+        row = self.table.currentRow()
+
+        if row < 0:
+            return None
+
+        item = self.table.item(row, 0)
+
+        if item is None:
+            return None
+
+        survey_record_id = item.data(
+            Qt.ItemDataRole.UserRole
+        )
+        form_code = item.data(
+            Qt.ItemDataRole.UserRole + 1
+        )
+
+        if (
+            survey_record_id is None
+            or not form_code
+        ):
+            return None
+
+        return (
+            str(form_code),
+            int(survey_record_id),
+        )
+
+    def _update_open_record_button(self):
+        self.open_record_button.setEnabled(
+            self._selected_record_identity()
+            is not None
+        )
+
+    def open_selected_record(self, *args):
+        identity = (
+            self._selected_record_identity()
+        )
+
+        if identity is None:
+            return
+
+        form_code, survey_record_id = identity
+
+        self.open_survey_record_requested.emit(
+            form_code,
+            survey_record_id,
+        )
 
     # =========================================================
     # 统计

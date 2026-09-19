@@ -1,6 +1,9 @@
 from functools import partial
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
     QLabel,
@@ -26,6 +29,8 @@ from pages.components.generic_engineering_survey_page import (
 
 
 class SurveyPage(QWidget):
+    return_to_module_requested = Signal(str)
+
     """
     调查录入模块。
 
@@ -53,6 +58,7 @@ class SurveyPage(QWidget):
         super().__init__()
 
         self.engineering_pages = {}
+        self._external_return_page_name = None
 
         self.init_ui()
 
@@ -108,16 +114,20 @@ class SurveyPage(QWidget):
         page = QWidget()
 
         layout = QVBoxLayout(page)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         layout.setSpacing(16)
 
         title = QLabel("调查录入")
+        title.setObjectName("surveyEntrySectionTitle")
 
         title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
         layout.addWidget(title)
 
         description = QLabel("请选择需要开展的调查业务类型。")
+        description.setObjectName("surveyEntryLead")
+        description.setWordWrap(True)
 
         description.setWordWrap(True)
 
@@ -130,6 +140,8 @@ class SurveyPage(QWidget):
         # =====================================================
 
         engineering_button = QPushButton("工程现状调查（附表2系列）")
+        engineering_button.setObjectName("surveyEntryPrimary")
+        engineering_button.setMinimumHeight(44)
 
         engineering_button.setMinimumHeight(52)
 
@@ -154,6 +166,8 @@ class SurveyPage(QWidget):
         comprehensive_button = QPushButton(
             "灌区综合与水土资源调查（附表1系列·预留）"
         )
+        comprehensive_button.setObjectName("surveyEntrySecondary")
+        comprehensive_button.setMinimumHeight(42)
 
         comprehensive_button.setMinimumHeight(52)
 
@@ -173,6 +187,18 @@ class SurveyPage(QWidget):
         layout.addWidget(comprehensive_description)
 
         layout.addStretch()
+        hint_title = QLabel("使用提示")
+        hint_title.setObjectName("surveyEntryHintTitle")
+        hint_text = QLabel(
+            "1. 工程现状调查用于附表2系列录入管理。\n"
+            "2. 已录记录可在工程台账或数据查询中继续打开。\n"
+            "3. 附表1系列当前仅保留入口，不启用软件录入。"
+        )
+        hint_text.setWordWrap(True)
+        hint_text.setObjectName("surveyEntryHintText")
+        layout.addSpacing(8)
+        layout.addWidget(hint_title)
+        layout.addWidget(hint_text)
 
         return page
 
@@ -425,7 +451,7 @@ class SurveyPage(QWidget):
 
             edit_page.back_requested.connect(
                 partial(
-                    self.open_engineering_list,
+                    self._handle_engineering_back,
                     form_code,
                 )
             )
@@ -505,6 +531,7 @@ class SurveyPage(QWidget):
         self,
         form_code,
         survey_record_id,
+        return_page_name=None,
     ):
         pages = self.engineering_pages[form_code]
 
@@ -513,14 +540,40 @@ class SurveyPage(QWidget):
         try:
             edit_page.load_record(survey_record_id)
 
+            self._external_return_page_name = (
+                return_page_name
+            )
+
             self.stack.setCurrentWidget(edit_page)
 
         except Exception as error:
+            self._external_return_page_name = None
+
             QMessageBox.warning(
                 self,
                 "打开失败",
                 str(error),
             )
+
+    def _handle_engineering_back(
+        self,
+        form_code,
+    ):
+        return_page_name = (
+            self._external_return_page_name
+        )
+
+        self._external_return_page_name = None
+
+        if return_page_name:
+            self.return_to_module_requested.emit(
+                str(return_page_name)
+            )
+            return
+
+        self.open_engineering_list(
+            form_code
+        )
 
     def engineering_saved(
         self,

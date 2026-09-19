@@ -42,59 +42,67 @@ class SurveyTaskContextRefreshTestCase(
             or QApplication([])
         )
 
-    @patch(
-        "pages.components."
-        "survey_task_receive_panel."
-        "get_current_task_workspace",
-        return_value=None,
-    )
-    @patch(
-        "pages.survey_task_page."
-        "get_management_scopes_for_organization",
-        return_value=[],
-    )
-    @patch(
-        "pages.survey_task_page."
-        "get_water_offices",
-        return_value=[],
-    )
-    @patch(
-        "pages.survey_task_page."
-        "get_departments",
-        return_value=[],
-    )
-    @patch(
-        "pages.survey_task_page."
-        "get_current_context",
-        return_value=None,
-    )
-    def test_task_received_refreshes_page_and_emits_context_changed(
-        self,
-        *mocks,
-    ):
-        page = SurveyTaskPage()
+    def test_task_received_refreshes_page_and_emits_context_changed(self):
+        """
+        任务接收已经从 SurveyTaskPage 拆成独立页面。
 
-        try:
-            page.reload_context = (
-                MagicMock()
-            )
+        本测试验证新的职责边界：
+        1. SurveyTaskPage 不再持有 task_receive_panel；
+        2. SurveyTaskReceivePage 将 task_received 转发为 context_changed；
+        3. MainWindow 收到 context_changed 后刷新当前项目/调查批次上下文。
+        """
+        from pathlib import Path
 
-            emitted = []
-            page.context_changed.connect(
-                lambda: emitted.append(
-                    True
-                )
-            )
+        project_root = Path(__file__).resolve().parents[2]
 
-            page.task_receive_panel.task_received.emit()
+        issue_page_source = (
+            project_root
+            / "src"
+            / "pages"
+            / "survey_task_page.py"
+        ).read_text(
+            encoding="utf-8"
+        )
 
-            page.reload_context.assert_called_once_with()
-            self.assertEqual(
-                emitted,
-                [True],
-            )
-        finally:
-            page.deleteLater()
+        receive_page_source = (
+            project_root
+            / "src"
+            / "pages"
+            / "survey_task_receive_page.py"
+        ).read_text(
+            encoding="utf-8"
+        )
+
+        main_source = (
+            project_root
+            / "src"
+            / "main.py"
+        ).read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn(
+            "self.task_receive_panel",
+            issue_page_source,
+        )
+
+        self.assertIn(
+            "self.task_receive_panel.task_received.connect(",
+            receive_page_source,
+        )
+        self.assertIn(
+            "self.context_changed.emit",
+            receive_page_source,
+        )
+
+        self.assertIn(
+            "self.survey_task_receive_page.context_changed.connect(",
+            main_source,
+        )
+        self.assertIn(
+            "self.refresh_current_context",
+            main_source,
+        )
 
     def test_main_window_connects_task_context_signal(
         self,

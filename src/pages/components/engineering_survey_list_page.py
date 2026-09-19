@@ -3,6 +3,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtWidgets import (
+    QFrame,
     QAbstractItemView,
     QComboBox,
     QFileDialog,
@@ -137,30 +138,36 @@ class EngineeringSurveyListPage(QWidget):
         button_layout = QHBoxLayout()
 
         back_button = QPushButton("返回")
+        back_button.setProperty("uiRole", "secondary")
         back_button.clicked.connect(self.back_requested.emit)
 
         new_button = QPushButton(self.NEW_BUTTON_TEXT)
+        new_button.setProperty("uiRole", "primary")
         new_button.clicked.connect(self.new_requested.emit)
 
         refresh_button = QPushButton("刷新")
+        refresh_button.setProperty("uiRole", "secondary")
         refresh_button.clicked.connect(self.load_data)
 
-        export_button = QPushButton("导出结果")
+        export_button = QPushButton("导出正式原表")
+        export_button.setProperty("uiRole", "secondary")
         export_button.clicked.connect(self.export_original_excel)
 
         media_button = QPushButton("影像资料")
+        media_button.setProperty("uiRole", "secondary")
         media_button.clicked.connect(self.manage_selected_media)
 
         delete_button = QPushButton("删除选中记录")
+        delete_button.setProperty("uiRole", "danger")
         delete_button.clicked.connect(self.delete_selected_record)
 
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
-        button_layout.addWidget(refresh_button)
-        button_layout.addWidget(export_button)
         button_layout.addWidget(media_button)
-        button_layout.addWidget(delete_button)
+        button_layout.addWidget(export_button)
         button_layout.addStretch()
+        button_layout.addWidget(refresh_button)
+        button_layout.addWidget(delete_button)
 
         layout.addLayout(button_layout)
 
@@ -169,6 +176,7 @@ class EngineeringSurveyListPage(QWidget):
         # =====================================================
 
         title = QLabel(self.PAGE_TITLE)
+        title.setObjectName("sectionPageTitle")
 
         title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
@@ -176,12 +184,13 @@ class EngineeringSurveyListPage(QWidget):
 
         description = QLabel(
             "双击记录可打开调查表。"
-            "本页用于当前批次录入管理和快速筛选；"
+            "本页用于当前调查批次录入管理和快速筛选；"
             "跨批次查询、分类统计和汇总导出"
             "请使用“数据查询”模块。"
         )
 
         description.setWordWrap(True)
+        description.setObjectName("pageDescription")
 
         description.setStyleSheet("color: #607080; " "font-size: 14px;")
 
@@ -191,22 +200,37 @@ class EngineeringSurveyListPage(QWidget):
         # 第一行筛选
         # =====================================================
 
+        filter_card = QFrame()
+        filter_card.setObjectName("filterCard")
+        filter_panel_layout = QVBoxLayout(filter_card)
+        filter_panel_layout.setContentsMargins(16, 14, 16, 14)
+        filter_panel_layout.setSpacing(10)
+
+        filter_title = QLabel("筛选条件")
+        filter_title.setObjectName("filterTitle")
+        filter_panel_layout.addWidget(filter_title)
+
         filter_layout_1 = QHBoxLayout()
+        filter_layout_1.setSpacing(10)
+        filter_layout_1_section_label = QLabel("范围检索")
+        filter_layout_1_section_label.setObjectName("filterRowLabel")
+        filter_layout_1_section_label.setFixedWidth(72)
+        filter_layout_1.addWidget(filter_layout_1_section_label)
 
         self.keyword_edit = QLineEdit()
+        self.keyword_edit.setProperty("uiWidthRole", "filter")
 
         self.keyword_edit.setPlaceholderText(self.KEYWORD_PLACEHOLDER)
 
-        self.keyword_edit.setMinimumWidth(220)
 
         self.department_filter = QComboBox()
-        self.department_filter.setMinimumWidth(130)
+        self.department_filter.setProperty("uiWidthRole", "filter")
 
         self.office_filter = QComboBox()
-        self.office_filter.setMinimumWidth(130)
+        self.office_filter.setProperty("uiWidthRole", "filter")
 
         self.canal_filter = QComboBox()
-        self.canal_filter.setMinimumWidth(150)
+        self.canal_filter.setProperty("uiWidthRole", "filter")
 
         filter_layout_1.addWidget(QLabel("关键词："))
         filter_layout_1.addWidget(self.keyword_edit)
@@ -220,15 +244,22 @@ class EngineeringSurveyListPage(QWidget):
         filter_layout_1.addWidget(QLabel("渠系："))
         filter_layout_1.addWidget(self.canal_filter)
 
-        layout.addLayout(filter_layout_1)
+        filter_layout_1.addStretch()
+        filter_panel_layout.addLayout(filter_layout_1)
 
         # =====================================================
         # 第二行筛选
         # =====================================================
 
         filter_layout_2 = QHBoxLayout()
+        filter_layout_2.setSpacing(10)
+        filter_layout_2_section_label = QLabel("状态评价")
+        filter_layout_2_section_label.setObjectName("filterRowLabel")
+        filter_layout_2_section_label.setFixedWidth(72)
+        filter_layout_2.addWidget(filter_layout_2_section_label)
 
         self.status_filter = QComboBox()
+        self.status_filter.setProperty("uiWidthRole", "filter")
 
         self.status_filter.addItem(
             "全部状态",
@@ -244,6 +275,7 @@ class EngineeringSurveyListPage(QWidget):
         )
 
         self.grade_filter = QComboBox()
+        self.grade_filter.setProperty("uiWidthRole", "filter")
 
         self.grade_filter.addItem(
             "全部类别",
@@ -257,9 +289,11 @@ class EngineeringSurveyListPage(QWidget):
             )
 
         search_button = QPushButton("查询")
+        search_button.setProperty("uiRole", "primary")
         search_button.clicked.connect(self.apply_filters)
 
         reset_button = QPushButton("重置")
+        reset_button.setProperty("uiRole", "secondary")
         reset_button.clicked.connect(self.reset_filters)
 
         self.keyword_edit.returnPressed.connect(self.apply_filters)
@@ -270,18 +304,26 @@ class EngineeringSurveyListPage(QWidget):
         filter_layout_2.addWidget(QLabel("工程状况类别："))
         filter_layout_2.addWidget(self.grade_filter)
 
-        filter_layout_2.addWidget(search_button)
-        filter_layout_2.addWidget(reset_button)
 
         filter_layout_2.addStretch()
 
-        layout.addLayout(filter_layout_2)
+        filter_panel_layout.addLayout(filter_layout_2)
+
+        filter_action_row = QHBoxLayout()
+        filter_action_row.setSpacing(8)
+        filter_action_row.addStretch()
+        filter_action_row.addWidget(reset_button)
+        filter_action_row.addWidget(search_button)
+        filter_panel_layout.addLayout(filter_action_row)
+        layout.addWidget(filter_card)
 
         # =====================================================
         # 统计
         # =====================================================
 
         self.count_label = QLabel()
+        self.count_label.setMinimumHeight(42)
+        self.count_label.setObjectName("summaryLabel")
 
         self.count_label.setStyleSheet("font-size: 14px; " "color: #52606d;")
 
@@ -292,6 +334,7 @@ class EngineeringSurveyListPage(QWidget):
         # =====================================================
 
         self.table = QTableWidget()
+        self.table.setObjectName("dataTable")
 
         self.table.setColumnCount(len(self.TABLE_HEADERS))
 
@@ -304,6 +347,7 @@ class EngineeringSurveyListPage(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setDefaultSectionSize(36)
 
         self.table.cellDoubleClicked.connect(self.open_record)
 
@@ -550,7 +594,7 @@ class EngineeringSurveyListPage(QWidget):
         )
 
         parts = [
-            f"当前批次共 " f"{len(self.all_records)} 条",
+            f"当前调查批次共 " f"{len(self.all_records)} 条",
             f"当前筛选 {len(records)} 条",
             f"草稿 {draft_count}",
             f"已完成 {completed_count}",

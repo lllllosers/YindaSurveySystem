@@ -103,7 +103,7 @@ class CanalManagementScopePageTestCase(
             )
             self.assertEqual(
                 page.tree.headerItem().text(2),
-                "管理单位（范围）",
+                "管理单位（分管范围）",
             )
             self.assertEqual(root.text(0), "总干渠")
             self.assertEqual(root.text(1), "干渠")

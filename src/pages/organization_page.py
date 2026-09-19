@@ -47,14 +47,12 @@ class OrganizationPage(QWidget):
 
         # 页面说明
         description = QLabel(
-            "维护基层处和末级管理单位基础资料。"
-            "正式主数据按甲方确认顺序显示；"
-            "水管所、提灌所、水库管理所等统一作为末级管理单位维护。"
-            "已被工程或调查数据引用的机构仍可修改名称和备注，"
-            "但业务代码等关键归属信息将受到保护。"
+            "维护基层处及所属管理单位。"
+            "双击条目可编辑；已参与调查业务的机构建议停用保留，"
+            "避免删除历史归属关系。"
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #607080; font-size: 15px;")
+        description.setObjectName("pageDescription")
 
         root_layout.addWidget(description)
 
@@ -79,21 +77,25 @@ class OrganizationPage(QWidget):
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
+        add_department_button.setProperty(
+            "role",
+            "primary",
+        )
+
+        self.delete_button.setProperty(
+            "role",
+            "danger",
+        )
+
         button_layout.addWidget(add_department_button)
-
         button_layout.addWidget(add_office_button)
-
-        button_layout.addSpacing(12)
-
         button_layout.addWidget(self.edit_button)
 
-        button_layout.addWidget(self.status_button)
-
-        button_layout.addWidget(self.delete_button)
-
-        button_layout.addWidget(refresh_button)
-
         button_layout.addStretch()
+
+        button_layout.addWidget(self.status_button)
+        button_layout.addWidget(self.delete_button)
+        button_layout.addWidget(refresh_button)
 
         root_layout.addLayout(button_layout)
 
@@ -322,17 +324,21 @@ class OrganizationPage(QWidget):
         form = QFormLayout()
 
         name_edit = QLineEdit(unit["name"] or "")
+        name_edit.setProperty("uiWidthRole", "form")
 
         code_edit = QLineEdit(unit["business_code"] or "")
+        code_edit.setProperty("uiWidthRole", "form")
 
         description_edit = QTextEdit()
         description_edit.setPlainText(unit["description"] or "")
         description_edit.setMaximumHeight(90)
 
         department_combo = None
+        department_combo.setProperty("uiWidthRole", "form")
 
         if unit_type == "water_office":
             department_combo = QComboBox()
+            department_combo.setProperty("uiWidthRole", "form")
 
             departments = get_departments()
 
@@ -632,7 +638,9 @@ class OrganizationPage(QWidget):
         form = QFormLayout()
 
         name_edit = QLineEdit()
+        name_edit.setProperty("uiWidthRole", "form")
         code_edit = QLineEdit()
+        code_edit.setProperty("uiWidthRole", "form")
         description_edit = QTextEdit()
 
         description_edit.setMaximumHeight(80)
@@ -703,6 +711,7 @@ class OrganizationPage(QWidget):
         form = QFormLayout()
 
         department_combo = QComboBox()
+        department_combo.setProperty("uiWidthRole", "form")
 
         for department in departments:
             department_combo.addItem(
@@ -711,7 +720,9 @@ class OrganizationPage(QWidget):
             )
 
         name_edit = QLineEdit()
+        name_edit.setProperty("uiWidthRole", "form")
         code_edit = QLineEdit()
+        code_edit.setProperty("uiWidthRole", "form")
         description_edit = QTextEdit()
 
         description_edit.setMaximumHeight(80)

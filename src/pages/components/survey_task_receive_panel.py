@@ -31,7 +31,7 @@ class SurveyTaskReceivePanel(QWidget):
     Stage 12.2 只负责：
     - 预览并确认任务；
     - 调用 Stage 12.1 接收核心；
-    - 展示当前本地任务工作区；
+    - 展示当前任务工作区；
     - 接收成功后通知父页面刷新。
 
     暂不在这里实现工程录入范围强制，
@@ -59,6 +59,7 @@ class SurveyTaskReceivePanel(QWidget):
         group = QGroupBox(
             "接收调查任务"
         )
+        group.setProperty("workflowCard", True)
         layout = QVBoxLayout(group)
 
         description = QLabel(
@@ -66,6 +67,7 @@ class SurveyTaskReceivePanel(QWidget):
             "系统会校验任务包，将项目、调查批次、管理单位和分管范围"
             "建立为本机当前任务工作区，并把原任务包复制到本地托管目录。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(True)
         description.setStyleSheet(
             "color: #607080;"
@@ -77,40 +79,41 @@ class SurveyTaskReceivePanel(QWidget):
         action_row = QHBoxLayout()
 
         self.receive_button = QPushButton(
-            "接收 .ydtask"
+            "选择并接收任务包"
         )
+        self.receive_button.setProperty("uiRole", "primary")
         self.receive_button.clicked.connect(
             self.receive_task_package
         )
 
         self.refresh_button = QPushButton(
-            "刷新当前任务"
+            "刷新任务状态"
         )
+        self.refresh_button.setProperty("uiRole", "secondary")
         self.refresh_button.clicked.connect(
             self.refresh_current_task
         )
 
-        action_row.addWidget(
-            self.receive_button
-        )
-        action_row.addWidget(
-            self.refresh_button
-        )
-        action_row.addStretch()
 
+        action_row.addWidget(self.refresh_button)
+        action_row.addStretch()
+        action_row.addWidget(self.receive_button)
         layout.addLayout(
             action_row
         )
 
         current_group = QGroupBox(
-            "当前本地任务工作区"
+            "当前任务工作区"
         )
+        current_group.setProperty("workflowCard", True)
         current_form = QFormLayout(
             current_group
         )
+        current_form.setHorizontalSpacing(18)
+        current_form.setVerticalSpacing(10)
 
         self.task_name_label = QLabel(
-            "未接收调查任务"
+            "尚未接收任务"
         )
         self.project_batch_label = QLabel(
             "-"
@@ -142,7 +145,7 @@ class SurveyTaskReceivePanel(QWidget):
             self.task_name_label,
         )
         current_form.addRow(
-            "项目 / 批次：",
+            "项目/批次：",
             self.project_batch_label,
         )
         current_form.addRow(
@@ -163,8 +166,9 @@ class SurveyTaskReceivePanel(QWidget):
         )
 
         self.status_label = QLabel(
-            "等待接收任务。"
+            "等待接收任务包。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -316,7 +320,7 @@ class SurveyTaskReceivePanel(QWidget):
 
         answer = QMessageBox.question(
             self,
-            "确认接收调查任务",
+            "确认接收任务",
             self._task_preview_text(
                 contents
             ),
@@ -349,11 +353,11 @@ class SurveyTaskReceivePanel(QWidget):
         except Exception as error:
             QMessageBox.warning(
                 self,
-                "接收调查任务失败",
+                "任务接收失败",
                 str(error),
             )
             self.status_label.setText(
-                "调查任务接收失败。"
+                "任务接收失败。"
             )
             return None
 
@@ -371,7 +375,7 @@ class SurveyTaskReceivePanel(QWidget):
             )
         else:
             action_text = (
-                "调查任务已接收并设为当前任务工作区。"
+                "任务已接收并设为当前任务工作区。"
             )
 
         context_lines = []
@@ -409,7 +413,7 @@ class SurveyTaskReceivePanel(QWidget):
 
         QMessageBox.information(
             self,
-            "调查任务已就绪",
+            "任务已就绪",
             message,
         )
 
@@ -449,7 +453,7 @@ class SurveyTaskReceivePanel(QWidget):
 
         if not workspace:
             self.task_name_label.setText(
-                "未接收调查任务"
+                "尚未接收任务"
             )
             self.project_batch_label.setText(
                 "-"

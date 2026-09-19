@@ -5292,7 +5292,50 @@ def get_engineering_assets(
                     AND sr.record_status != 'void'
                     ORDER BY sr.id DESC
                     LIMIT 1
-                ) AS overall_grade
+                ) AS overall_grade,
+
+                (
+                    SELECT sr.id
+                    FROM survey_records AS sr
+                    WHERE sr.engineering_asset_id = ea.id
+                    AND (
+                            ? IS NULL
+                            OR sr.survey_batch_id = ?
+                        )
+                    AND sr.record_status != 'void'
+                    ORDER BY sr.id DESC
+                    LIMIT 1
+                ) AS survey_record_id,
+
+                (
+                    SELECT fd.form_code
+                    FROM survey_records AS sr
+                    JOIN form_versions AS fv
+                        ON sr.form_version_id = fv.id
+                    JOIN form_definitions AS fd
+                        ON fv.form_definition_id = fd.id
+                    WHERE sr.engineering_asset_id = ea.id
+                    AND (
+                            ? IS NULL
+                            OR sr.survey_batch_id = ?
+                        )
+                    AND sr.record_status != 'void'
+                    ORDER BY sr.id DESC
+                    LIMIT 1
+                ) AS survey_form_code,
+
+                (
+                    SELECT sr.survey_date
+                    FROM survey_records AS sr
+                    WHERE sr.engineering_asset_id = ea.id
+                    AND (
+                            ? IS NULL
+                            OR sr.survey_batch_id = ?
+                        )
+                    AND sr.record_status != 'void'
+                    ORDER BY sr.id DESC
+                    LIMIT 1
+                ) AS survey_date
 
             FROM engineering_assets AS ea
 
@@ -5315,6 +5358,12 @@ def get_engineering_assets(
                 ea.id
             """,
             (
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
+                survey_batch_id,
                 survey_batch_id,
                 survey_batch_id,
                 survey_batch_id,
@@ -5408,6 +5457,7 @@ def get_engineering_asset_history(
                 sb.batch_name,
                 sb.batch_code,
 
+                fd.form_code,
                 fd.form_number,
                 fd.form_name,
 

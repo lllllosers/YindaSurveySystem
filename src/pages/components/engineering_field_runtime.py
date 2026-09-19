@@ -411,6 +411,8 @@ def create_engineering_field_runtime(
     else:
         raise ValueError("暂不支持的工程调查字段类型：" f"{input_type}")
 
+    widget.setProperty("uiWidthRole", "form")
+
     return EngineeringFieldRuntime(
         definition=definition,
         widget=widget,

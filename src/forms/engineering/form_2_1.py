@@ -116,9 +116,12 @@ FORM_2_1 = EngineeringFormDefinition(
         FieldDefinition(
             key="channel_grade",
             label="渠道等级",
-            input_type="text",
+            input_type="structure_grade",
             required=True,
-            placeholder="按原始资料填写",
+            placeholder=(
+                "只需输入数字，例如：3；"
+                "离开输入框后自动显示为3级"
+            ),
         ),
         FieldDefinition(
             key="cross_section_form",

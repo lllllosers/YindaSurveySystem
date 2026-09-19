@@ -107,11 +107,12 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         description = QLabel(
-            "用于接收下级电脑或下级单位提交的 .ydresult。"
+            "用于接收下级调查端或管理单位提交的 .ydresult。"
             "选择成果包后，系统会先进行只读预检；"
             "只有不存在阻断性冲突且确有新增数据时，"
             "才允许正式导入。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(
             True
         )
@@ -125,8 +126,9 @@ class SurveyResultReceivePanel(QWidget):
         action_row = QHBoxLayout()
 
         self.preflight_button = QPushButton(
-            "选择 .ydresult 并预检"
+            "选择成果包并预检"
         )
+        self.preflight_button.setProperty("uiRole", "secondary")
         self.preflight_button.clicked.connect(
             self.choose_and_preflight
         )
@@ -134,6 +136,7 @@ class SurveyResultReceivePanel(QWidget):
         self.import_button = QPushButton(
             "正式导入成果"
         )
+        self.import_button.setProperty("uiRole", "primary")
         self.import_button.setEnabled(
             False
         )
@@ -141,14 +144,10 @@ class SurveyResultReceivePanel(QWidget):
             self.import_current_package
         )
 
-        action_row.addWidget(
-            self.preflight_button
-        )
-        action_row.addWidget(
-            self.import_button
-        )
-        action_row.addStretch()
 
+        action_row.addWidget(self.preflight_button)
+        action_row.addStretch()
+        action_row.addWidget(self.import_button)
         root.addLayout(
             action_row
         )
@@ -156,6 +155,7 @@ class SurveyResultReceivePanel(QWidget):
         self.package_label = QLabel(
             "尚未选择成果包"
         )
+        self.package_label.setObjectName("workflowSummary")
         self.package_label.setWordWrap(
             True
         )
@@ -167,6 +167,8 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         summary_form = QFormLayout()
+        summary_form.setHorizontalSpacing(18)
+        summary_form.setVerticalSpacing(10)
 
         self.overall_label = QLabel(
             "-"
@@ -221,6 +223,7 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         self.details_edit = QPlainTextEdit()
+        self.details_edit.setObjectName("workflowDetails")
         self.details_edit.setReadOnly(
             True
         )
@@ -238,6 +241,7 @@ class SurveyResultReceivePanel(QWidget):
         self.status_label = QLabel(
             "等待预检。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(
             True
         )
@@ -703,7 +707,7 @@ class SurveyResultReceivePanel(QWidget):
         self.status_label.setText(
             (
                 "成果已安全写入当前数据库。"
-                "返回工程台账、数据查询或成果导出时"
+                "返回工程台账、数据查询或成果提交时"
                 "即可读取合并后的数据。"
             )
         )

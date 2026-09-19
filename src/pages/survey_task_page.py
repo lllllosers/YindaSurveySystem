@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pages.components.survey_task_receive_panel import SurveyTaskReceivePanel
-
 from pathlib import Path
 import re
 
@@ -140,10 +138,6 @@ class SurveyTaskPage(QWidget):
             self.scroll_content
         )
 
-        self.task_receive_panel = SurveyTaskReceivePanel()
-        root.addWidget(
-            self.task_receive_panel
-        )
         root.setSizeConstraint(
             QLayout.SizeConstraint.SetMinimumSize
         )
@@ -156,10 +150,11 @@ class SurveyTaskPage(QWidget):
         root.setSpacing(16)
 
         intro = QLabel(
-            "调查任务包（.ydtask）用于明确某个管理单位本次需要调查的分管范围，"
-            "并随包携带必要的组织、渠系和附表参考信息。"
-            "任务包本身不包含调查结果，不会预生成工程台账或调查记录。"
+            "任务分发用于为指定管理单位生成调查任务包（.ydtask）。"
+            "请选择管理单位和本次调查分管范围后生成任务包，"
+            "交由执行调查的电脑或管理单位接收。"
         )
+        intro.setObjectName("workflowLead")
         intro.setWordWrap(True)
         intro.setStyleSheet(
             "color: #607080;"
@@ -169,9 +164,12 @@ class SurveyTaskPage(QWidget):
         context_group = QGroupBox(
             "一、当前项目与调查批次"
         )
+        context_group.setProperty("workflowCard", True)
         context_layout = QFormLayout(
             context_group
         )
+        context_layout.setHorizontalSpacing(18)
+        context_layout.setVerticalSpacing(10)
 
         self.project_label = QLabel(
             "未加载"
@@ -185,7 +183,7 @@ class SurveyTaskPage(QWidget):
             self.project_label,
         )
         context_layout.addRow(
-            "当前批次：",
+            "当前调查批次：",
             self.batch_label,
         )
 
@@ -194,20 +192,27 @@ class SurveyTaskPage(QWidget):
         assignment_group = QGroupBox(
             "二、任务分配"
         )
+        assignment_group.setProperty("workflowCard", True)
         assignment_layout = QFormLayout(
             assignment_group
         )
+        assignment_layout.setHorizontalSpacing(18)
+        assignment_layout.setVerticalSpacing(10)
 
         self.department_combo = (
             QComboBox()
         )
+        self.department_combo.setProperty("uiWidthRole", "form")
         self.office_combo = QComboBox()
+        self.office_combo.setProperty("uiWidthRole", "form")
         self.task_name_edit = (
             QLineEdit()
         )
+        self.task_name_edit.setProperty("uiWidthRole", "form")
         self.notes_edit = (
             QLineEdit()
         )
+        self.notes_edit.setProperty("uiWidthRole", "form")
         self.notes_edit.setPlaceholderText(
             "可选：简要填写任务说明或交接备注"
         )
@@ -236,6 +241,7 @@ class SurveyTaskPage(QWidget):
         scope_group = QGroupBox(
             "三、调查分管范围"
         )
+        scope_group.setProperty("workflowCard", True)
         scope_layout = QVBoxLayout(
             scope_group
         )
@@ -265,6 +271,7 @@ class SurveyTaskPage(QWidget):
         self.scope_count_label = QLabel(
             "已选择 0 条"
         )
+        self.scope_count_label.setObjectName("workflowSummary")
 
         scope_button_layout.addWidget(
             self.select_all_button
@@ -344,11 +351,13 @@ class SurveyTaskPage(QWidget):
         action_layout = QHBoxLayout()
 
         self.inspect_button = QPushButton(
-            "检查已有任务包"
+            "检查任务包"
         )
+        self.inspect_button.setProperty("uiRole", "secondary")
         self.export_button = QPushButton(
-            "导出 .ydtask"
+            "生成任务包"
         )
+        self.export_button.setProperty("uiRole", "primary")
         self.export_button.setMinimumWidth(
             150
         )
@@ -391,19 +400,10 @@ class SurveyTaskPage(QWidget):
         self.inspect_button.clicked.connect(
             self.inspect_existing_package
         )
-        self.task_receive_panel.task_received.connect(
-            self._task_received
-        )
 
     # =========================================================
     # 当前上下文
     # =========================================================
-
-    def _task_received(self):
-        # Stage 12.2c：接收任务后，项目/批次已经在数据库中设为当前。
-        # 页面自身和 MainWindow 都必须立即刷新，不能继续使用旧缓存。
-        self.reload_context()
-        self.context_changed.emit()
 
     def reload_context(self):
         self.current_context = (
@@ -806,7 +806,7 @@ class SurveyTaskPage(QWidget):
             selected_path, _ = (
                 QFileDialog.getSaveFileName(
                     self,
-                    "导出调查任务包",
+                    "保存调查任务包",
                     default_name,
                     (
                         "调查任务包 (*.ydtask);;"

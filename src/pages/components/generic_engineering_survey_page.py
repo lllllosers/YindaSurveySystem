@@ -196,6 +196,7 @@ class GenericEngineeringSurveyPage(QWidget):
         # =====================================================
 
         self.title_label = QLabel(self.definition.display_name)
+        self.title_label.setObjectName("sectionPageTitle")
 
         self.title_label.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
@@ -213,6 +214,7 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         self.description_label.setWordWrap(True)
+        self.description_label.setObjectName("pageDescription")
 
         self.description_label.setStyleSheet("color: #607080; " "font-size: 15px;")
 
@@ -308,13 +310,17 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         self.department_combo = QComboBox()
+        self.department_combo.setProperty("uiWidthRole", "form")
         self.office_combo = QComboBox()
+        self.office_combo.setProperty("uiWidthRole", "form")
         self.canal_combo = QComboBox()
+        self.canal_combo.setProperty("uiWidthRole", "form")
 
         self.task_scope_label = QLabel(
             "任务分管范围："
         )
         self.task_scope_combo = QComboBox()
+        self.task_scope_combo.setProperty("uiWidthRole", "form")
         self.task_scope_combo.setPlaceholderText(
             "请选择任务分管范围"
         )
@@ -324,6 +330,7 @@ class GenericEngineeringSurveyPage(QWidget):
         self.business_code_edit = (
             QLineEdit()
         )
+        self.business_code_edit.setProperty("uiWidthRole", "form")
         self.business_code_edit.setReadOnly(
             True
         )
@@ -2144,6 +2151,7 @@ class GenericEngineeringSurveyPage(QWidget):
         # -------------------------
 
         self.survey_date_edit = create_date_edit()
+        self.survey_date_edit.setProperty("uiWidthRole", "form")
 
         # -------------------------
         # 调查意见
@@ -2190,28 +2198,34 @@ class GenericEngineeringSurveyPage(QWidget):
         root_layout,
     ):
         footer_layout = QHBoxLayout()
+        footer_layout.setSpacing(10)
 
         self.back_button = QPushButton("返回")
+        self.back_button.setProperty("uiRole", "secondary")
 
         self.back_button.clicked.connect(self.request_back)
 
         self.runtime_status_label = QLabel(
-            "当前已接入草稿保存与重新打开；" "完成调查将在下一阶段接入。"
+            "支持草稿保存、继续编辑、" "完成调查及已完成记录修改。"
         )
 
         self.runtime_status_label.setStyleSheet("color: #607080;")
+        self.runtime_status_label.setObjectName("statusHint")
 
         self.shortcut_hint_label = QLabel(
             "快捷键：Ctrl+S 保存　|　" "Ctrl+Enter 完成调查"
         )
 
         self.shortcut_hint_label.setStyleSheet("color: #607080;")
+        self.shortcut_hint_label.setObjectName("shortcutHint")
 
         self.save_button = QPushButton("保存草稿")
+        self.save_button.setProperty("uiRole", "secondary")
 
         self.save_button.setMinimumWidth(120)
 
         self.complete_button = QPushButton("完成调查")
+        self.complete_button.setProperty("uiRole", "primary")
 
         self.complete_button.setMinimumWidth(120)
 

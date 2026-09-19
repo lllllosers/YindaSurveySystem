@@ -194,17 +194,17 @@ class SurveyResultReceivePanelTestCase(
             panel.deleteLater()
 
 
-class ResultExportPageReceivePanelIntegrationTestCase(
+class ResultReceivePageIntegrationTestCase(
     unittest.TestCase,
 ):
-    def test_result_export_page_contains_receive_panel(
+    def test_result_receive_page_contains_receive_panel(
         self,
     ):
         page_path = (
             PROJECT_ROOT
             / "src"
             / "pages"
-            / "result_export_page.py"
+            / "result_receive_page.py"
         )
 
         text = page_path.read_text(
@@ -216,7 +216,7 @@ class ResultExportPageReceivePanelIntegrationTestCase(
             text,
         )
         self.assertIn(
-            "接收下级成果包",
+            "SurveyResultReceivePanel",
             text,
         )
 
