@@ -13,9 +13,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 
-EXPECTED_BRANCH = "release/v1-production-closeout"
+EXPECTED_BRANCH = "release/v1.0.1"
 EXPECTED_APP_NAME = "引大入秦工程现状调查采集系统"
-EXPECTED_VERSION = "1.0.0"
+EXPECTED_VERSION = "1.0.1"
 EXPECTED_STAGE = "正式版"
 
 VENV_PYTHON = (
@@ -185,7 +185,7 @@ def check_required_paths():
         ROOT / "run_tests.py",
         ROOT / "src" / "version.py",
         ROOT / "README.md",
-        ROOT / "docs" / "09_V1.0.0发布说明.md",
+        ROOT / "docs" / "10_V1.0.1发布说明.md",
         ROOT / "docs" / "08_V1生产验收矩阵.md",
     )
 
@@ -245,7 +245,7 @@ def check_release_identity(
 
     if errors:
         raise RuntimeError(
-            "Release identity is not V1.0.0 final:\n"
+            "Release identity is not V1.0.1 final:\n"
             + "\n".join(
                 f"- {item}"
                 for item in errors
@@ -383,16 +383,16 @@ def copy_release_docs(
         (
             ROOT
             / "docs"
-            / "09_V1.0.0发布说明.md",
+            / "10_V1.0.1发布说明.md",
             release_dir
-            / "V1.0.0_发布说明.md",
+            / "V1.0.1_发布说明.md",
         ),
         (
             ROOT
             / "docs"
             / "08_V1生产验收矩阵.md",
             release_dir
-            / "V1.0.0_生产验收记录.md",
+            / "V1.0_生产验收记录.md",
         ),
     )
 
@@ -472,7 +472,7 @@ def write_release_info(
         f"PyInstaller={pyinstaller_version}\n"
         f"ExecutableSHA256={exe_sha256}\n"
         "\n"
-        "该目录为 V1.0.0 正式发布包。\n"
+        "该目录为 V1.0.1 正式发布包。\n"
         "正式运行数据由程序在本目录下 local_data 中创建；"
         "发布包本身不预置开发数据库。\n"
     )
@@ -540,9 +540,9 @@ def verify_release_tree(
         release_dir
         / "README.md",
         release_dir
-        / "V1.0.0_发布说明.md",
+        / "V1.0.1_发布说明.md",
         release_dir
-        / "V1.0.0_生产验收记录.md",
+        / "V1.0_生产验收记录.md",
     )
 
     missing = [
@@ -591,8 +591,8 @@ def verify_zip(
         "YindaSurveySystem.exe",
         "RELEASE_INFO.txt",
         "README.md",
-        "V1.0.0_发布说明.md",
-        "V1.0.0_生产验收记录.md",
+        "V1.0.1_发布说明.md",
+        "V1.0_生产验收记录.md",
     }
 
     missing = [
@@ -722,7 +722,7 @@ def build_release():
         ]
     )
     print(
-        "V1.0.0 Production Release Builder"
+        "V1.0.1 Production Release Builder"
     )
     print(
         f"Version: V{version_info['version']}"
@@ -911,7 +911,7 @@ def build_release():
         "=" * 72
     )
     print(
-        "[SUCCESS] V1.0.0 production release completed."
+        "[SUCCESS] V1.0.1 production release completed."
     )
     print(
         f"Directory: {release_dir}"
