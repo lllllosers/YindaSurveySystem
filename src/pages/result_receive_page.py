@@ -128,7 +128,7 @@ class ResultReceivePage(QWidget):
 
         history_hint = QLabel(
             "仅显示当前项目和当前调查批次已正式导入的成果包。"
-            "可按任务下发时的管理单位分类查看；默认按接收时间从新到旧排列。"
+            "可按任务分发时的管理单位分类查看；默认按接收时间从新到旧排列。"
         )
         history_hint.setObjectName(
             "workflowLead"

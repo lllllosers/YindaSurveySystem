@@ -1,10 +1,12 @@
 """
-引大灌区调查数据采集系统
+引大入秦工程现状调查采集系统
 数据库备份恢复维护工具。
 
 重要：
 执行恢复前必须完全关闭主程序。
 """
+
+from version import APP_NAME
 
 from services.database_backup import (
     get_database_backups,
@@ -22,7 +24,7 @@ def main():
 
     print()
     print("=" * 60)
-    print("引大灌区调查数据采集系统" " - 数据库恢复工具")
+    print(f"{APP_NAME} - 数据库恢复工具")
     print("=" * 60)
     print()
 

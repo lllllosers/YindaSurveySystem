@@ -158,7 +158,7 @@ def list_survey_result_import_history(
     分类：
     - 通过成果包 source_task_uids
       回溯上级端 survey_task_issues 冻结历史；
-    - 可按任务下发时的管理单位稳定 UID 过滤。
+    - 可按任务分发时的管理单位稳定 UID 过滤。
     '''
 
     try:

@@ -540,7 +540,7 @@ class MainWindow(QMainWindow):
 
         else:
             self.content_label = QLabel(
-                f"{page_name}\n\n" "该模块将在后续开发步骤中逐步实现。"
+                f"{page_name}\n\n" "当前页面不可用，请从左侧导航重新选择功能。"
             )
 
             self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

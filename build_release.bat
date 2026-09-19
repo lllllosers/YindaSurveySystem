@@ -12,17 +12,17 @@ if not exist "%PYTHON%" (
     exit /b 1
 )
 
-"%PYTHON%" "%~dp0build_test_release.py"
+"%PYTHON%" "%~dp0build_release.py"
 
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
 
 if not "%EXIT_CODE%"=="0" (
-    echo [FAILED] Test release build failed.
+    echo [FAILED] V1.0.0 production release build failed.
     echo Review the error above and run again.
 ) else (
-    echo [SUCCESS] Test release build finished.
+    echo [SUCCESS] V1.0.0 production release build finished.
 )
 
 echo.
