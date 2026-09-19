@@ -114,7 +114,11 @@ EngineeringFormRegistry
 
 附表2工程现状调查体系已经完成阶段性闭环，V0.8.0 已具备基于 `CanalManagementScope` 的任务下发、基层受控录入、成果上报、来源核验和上级事务化汇总链路。
 
-任务范围 provenance 与成果回收校验已完成 Stage 14 自动化与人工双重验收：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。双数据库人工验收已覆盖同一物理渠道多 scope、重复成果幂等、以及 current master 变化后历史成果 warning-only 但仍可合法导入的场景。下一阶段进入甲方实际数据试录和使用反馈收集；附表1系列继续作为独立业务域留待后续单独设计。
+任务范围 provenance 与成果回收校验已完成 Stage 14 自动化与人工双重验收：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。双数据库人工验收已覆盖同一物理渠道多 scope、重复成果幂等、以及 current master 变化后历史成果 warning-only 但仍可合法导入的场景。
+
+当前正式产品范围收口为 **附表2.1～2.14工程现状调查**。附表1.1～1.15主要沿用甲方现行内业查档、统计整理和 Excel 汇总流程，本阶段不实施软件化录入；桌面端继续保留可见的“灌区综合与水土资源调查（附表1系列）”预留入口，底层 `series_1 / comprehensive` 扩展能力继续保留。后续只有在实际业务出现明确数字化需求时，再单独启动附表1领域开发。
+
+下一阶段转入甲方反馈整改、产品化体验优化、稳定性回归和正式投产收口。
 
 ## 技术栈
 
