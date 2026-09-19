@@ -1407,6 +1407,43 @@ def _prepare_managed_package(
     )
 
 
+def _result_source_task_uids(
+    result_document,
+):
+    values = result_document.get(
+        "source_task_uids"
+    )
+
+    if not isinstance(
+        values,
+        (list, tuple),
+    ):
+        values = (
+            result_document.get(
+                "source_task_uid"
+            ),
+        )
+
+    result = []
+
+    for value in values:
+        uid = _clean_text(
+            value
+        )
+
+        if (
+            uid
+            and uid not in result
+        ):
+            result.append(
+                uid
+            )
+
+    return tuple(
+        result
+    )
+
+
 def import_survey_result_package(
     package_path,
 ):
@@ -1951,6 +1988,19 @@ def import_survey_result_package(
                 )
 
                 summary = {
+                    "result_name": (
+                        _clean_text(
+                            result_document.get(
+                                "result_name"
+                            )
+                        )
+                        or None
+                    ),
+                    "source_task_uids": list(
+                        _result_source_task_uids(
+                            result_document
+                        )
+                    ),
                     "assets_total": len(
                         contents.engineering_assets
                     ),
