@@ -491,6 +491,7 @@ QGroupBox[workflowCard="true"]::title {
     padding: 0 6px;
     color: #2d4256;
     font-weight: 700;
+    font-size: 16px;
     background: #ffffff;
 }
 

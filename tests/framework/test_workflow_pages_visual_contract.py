@@ -19,6 +19,7 @@ class WorkflowPagesVisualContractTestCase(unittest.TestCase):
         self.assertIn("#workflowLead", source)
         self.assertIn("#workflowStatus", source)
         self.assertIn("#workflowSummary", source)
+        self.assertIn("font-size: 16px;", source)
 
     def test_task_distribution_has_visual_hierarchy(self):
         source = self._read("src/pages/survey_task_page.py")
