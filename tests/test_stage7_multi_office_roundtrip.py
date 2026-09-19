@@ -35,9 +35,15 @@ from services.survey_result_package import (
     SurveyResultExportRequest,
     export_survey_result_package,
 )
+from services.survey_progress import (
+    get_engineering_progress,
+)
 from services.survey_task_package import (
     SurveyTaskExportRequest,
     export_survey_task_package,
+)
+from services.survey_task_tracking import (
+    list_survey_task_tracking,
 )
 from services.survey_task_workspace import (
     receive_survey_task_package,
@@ -864,6 +870,38 @@ class Stage7MultiOfficeRoundTripTestCase(
             backup_side_effect
         )
 
+        initial_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        self.assertEqual(
+            len(
+                initial_tracking
+            ),
+            2,
+        )
+        self.assertTrue(
+            all(
+                item.returned_record_count
+                == 0
+                for item in initial_tracking
+            )
+        )
+        self.assertTrue(
+            all(
+                item.status_text
+                == "待回收"
+                for item in initial_tracking
+            )
+        )
+
         # -----------------------------------------------------
         # 1. Both packages independently pass preflight.
         # -----------------------------------------------------
@@ -1206,6 +1244,83 @@ class Stage7MultiOfficeRoundTripTestCase(
             2,
         )
 
+        task_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        self.assertEqual(
+            len(
+                task_tracking
+            ),
+            2,
+        )
+        self.assertGreater(
+            task_tracking[0].issue_id,
+            task_tracking[1].issue_id,
+        )
+        self.assertEqual(
+            {
+                item.task_uid
+                for item in task_tracking
+            },
+            {
+                task["task_uid"]
+                for task in self.tasks
+            },
+        )
+        self.assertTrue(
+            all(
+                item.returned_record_count
+                == 1
+                for item in task_tracking
+            )
+        )
+        self.assertTrue(
+            all(
+                item.status_text
+                == "已有成果返回"
+                for item in task_tracking
+            )
+        )
+
+        first_office_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+                organization_uid=(
+                    self.tasks[0][
+                        "office_uid"
+                    ]
+                ),
+            )
+        )
+
+        self.assertEqual(
+            len(
+                first_office_tracking
+            ),
+            1,
+        )
+        self.assertEqual(
+            first_office_tracking[
+                0
+            ].task_uid,
+            self.tasks[0][
+                "task_uid"
+            ],
+        )
+
         # Result-receive history must classify both packages
         # by frozen task source and keep newest-first ordering.
         history = list_survey_result_import_history(
@@ -1294,6 +1409,474 @@ class Stage7MultiOfficeRoundTripTestCase(
             self.assertFalse(
                 call.kwargs.get("skip_if_unchanged")
             )
+
+    @patch(
+        "services.survey_result_import."
+        "create_database_backup"
+    )
+    def test_partial_then_complete_multi_office_return_updates_all_views(
+        self,
+        mock_backup,
+    ):
+        """
+        Production acceptance sequence:
+
+        1. two tasks have been dispatched;
+        2. only office A returns first;
+        3. parent views must show one returned / one pending;
+        4. office B returns later;
+        5. task tracking, result history, DataQuery,
+           engineering ledger and Home progress must converge
+           to the same two-record state.
+        """
+
+        self._use_parent()
+
+        backup_counter = {
+            "value": 0,
+        }
+
+        def backup_side_effect(
+            *args,
+            **kwargs,
+        ):
+            backup_counter[
+                "value"
+            ] += 1
+
+            return self._fake_backup(
+                "acceptance_"
+                + str(
+                    backup_counter[
+                        "value"
+                    ]
+                )
+            )
+
+        mock_backup.side_effect = (
+            backup_side_effect
+        )
+
+        # -----------------------------------------------------
+        # A. Before any result returns: both tasks are pending.
+        # -----------------------------------------------------
+        before_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        self.assertEqual(
+            len(
+                before_tracking
+            ),
+            2,
+        )
+        self.assertEqual(
+            {
+                item.status_text
+                for item in before_tracking
+            },
+            {
+                "待回收",
+            },
+        )
+
+        # -----------------------------------------------------
+        # B. Only office A returns.
+        # -----------------------------------------------------
+        first_result = (
+            import_survey_result_package(
+                self.tasks[
+                    0
+                ][
+                    "result_path"
+                ]
+            )
+        )
+
+        self.assertFalse(
+            first_result.already_imported
+        )
+        self.assertEqual(
+            first_result.imported_records,
+            1,
+        )
+
+        partial_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        partial_status_by_task = {
+            item.task_uid:
+                (
+                    item.status_text,
+                    item.returned_record_count,
+                )
+            for item in partial_tracking
+        }
+
+        self.assertEqual(
+            partial_status_by_task[
+                self.tasks[
+                    0
+                ][
+                    "task_uid"
+                ]
+            ],
+            (
+                "已有成果返回",
+                1,
+            ),
+        )
+        self.assertEqual(
+            partial_status_by_task[
+                self.tasks[
+                    1
+                ][
+                    "task_uid"
+                ]
+            ],
+            (
+                "待回收",
+                0,
+            ),
+        )
+
+        partial_history = (
+            list_survey_result_import_history(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        self.assertEqual(
+            len(
+                partial_history
+            ),
+            1,
+        )
+        self.assertEqual(
+            partial_history[
+                0
+            ].records_total,
+            1,
+        )
+        self.assertIn(
+            self.tasks[
+                0
+            ][
+                "office_uid"
+            ],
+            partial_history[
+                0
+            ].organization_uids,
+        )
+
+        partial_query = (
+            database
+            .get_engineering_survey_query_records(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        partial_ledger = (
+            database.get_engineering_assets(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        partial_progress = (
+            get_engineering_progress(
+                self.parent_project_id,
+                self.parent_batch_id,
+            )
+        )
+
+        self.assertEqual(
+            len(
+                partial_query
+            ),
+            1,
+        )
+        self.assertEqual(
+            len(
+                partial_ledger
+            ),
+            1,
+        )
+        self.assertEqual(
+            partial_progress[
+                "total_records"
+            ],
+            1,
+        )
+        self.assertEqual(
+            partial_progress[
+                "completed_records"
+            ],
+            1,
+        )
+        self.assertEqual(
+            partial_progress[
+                "draft_records"
+            ],
+            0,
+        )
+        self.assertEqual(
+            partial_progress[
+                "grades"
+            ][
+                "A"
+            ],
+            1,
+        )
+        self.assertEqual(
+            partial_progress[
+                "grades"
+            ][
+                "B"
+            ],
+            0,
+        )
+
+        # -----------------------------------------------------
+        # C. Office B returns later.
+        # -----------------------------------------------------
+        second_result = (
+            import_survey_result_package(
+                self.tasks[
+                    1
+                ][
+                    "result_path"
+                ]
+            )
+        )
+
+        self.assertFalse(
+            second_result.already_imported
+        )
+        self.assertEqual(
+            second_result.imported_records,
+            1,
+        )
+
+        final_tracking = (
+            list_survey_task_tracking(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        final_history = (
+            list_survey_result_import_history(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        final_query = (
+            database
+            .get_engineering_survey_query_records(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        final_ledger = (
+            database.get_engineering_assets(
+                project_id=(
+                    self.parent_project_id
+                ),
+                survey_batch_id=(
+                    self.parent_batch_id
+                ),
+            )
+        )
+
+        final_progress = (
+            get_engineering_progress(
+                self.parent_project_id,
+                self.parent_batch_id,
+            )
+        )
+
+        self.assertEqual(
+            len(
+                final_tracking
+            ),
+            2,
+        )
+        self.assertTrue(
+            all(
+                item.status_text
+                == "已有成果返回"
+                and item.returned_record_count
+                == 1
+                for item in final_tracking
+            )
+        )
+
+        self.assertEqual(
+            len(
+                final_history
+            ),
+            2,
+        )
+        self.assertEqual(
+            len(
+                final_query
+            ),
+            2,
+        )
+        self.assertEqual(
+            len(
+                final_ledger
+            ),
+            2,
+        )
+
+        self.assertEqual(
+            final_progress[
+                "total_records"
+            ],
+            2,
+        )
+        self.assertEqual(
+            final_progress[
+                "completed_records"
+            ],
+            2,
+        )
+        self.assertEqual(
+            final_progress[
+                "draft_records"
+            ],
+            0,
+        )
+        self.assertEqual(
+            final_progress[
+                "grades"
+            ][
+                "A"
+            ],
+            1,
+        )
+        self.assertEqual(
+            final_progress[
+                "grades"
+            ][
+                "B"
+            ],
+            1,
+        )
+        self.assertAlmostEqual(
+            final_progress[
+                "completion_rate"
+            ],
+            100.0,
+        )
+
+        office_names = {
+            office[
+                "office_name"
+            ]
+            for department in final_progress[
+                "departments"
+            ]
+            for office in department[
+                "offices"
+            ]
+            if office[
+                "total_records"
+            ] > 0
+        }
+
+        self.assertEqual(
+            office_names,
+            {
+                task[
+                    "office_name"
+                ]
+                for task in self.tasks
+            },
+        )
+
+        # -----------------------------------------------------
+        # D. Re-import remains idempotent after the full merge.
+        # -----------------------------------------------------
+        repeated = (
+            import_survey_result_package(
+                self.tasks[
+                    0
+                ][
+                    "result_path"
+                ]
+            )
+        )
+
+        self.assertTrue(
+            repeated.already_imported
+        )
+
+        after_repeat_progress = (
+            get_engineering_progress(
+                self.parent_project_id,
+                self.parent_batch_id,
+            )
+        )
+
+        self.assertEqual(
+            after_repeat_progress[
+                "total_records"
+            ],
+            2,
+        )
+
+        # Only the two first-time imports create backups.
+        self.assertEqual(
+            mock_backup.call_count,
+            2,
+        )
+
 
 
 if __name__ == "__main__":

@@ -8,17 +8,21 @@ from PySide6.QtCore import (
     Qt,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -44,6 +48,9 @@ from services.survey_task_package import (
 )
 from services.survey_task_package_reader import (
     inspect_survey_task_package,
+)
+from services.survey_task_tracking import (
+    list_survey_task_tracking,
 )
 
 
@@ -105,6 +112,7 @@ class SurveyTaskPage(QWidget):
         super().__init__(parent)
 
         self.current_context = None
+        self._task_history_items = ()
 
         self._init_ui()
         self._connect_signals()
@@ -372,6 +380,405 @@ class SurveyTaskPage(QWidget):
 
         root.addLayout(action_layout)
 
+        history_group = QGroupBox(
+            "四、已分发任务"
+        )
+        history_group.setProperty(
+            "workflowCard",
+            True,
+        )
+        history_layout = QVBoxLayout(
+            history_group
+        )
+        history_layout.setSpacing(
+            10
+        )
+
+        history_hint = QLabel(
+            "显示当前项目和调查批次已经生成的调查任务。"
+            "“已有成果返回”只表示该任务已有调查记录回到总库，"
+            "不等同于该任务已经全部完成。"
+        )
+        history_hint.setObjectName(
+            "workflowLead"
+        )
+        history_hint.setWordWrap(
+            True
+        )
+        history_layout.addWidget(
+            history_hint
+        )
+
+        history_filter_row = QHBoxLayout()
+
+        history_filter_label = QLabel(
+            "管理单位："
+        )
+        self.task_history_office_combo = (
+            QComboBox()
+        )
+        self.task_history_office_combo.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
+
+        self.task_history_refresh_button = (
+            QPushButton(
+                "刷新"
+            )
+        )
+        self.task_history_refresh_button.setProperty(
+            "uiRole",
+            "secondary",
+        )
+
+        history_filter_row.addWidget(
+            history_filter_label
+        )
+        history_filter_row.addWidget(
+            self.task_history_office_combo
+        )
+        history_filter_row.addStretch()
+        history_filter_row.addWidget(
+            self.task_history_refresh_button
+        )
+
+        history_layout.addLayout(
+            history_filter_row
+        )
+
+        self.task_history_summary_label = QLabel(
+            "尚未加载任务分发历史。"
+        )
+        self.task_history_summary_label.setObjectName(
+            "workflowSummary"
+        )
+        self.task_history_summary_label.setWordWrap(
+            True
+        )
+        history_layout.addWidget(
+            self.task_history_summary_label
+        )
+
+        self.task_history_table = QTableWidget()
+        self.task_history_table.setColumnCount(
+            7
+        )
+        self.task_history_table.setHorizontalHeaderLabels(
+            [
+                "分发时间",
+                "基层处",
+                "管理单位",
+                "任务名称",
+                "分管范围",
+                "已回收记录",
+                "回收状态",
+            ]
+        )
+        self.task_history_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.task_history_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.task_history_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.task_history_table.setAlternatingRowColors(
+            True
+        )
+        self.task_history_table.setMinimumHeight(
+            180
+        )
+        self.task_history_table.verticalHeader().setVisible(
+            False
+        )
+
+        history_header = (
+            self.task_history_table
+            .horizontalHeader()
+        )
+        history_header.setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        history_header.setStretchLastSection(
+            True
+        )
+
+        self.task_history_table.setColumnWidth(
+            0,
+            155,
+        )
+        self.task_history_table.setColumnWidth(
+            1,
+            150,
+        )
+        self.task_history_table.setColumnWidth(
+            2,
+            180,
+        )
+        self.task_history_table.setColumnWidth(
+            3,
+            240,
+        )
+        self.task_history_table.setColumnWidth(
+            4,
+            90,
+        )
+        self.task_history_table.setColumnWidth(
+            5,
+            100,
+        )
+
+        history_layout.addWidget(
+            self.task_history_table
+        )
+
+        root.addWidget(
+            history_group
+        )
+
+        self.task_history_office_combo.currentIndexChanged.connect(
+            self._render_task_history
+        )
+        self.task_history_refresh_button.clicked.connect(
+            self.refresh_task_history
+        )
+
+
+    def refresh_task_history(
+        self,
+    ):
+        context = (
+            self.current_context
+        )
+
+        if (
+            not context
+            or context.get(
+                "project_id"
+            )
+            is None
+            or context.get(
+                "batch_id"
+            )
+            is None
+        ):
+            self._task_history_items = ()
+            self._rebuild_task_history_office_filter()
+            self.task_history_table.setRowCount(
+                0
+            )
+            self.task_history_summary_label.setText(
+                "当前未选择项目或调查批次。"
+            )
+            return ()
+
+        self._task_history_items = (
+            list_survey_task_tracking(
+                project_id=int(
+                    context[
+                        "project_id"
+                    ]
+                ),
+                survey_batch_id=int(
+                    context[
+                        "batch_id"
+                    ]
+                ),
+            )
+        )
+
+        self._rebuild_task_history_office_filter()
+        self._render_task_history()
+
+        return self._task_history_items
+
+    def _rebuild_task_history_office_filter(
+        self,
+    ):
+        previous = (
+            self.task_history_office_combo
+            .currentData()
+        )
+
+        options = {
+            item.organization_uid:
+                item.organization_name
+            for item in self._task_history_items
+            if (
+                item.organization_uid
+                and item.organization_name
+            )
+        }
+
+        self.task_history_office_combo.blockSignals(
+            True
+        )
+        self.task_history_office_combo.clear()
+        self.task_history_office_combo.addItem(
+            "全部管理单位",
+            None,
+        )
+
+        for (
+            organization_uid,
+            organization_name,
+        ) in sorted(
+            options.items(),
+            key=lambda item: (
+                item[1],
+                item[0],
+            ),
+        ):
+            self.task_history_office_combo.addItem(
+                organization_name,
+                organization_uid,
+            )
+
+        if previous is not None:
+            index = (
+                self.task_history_office_combo
+                .findData(
+                    previous
+                )
+            )
+
+            if index >= 0:
+                self.task_history_office_combo.setCurrentIndex(
+                    index
+                )
+
+        self.task_history_office_combo.blockSignals(
+            False
+        )
+
+    def _visible_task_history_items(
+        self,
+    ):
+        organization_uid = (
+            self.task_history_office_combo
+            .currentData()
+        )
+
+        if organization_uid is None:
+            return tuple(
+                self._task_history_items
+            )
+
+        return tuple(
+            item
+            for item in self._task_history_items
+            if (
+                item.organization_uid
+                == organization_uid
+            )
+        )
+
+    def _render_task_history(
+        self,
+    ):
+        items = (
+            self._visible_task_history_items()
+        )
+
+        self.task_history_table.setSortingEnabled(
+            False
+        )
+        self.task_history_table.setRowCount(
+            len(items)
+        )
+
+        for row_index, item in enumerate(
+            items
+        ):
+            values = (
+                item.issued_at,
+                item.department_name,
+                item.organization_name,
+                item.task_name,
+                str(
+                    item.selected_scope_count
+                ),
+                str(
+                    item.returned_record_count
+                ),
+                item.status_text,
+            )
+
+            for (
+                column_index,
+                value,
+            ) in enumerate(
+                values
+            ):
+                cell = QTableWidgetItem(
+                    str(
+                        value or ""
+                    )
+                )
+
+                if column_index in (
+                    4,
+                    5,
+                    6,
+                ):
+                    cell.setTextAlignment(
+                        int(
+                            Qt.AlignmentFlag.AlignCenter
+                        )
+                    )
+
+                self.task_history_table.setItem(
+                    row_index,
+                    column_index,
+                    cell,
+                )
+
+        self.task_history_table.setSortingEnabled(
+            True
+        )
+        self.task_history_table.sortItems(
+            0,
+            Qt.SortOrder.DescendingOrder,
+        )
+
+        all_count = len(
+            self._task_history_items
+        )
+        visible_count = len(
+            items
+        )
+        returned_count = sum(
+            1
+            for item in self._task_history_items
+            if item.returned_record_count > 0
+        )
+
+        if (
+            self.task_history_office_combo
+            .currentData()
+            is None
+        ):
+            if all_count:
+                self.task_history_summary_label.setText(
+                    (
+                        f"当前批次已分发 {all_count} 个任务，"
+                        f"其中 {returned_count} 个已有成果返回。"
+                    )
+                )
+            else:
+                self.task_history_summary_label.setText(
+                    "当前批次尚未生成调查任务包。"
+                )
+        else:
+            self.task_history_summary_label.setText(
+                (
+                    f"当前筛选显示 {visible_count} 个任务；"
+                    f"当前批次共已分发 {all_count} 个。"
+                )
+            )
+
     def _connect_signals(self):
         self.department_combo.currentIndexChanged.connect(
             self._department_changed
@@ -420,6 +827,7 @@ class SurveyTaskPage(QWidget):
             self._set_operational_enabled(
                 False
             )
+            self.refresh_task_history()
             return
 
         project_name = (
@@ -459,6 +867,8 @@ class SurveyTaskPage(QWidget):
 
         if has_context:
             self._load_departments()
+
+        self.refresh_task_history()
 
     def _set_operational_enabled(
         self,
@@ -857,6 +1267,8 @@ class SurveyTaskPage(QWidget):
                     f"文件：{result.output_path}"
                 ),
             )
+
+            self.refresh_task_history()
 
             return result
 
