@@ -118,6 +118,62 @@ class SurveyPageRegistryTestCase(
         finally:
             page.deleteLater()
 
+    def test_appendix1_reserved_entry_remains_visible(
+        self,
+    ):
+        # Appendix 1 is outside the current production implementation scope,
+        # but the visible reserved business entry must remain.
+        from PySide6.QtWidgets import (
+            QLabel,
+            QPushButton,
+        )
+
+        with patch.object(
+            EngineeringSurveyListPage,
+            "load_data",
+            return_value=None,
+        ):
+            page = SurveyPage()
+
+        try:
+            button_texts = {
+                widget.text()
+                for widget in page.findChildren(
+                    QPushButton
+                )
+            }
+            label_texts = {
+                widget.text()
+                for widget in page.findChildren(
+                    QLabel
+                )
+            }
+
+            self.assertIn(
+                "灌区综合与水土资源调查（附表1系列·预留）",
+                button_texts,
+            )
+
+            self.assertTrue(
+                any(
+                    "附表1.1～1.15业务入口已预留"
+                    in value
+                    for value in label_texts
+                )
+            )
+
+            self.assertTrue(
+                any(
+                    "本版本暂不启用附表1软件录入"
+                    in value
+                    for value in label_texts
+                )
+            )
+
+        finally:
+            page.deleteLater()
+
+
 
 if __name__ == "__main__":
     unittest.main()

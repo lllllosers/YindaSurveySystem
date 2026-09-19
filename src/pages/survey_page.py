@@ -151,7 +151,9 @@ class SurveyPage(QWidget):
         # 灌区综合与水土资源调查
         # =====================================================
 
-        comprehensive_button = QPushButton("灌区综合与水土资源调查" "（附表1系列）")
+        comprehensive_button = QPushButton(
+            "灌区综合与水土资源调查（附表1系列·预留）"
+        )
 
         comprehensive_button.setMinimumHeight(52)
 
@@ -160,7 +162,8 @@ class SurveyPage(QWidget):
         layout.addWidget(comprehensive_button)
 
         comprehensive_description = QLabel(
-            "灌区基本情况、自然条件、" "水土资源、农业生产、管理运行" "等综合调查。"
+            "灌区基本情况、水土资源、农业生产、管理运行等综合调查。"
+            "当前版本保留入口，暂不启用软件录入。"
         )
 
         comprehensive_description.setWordWrap(True)
@@ -331,24 +334,26 @@ class SurveyPage(QWidget):
 
         layout.addWidget(back_button)
 
-        title = QLabel("灌区综合与水土资源调查")
+        title = QLabel("灌区综合与水土资源调查（预留）")
 
         title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
         layout.addWidget(title)
 
-        description = QLabel("本业务域用于附表1系列综合调查。")
+        description = QLabel(
+            "附表1.1～1.15业务入口已预留。"
+        )
 
         description.setWordWrap(True)
 
         layout.addWidget(description)
 
         placeholder = QLabel(
-            "业务域入口已经建立。\n\n"
-            "附表1系列的数据模型、"
-            "矩阵录入和统计方式将在"
-            "附表2工程现状调查完成后"
-            "单独设计和开发。"
+            "当前正式投产范围为附表2.1～2.14工程现状调查。\n\n"
+            "附表1系列现阶段继续按既有内业统计和Excel流程开展，"
+            "本版本暂不启用附表1软件录入。\n\n"
+            "如后续业务确有数字化需求，可从本入口继续扩展，"
+            "不影响当前工程现状调查数据。"
         )
 
         placeholder.setWordWrap(True)
