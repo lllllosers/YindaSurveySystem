@@ -79,7 +79,7 @@ class SurveyResultPackageWorker(QObject):
             if not inspection.valid:
                 raise ValueError(
                     "成果包已生成，但导出后完整性检查未通过。\n\n"
-                    + inspection.format_text()
+                    + inspection.format_user_text()
                 )
 
         except Exception as error:
@@ -142,8 +142,8 @@ class SurveyResultPackagePanel(QWidget):
 
         description = QLabel(
             "调查成果包（.ydresult）用于把当前范围中的录入完成工程调查记录、"
-            "工程对象、分项评价和托管影像打包移交。"
-            "任务来源由调查记录自动追踪，无需手动关联 .ydtask。"
+            "工程、分项评价和影像资料打包移交。"
+            "系统会自动识别调查记录对应的任务，不需要手工选择原任务包。"
         )
         description.setObjectName("workflowLead")
         description.setWordWrap(True)
@@ -435,7 +435,7 @@ class SurveyResultPackagePanel(QWidget):
                         f"来源子任务 {preview.source_task_count} 个，"
                         f"涉及水管所 {preview.source_office_count} 个，"
                         f"分管范围 {preview.management_scope_count} 项。"
-                        "上方成果范围筛选不会改变 .ydresult 的父任务授权边界。"
+                        "处级汇总始终按当前处级任务的完整调查范围生成，不受上方普通筛选条件影响。"
                     )
                 )
 
@@ -704,7 +704,7 @@ class SurveyResultPackagePanel(QWidget):
         self.status_label.setText(
             (
                 "正在生成调查成果包，"
-                "并校验调查数据和托管影像..."
+                "并检查调查数据和影像文件..."
             )
         )
 
@@ -762,7 +762,7 @@ class SurveyResultPackagePanel(QWidget):
             (
                 "调查成果包已生成并通过完整性检查。\n\n"
                 f"调查记录：{result.survey_record_count} 条\n"
-                f"工程对象：{result.engineering_asset_count} 个\n"
+                f"工程：{result.engineering_asset_count} 个\n"
                 f"分项评价：{result.inspection_result_count} 项\n"
                 f"影像：{result.media_count} 个\n\n"
                 f"文件：{result.output_path}"
@@ -830,13 +830,13 @@ class SurveyResultPackagePanel(QWidget):
             QMessageBox.information(
                 self,
                 "成果包检查通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
         else:
             QMessageBox.warning(
                 self,
                 "成果包检查未通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
 
         return inspection

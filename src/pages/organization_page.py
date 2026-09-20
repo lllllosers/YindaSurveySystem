@@ -425,7 +425,7 @@ class OrganizationPage(QWidget):
 
         if usage["business_reference_count"] > 0:
             info_label.setText(
-                "该机构已有业务数据引用。"
+                "该机构已经被工程或调查记录使用。"
                 "名称和备注仍可修改；"
                 "关键编号或归属信息已锁定。"
             )
@@ -569,7 +569,7 @@ class OrganizationPage(QWidget):
 
             if usage.get("management_scope_count"):
                 reasons.append(
-                    f"渠道管理范围 "
+                    f"分管段 "
                     f"{usage['management_scope_count']} 条"
                 )
 
@@ -584,7 +584,7 @@ class OrganizationPage(QWidget):
                 "不能删除",
                 (
                     f"“{unit['name']}”"
-                    "当前不能物理删除。\n\n"
+                    "当前不能永久删除。\n\n"
                     "存在：" + "、".join(reasons) + "。\n\n"
                     "如不再使用，请选择“停用”。"
                 ),
@@ -601,7 +601,7 @@ class OrganizationPage(QWidget):
                 "该操作会直接从数据库中删除"
                 "这条基础资料，无法撤销。\n\n"
                 "只有录入错误且从未被使用的资料"
-                "才建议执行物理删除。"
+                "才建议永久删除。"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

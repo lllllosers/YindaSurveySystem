@@ -964,7 +964,7 @@ class EngineeringSurveyListPage(QWidget):
                 "删除后，该记录的全部分项评价"
                 "也会同时删除。\n"
                 "如果该工程已经没有其他调查记录，"
-                "工程台账中的工程对象也会一并删除。\n\n"
+                "工程台账中的该工程也会一并删除。\n\n"
                 "此操作无法从软件中恢复。"
             ),
             (QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
@@ -979,10 +979,10 @@ class EngineeringSurveyListPage(QWidget):
 
             if result["asset_deleted"]:
                 extra_message = (
-                    "\n\n该工程已无其他调查记录，" "对应工程台账对象也已删除。"
+                    "\n\n该工程已无其他调查记录，" "工程台账中的该工程也已删除。"
                 )
             else:
-                extra_message = "\n\n该工程仍有其他调查记录，" "工程台账对象已保留。"
+                extra_message = "\n\n该工程仍有其他调查记录，" "工程台账中的该工程已保留。"
 
             QMessageBox.information(
                 self,

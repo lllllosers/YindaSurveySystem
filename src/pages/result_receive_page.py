@@ -76,7 +76,7 @@ class ResultReceivePage(QWidget):
 
         description = QLabel(
             "接收下级调查端或管理单位提交的调查成果包。"
-            "系统会先进行只读预检，确认无阻断性冲突后"
+            "系统会先进行只读检查，确认无必须处理的问题后"
             "再允许正式导入；已接收成果按当前项目和调查批次统一汇总。"
         )
         description.setWordWrap(True)
@@ -127,7 +127,7 @@ class ResultReceivePage(QWidget):
         )
 
         history_hint = QLabel(
-            "仅显示当前项目和当前调查批次已正式导入的成果包。"
+            "仅显示当前项目和当前调查批次已导入的成果包。"
             "可按任务分发时的管理单位分类查看；默认按接收时间从新到旧排列。"
         )
         history_hint.setObjectName(
@@ -203,7 +203,7 @@ class ResultReceivePage(QWidget):
                 "管理单位",
                 "成果名称",
                 "调查记录",
-                "工程对象",
+                "工程",
                 "分项评价",
                 "影像",
                 "接收状态",
@@ -452,9 +452,9 @@ class ResultReceivePage(QWidget):
             )
 
         if item.source_task_uids:
-            return "任务来源未匹配"
+            return "来源单位未识别"
 
-        return "未关联任务"
+        return "未标明任务来源"
 
     def _render_history(self):
         items = (
@@ -550,7 +550,7 @@ class ResultReceivePage(QWidget):
         ):
             self.history_summary_label.setText(
                 (
-                    f"当前批次已接收 {all_count} 个成果包，"
+                    f"当前调查批次已接收 {all_count} 个成果包，"
                     f"来源管理单位 {len(organization_uids)} 个。"
                 )
             )
@@ -558,6 +558,6 @@ class ResultReceivePage(QWidget):
             self.history_summary_label.setText(
                 (
                     f"当前筛选显示 {visible_count} 个成果包；"
-                    f"当前批次共已接收 {all_count} 个。"
+                    f"当前调查批次共已接收 {all_count} 个。"
                 )
             )

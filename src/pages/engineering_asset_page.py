@@ -336,7 +336,7 @@ class EngineeringAssetPage(QWidget):
         final_count = len(assets) - provisional_count
 
         self.count_label.setText(
-            f"当前工程台账共 {len(assets)} 个工程对象；"
+            f"当前工程台账共 {len(assets)} 个工程；"
             f"暂编 {provisional_count}，正式 {final_count}"
         )
         self.update_action_buttons()
@@ -362,14 +362,14 @@ class EngineeringAssetPage(QWidget):
                 survey_batch_id=context["batch_id"],
             )
         except Exception as error:
-            QMessageBox.warning(self, "编号预检失败", str(error))
+            QMessageBox.warning(self, "编号检查失败", str(error))
             return
 
         if not preview.can_apply:
             QMessageBox.warning(
                 self,
                 "暂不能整理业务编号",
-                preview.format_text(),
+                preview.format_user_text(),
             )
             return
 
@@ -399,8 +399,8 @@ class EngineeringAssetPage(QWidget):
                 f"编号分组：{preview.group_count}\n"
                 f"预计编号变化：{preview.changed_code_count}"
                 f"{reopen_text}\n\n"
-                "本操作只整理编号，不增加调查业务 revision；"
-                "同一批次 SurveyRecord 编号会同步更新。\n"
+                "本操作只整理编号，不改变调查内容；"
+                "同一调查批次中的记录编号会同步更新。\n"
                 "整理后仍为“暂编”，后续补录工程可以再次执行。"
             ),
             QMessageBox.StandardButton.Yes
@@ -456,7 +456,7 @@ class EngineeringAssetPage(QWidget):
         except Exception as error:
             QMessageBox.warning(
                 self,
-                "正式锁号预检失败",
+                "正式编号检查失败",
                 str(error),
             )
             return
@@ -465,7 +465,7 @@ class EngineeringAssetPage(QWidget):
             QMessageBox.warning(
                 self,
                 "暂不能锁定正式编号",
-                preview.format_text(),
+                preview.format_user_text(),
             )
             return
 
@@ -488,14 +488,14 @@ class EngineeringAssetPage(QWidget):
             )
             if len(preview.warnings) > 12:
                 warning_text += (
-                    "\n• ……其余提示请以预检结果为准。"
+                    "\n• ……其余提示请以检查结果为准。"
                 )
 
         reply = QMessageBox.question(
             self,
             "确认锁定正式编号",
             (
-                "系统会在同一事务内再次按桩号从上游到下游排序，"
+                "系统会再次按桩号从上游到下游排序，"
                 "然后将当前调查批次参与工程的编号状态设为“正式”。\n\n"
                 f"参与工程：{preview.total_assets}\n"
                 f"编号分组：{preview.group_count}\n"
@@ -503,7 +503,7 @@ class EngineeringAssetPage(QWidget):
                 f"当前暂编：{preview.provisional_count}\n"
                 f"当前正式：{preview.already_final_count}"
                 f"{warning_text}\n\n"
-                "编号整理和锁号不会增加业务 revision。"
+                "编号整理和锁号不会改变调查内容。"
             ),
             (
                 QMessageBox.StandardButton.Yes

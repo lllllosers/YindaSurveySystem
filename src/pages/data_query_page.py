@@ -889,8 +889,7 @@ class DataQueryPage(QWidget):
                 self,
                 "无法导出",
                 (
-                    "当前调查表尚未接入"
-                    "工程调查定义 Registry。"
+                    "当前调查表尚未配置详细汇总导出。"
                 ),
             )
             return

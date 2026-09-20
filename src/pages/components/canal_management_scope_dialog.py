@@ -775,7 +775,7 @@ class CanalManagementScopeDialog(QDialog):
 
         if is_official:
             self.delete_button.setToolTip(
-                "正式主数据管理范围不能物理删除，"
+                "系统预置的正式分管范围不能永久删除，"
                 "如不再适用请停用。"
             )
         else:
@@ -897,8 +897,8 @@ class CanalManagementScopeDialog(QDialog):
             self,
             "确认永久删除",
             (
-                "确定永久删除这条人工管理范围吗？\n\n"
-                "正式主数据范围不能执行此操作。"
+                "确定永久删除这条自行新增的分管范围吗？\n\n"
+                "系统预置的正式分管范围不能执行此操作。"
             ),
             (
                 QMessageBox.StandardButton.Yes

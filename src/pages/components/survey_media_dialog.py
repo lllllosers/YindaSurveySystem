@@ -423,8 +423,7 @@ class SurveyMediaDialog(QDialog):
                 summary_parts
             )
             or (
-                f"调查记录 ID："
-                f"{self.survey_record_id}"
+                "当前调查记录"
             )
         )
         summary_label.setWordWrap(True)
@@ -860,7 +859,7 @@ class SurveyMediaDialog(QDialog):
                 "影像文件缺失",
                 (
                     "数据库中存在影像记录，"
-                    "但托管文件已经不存在：\n\n"
+                    "但对应的影像文件已经不存在：\n\n"
                     f"{file_path}"
                 ),
             )
@@ -904,7 +903,7 @@ class SurveyMediaDialog(QDialog):
                 f"{media['original_filename']}\n"
                 f"序号："
                 f"{media['sequence_no']}\n\n"
-                "删除后，系统托管文件也会删除，"
+                "删除后，对应的影像文件也会删除，"
                 "此操作无法从软件中恢复。"
             ),
             (

@@ -277,7 +277,7 @@ class ResultExportPage(QWidget):
         action_row = QHBoxLayout()
 
         self.export_button = QPushButton(
-            "预检并导出正式成果"
+            "检查并导出正式成果"
         )
         self.export_button.setProperty("uiRole", "primary")
         self.export_button.clicked.connect(
@@ -795,7 +795,7 @@ class ResultExportPage(QWidget):
             )
 
             self.status_label.setText(
-                "正在预检成果范围……"
+                "正在检查成果范围……"
             )
 
             plan = build_batch_export_plan(
@@ -810,25 +810,25 @@ class ResultExportPage(QWidget):
         except Exception as error:
             QMessageBox.warning(
                 self,
-                "成果预检失败",
+                "成果检查失败",
                 str(error),
             )
             self.status_label.setText(
-                "成果预检失败。"
+                "成果检查失败。"
             )
             return
 
         if preflight_report.error_count:
             QMessageBox.warning(
                 self,
-                "成果预检未通过",
+                "成果检查未通过",
                 (
                     "正式成果导出前发现"
                     f" {preflight_report.error_count} "
-                    "个必须处理的影像错误。\n"
+                    "个必须处理的影像问题。\n"
                     f"另有 "
                     f"{preflight_report.warning_count} "
-                    "个警告。\n\n"
+                    "条提示。\n\n"
                     "错误修正后才能开始正式导出。"
                     "\n\n"
                     f"{preflight_report.format_preview()}"
@@ -836,7 +836,7 @@ class ResultExportPage(QWidget):
             )
 
             self.status_label.setText(
-                "成果预检未通过。"
+                "成果检查未通过。"
             )
             return
 
@@ -856,12 +856,12 @@ class ResultExportPage(QWidget):
                 f"记录数：{len(plan.records)} 条\n"
                 f"调查表：{len(plan.groups)} 类\n"
                 f"范围：{form_names}\n"
-                f"影像预检：0 个错误，"
+                f"影像检查：0 个问题，"
                 f"{preflight_report.warning_count} "
-                "个警告\n\n"
+                "条提示\n\n"
                 + (
                     (
-                        "以下警告不会阻止本次导出：\n"
+                        "以下提示不会阻止本次导出：\n"
                         f"{preflight_report.format_preview(limit=5)}"
                         "\n\n"
                     )

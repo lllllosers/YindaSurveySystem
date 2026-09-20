@@ -91,6 +91,27 @@ class EngineeringNumberingFinalizationPreview:
         return "\n".join(lines)
 
 
+    def format_user_text(self):
+        lines = [
+            f"参与锁号工程：{self.total_assets}",
+            f"编号分组：{self.group_count}",
+            f"预计编号变化：{self.changed_code_count}",
+            f"当前暂编：{self.provisional_count}",
+            f"当前正式：{self.already_final_count}",
+        ]
+        if self.errors:
+            lines.append("")
+            lines.append("请先处理：")
+            lines.extend(f"• {issue.message}" for issue in self.errors)
+        if self.warnings:
+            lines.append("")
+            lines.append("请确认：")
+            lines.extend(f"• {issue.message}" for issue in self.warnings)
+        if not self.errors and not self.warnings:
+            lines.append("")
+            lines.append("未发现需要处理或确认的问题。")
+        return "\n".join(lines)
+
 @dataclass(frozen=True)
 class EngineeringNumberingFinalizationResult:
     project_id: int

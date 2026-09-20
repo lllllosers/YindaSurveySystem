@@ -168,10 +168,10 @@ class EngineeringAssetDetailDialog(QDialog):
             [
                 "调查批次",
                 "调查表",
-                "表单版本",
+                "调查表版本",
                 "业务编号",
                 "调查日期",
-                "最终等级",
+                "工程状况类别",
                 "记录状态",
                 "修改时间",
             ]
@@ -255,7 +255,7 @@ class EngineeringAssetDetailDialog(QDialog):
         asset = get_engineering_asset_detail(self.engineering_asset_id)
 
         if asset is None:
-            self.asset_name_label.setText("未找到工程对象")
+            self.asset_name_label.setText("未找到该工程")
             return
 
         asset_type_text = (

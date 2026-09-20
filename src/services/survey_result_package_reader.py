@@ -110,6 +110,44 @@ class SurveyResultPackageInspection:
         return "\n".join(lines)
 
 
+    def format_user_text(self):
+        lines = [
+            f"成果包：{self.package_path.name}",
+            f"检查结果：{self.error_count} 个必须处理的问题",
+        ]
+        if self.result:
+            name = self.result.get("result_name")
+            if name:
+                lines.append(f"成果名称：{name}")
+            counts = self.result.get("counts")
+            if isinstance(counts, dict):
+                lines.append(
+                    f"调查记录：{counts.get('survey_records', 0)} 条，"
+                    f"影像：{counts.get('survey_media', 0)} 个"
+                )
+
+        if not self.issues:
+            lines.append("成果包内容完整，可以继续使用。")
+            return "\n".join(lines)
+
+        messages = []
+        for issue in self.issues:
+            code = str(issue.code or "")
+            if "SCHEMA" in code or "VERSION" in code:
+                message = "成果包版本与当前软件不兼容，请使用当前版本重新生成成果包。"
+            elif code.startswith("SOURCE_TASK"):
+                message = "成果包中的任务来源信息不完整，请在原调查端重新生成成果包。"
+            elif code.startswith("RESULT_") or code.startswith("SOURCE_"):
+                message = "成果包中的调查数据不完整或格式异常，请在原调查端重新生成成果包。"
+            else:
+                message = "成果包内容不完整或文件已损坏，请重新获取成果包。"
+            if message not in messages:
+                messages.append(message)
+
+        lines.append("")
+        lines.extend(f"[需处理] {m}" for m in messages)
+        return "\n".join(lines)
+
 def _append(issues, code, message, *, path=""):
     issues.append(
         PackageInspectionIssue(

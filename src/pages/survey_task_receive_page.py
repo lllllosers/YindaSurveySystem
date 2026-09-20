@@ -30,7 +30,7 @@ class SurveyTaskReceivePage(QWidget):
         description = QLabel(
             "接收上级管理端分发的调查任务包。"
             "任务接收成功后，系统会切换到该任务对应的项目、"
-            "调查批次和本地任务工作区。"
+            "调查批次和当前任务。"
         )
         description.setWordWrap(True)
         description.setObjectName(

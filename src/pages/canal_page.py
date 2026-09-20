@@ -712,7 +712,7 @@ class CanalPage(QWidget):
 
         if usage["structure_locked"]:
             info_label.setText(
-                "该渠道已有业务数据引用。"
+                "该渠道已经被工程或调查记录使用。"
                 "渠道名称和备注仍可修改；"
                 "渠道层级和上级渠道已锁定。"
             )
@@ -868,7 +868,7 @@ class CanalPage(QWidget):
 
             if usage.get("management_scope_count"):
                 reasons.append(
-                    f"渠道管理范围 "
+                    f"分管段 "
                     f"{usage['management_scope_count']} 条"
                 )
 
@@ -883,7 +883,7 @@ class CanalPage(QWidget):
                 "不能删除",
                 (
                     f"“{canal['name']}”"
-                    "当前不能物理删除。\n\n"
+                    "当前不能永久删除。\n\n"
                     "存在：" + "、".join(reasons) + "。\n\n"
                     "如不再使用，请选择“停用”。"
                 ),
@@ -900,7 +900,7 @@ class CanalPage(QWidget):
                 "该操作会直接从数据库中删除"
                 "这条渠道基础资料，无法撤销。\n\n"
                 "只有录入错误且从未被使用的资料"
-                "才建议执行物理删除。"
+                "才建议永久删除。"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

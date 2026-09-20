@@ -265,7 +265,7 @@ class SurveyTaskPage(QWidget):
 
         scope_hint = QLabel(
             "选择管理单位后，系统自动列出该单位当前启用的分管范围，"
-            "并默认全部勾选。导出时，物理渠道及上级渠系仅作为参考信息随包携带。"
+            "并默认全部勾选。相关渠道信息会一并写入任务包，接收端无需重复配置。"
         )
         scope_hint.setWordWrap(True)
         scope_hint.setStyleSheet(
@@ -772,19 +772,19 @@ class SurveyTaskPage(QWidget):
             if all_count:
                 self.task_history_summary_label.setText(
                     (
-                        f"当前批次已分发 {all_count} 个任务，"
+                        f"当前调查批次已分发 {all_count} 个任务，"
                         f"其中 {returned_count} 个已有成果返回。"
                     )
                 )
             else:
                 self.task_history_summary_label.setText(
-                    "当前批次尚未生成调查任务包。"
+                    "当前调查批次尚未生成调查任务包。"
                 )
         else:
             self.task_history_summary_label.setText(
                 (
                     f"当前筛选显示 {visible_count} 个任务；"
-                    f"当前批次共已分发 {all_count} 个。"
+                    f"当前调查批次共已分发 {all_count} 个。"
                 )
             )
 
@@ -1026,8 +1026,11 @@ class SurveyTaskPage(QWidget):
             self._clear_scope()
             return
 
+        # database.get_water_offices() returns sqlite3.Row.
+        # Department mode needs mapping-style .get() below, so normalize
+        # rows once before entering UI/authorization logic.
         offices = [
-            row
+            dict(row)
             for row in get_water_offices(
                 department["id"]
             )
@@ -1432,6 +1435,9 @@ class SurveyTaskPage(QWidget):
 
             canal_name = str(
                 scope.get(
+                    "canal_name"
+                )
+                or scope.get(
                     "canal_name_snapshot"
                 )
                 or ""
@@ -1706,8 +1712,8 @@ class SurveyTaskPage(QWidget):
             if not integrity.passed:
                 raise ValueError(
                     (
-                        "正式主数据一致性检查未通过，"
-                        "暂不能导出任务包。\n\n"
+                        "基础资料检查未通过，"
+                        "暂不能生成任务包。\n\n"
                         + integrity.format_text()
                     )
                 )
@@ -1788,7 +1794,7 @@ class SurveyTaskPage(QWidget):
                     (
                         "任务包已经生成，"
                         "但导出后完整性检查未通过。\n\n"
-                        + inspection.format_text()
+                        + inspection.format_user_text()
                     )
                 )
 
@@ -1822,7 +1828,7 @@ class SurveyTaskPage(QWidget):
             ):
                 details.append(
                     (
-                        "参考渠系："
+                        "包含渠道："
                         f"{reference_canal_count} 条"
                     )
                 )
@@ -1830,26 +1836,22 @@ class SurveyTaskPage(QWidget):
             if form_count is not None:
                 details.append(
                     (
-                        "附表参考："
+                        "调查表："
                         f"{form_count} 项"
                     )
                 )
 
-            if hasattr(
-                result,
-                "parent_task_uid",
+            if (
+                hasattr(
+                    result,
+                    "parent_task_uid",
+                )
+                and result.parent_task_uid
             ):
                 details.extend(
                     [
                         "",
-                        (
-                            "父任务："
-                            f"{result.parent_task_uid}"
-                        ),
-                        (
-                            "根任务："
-                            f"{result.root_task_uid}"
-                        ),
+                        "任务来源：由当前处级任务分发",
                     ]
                 )
 
@@ -1909,13 +1911,13 @@ class SurveyTaskPage(QWidget):
             QMessageBox.information(
                 self,
                 "任务包检查通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
         else:
             QMessageBox.warning(
                 self,
                 "任务包检查未通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
 
         return inspection

@@ -57,7 +57,7 @@ class SurveyTaskReceivePanelTestCase(
                 "尚未接收任务",
             )
             self.assertIn(
-                "没有已激活",
+                "还没有已接收并启用的调查任务",
                 panel.status_label.text(),
             )
         finally:

@@ -64,8 +64,8 @@ class SurveyTaskReceivePanel(QWidget):
 
         description = QLabel(
             "收到 .ydtask 后，从这里接收。"
-            "系统会校验任务包，将项目、调查批次、管理单位和分管范围"
-            "建立为本机当前任务工作区，并把原任务包复制到本地托管目录。"
+            "系统会检查任务包，将项目、调查批次、管理单位和分管范围"
+            "设为本机当前任务，并把任务包保存在本机。"
         )
         description.setObjectName("workflowLead")
         description.setWordWrap(True)
@@ -103,7 +103,7 @@ class SurveyTaskReceivePanel(QWidget):
         )
 
         current_group = QGroupBox(
-            "当前任务工作区"
+            "当前任务"
         )
         current_group.setProperty("workflowCard", True)
         current_form = QFormLayout(
@@ -285,7 +285,7 @@ class SurveyTaskReceivePanel(QWidget):
             f"基层处：{department_name}\n"
             f"管理单位：{organization_name}\n"
             f"分管范围：{scope_count} 项\n\n"
-            "确认接收并切换到该任务工作区吗？"
+            "确认接收并切换到该任务吗？"
         )
 
     def receive_task_package(self):
@@ -371,23 +371,23 @@ class SurveyTaskReceivePanel(QWidget):
         if result.already_received:
             action_text = (
                 "该任务此前已经接收，"
-                "现已切换为当前任务工作区。"
+                "现已切换为当前任务。"
             )
         else:
             action_text = (
-                "任务已接收并设为当前任务工作区。"
+                "任务已接收并设为当前任务。"
             )
 
         context_lines = []
 
         if result.created_project:
             context_lines.append(
-                "已按任务稳定 UID 创建本地项目。"
+                "本机原来没有对应项目，系统已根据任务包自动创建。"
             )
 
         if result.created_batch:
             context_lines.append(
-                "已按任务稳定 UID 创建本地调查批次。"
+                "本机原来没有对应调查批次，系统已根据任务包自动创建。"
             )
 
         extra_text = (
@@ -401,7 +401,7 @@ class SurveyTaskReceivePanel(QWidget):
             f"任务：{result.task_name}\n"
             f"分管范围："
             f"{result.selected_management_scope_count} 条\n"
-            f"本地托管："
+            f"任务包保存位置："
             f"{result.managed_package_path}"
         )
 
@@ -418,7 +418,7 @@ class SurveyTaskReceivePanel(QWidget):
         )
 
         self.status_label.setText(
-            "当前任务工作区已更新。"
+            "当前任务已更新。"
         )
 
         self.task_received.emit()
@@ -468,7 +468,7 @@ class SurveyTaskReceivePanel(QWidget):
                 "-"
             )
             self.status_label.setText(
-                "当前数据库没有已激活的调查任务工作区。"
+                "当前还没有已接收并启用的调查任务。"
             )
             return None
 
@@ -582,7 +582,7 @@ class SurveyTaskReceivePanel(QWidget):
         )
 
         self.status_label.setText(
-            "当前任务工作区可用。"
+            "当前任务可用。"
         )
 
         return workspace

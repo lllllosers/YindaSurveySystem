@@ -81,6 +81,14 @@ class SurveyResultImportPreflight:
         )
 
     @property
+    def info_count(self):
+        return sum(
+            1
+            for item in self.issues
+            if item.severity == SEVERITY_INFO
+        )
+
+    @property
     def can_import(self):
         return self.error_count == 0
 
@@ -167,6 +175,50 @@ class SurveyResultImportPreflight:
                     f"{item.code}：{item.message}{suffix}"
                 )
 
+        return "\n".join(lines)
+
+    def format_user_text(self):
+        lines = [
+            f"成果包：{self.package_path.name}",
+            (
+                "检查结果："
+                f"{self.error_count} 个必须处理的问题，"
+                f"{self.warning_count} 条需要注意的信息"
+            ),
+            (
+                "工程："
+                f"新增 {self.new_assets}，已存在 {self.existing_assets}，"
+                f"可更新 {self.updated_assets}，较早版本 {self.stale_assets}，"
+                f"冲突 {self.conflict_assets}"
+            ),
+            (
+                "调查记录："
+                f"新增 {self.new_records}，已存在 {self.existing_records}，"
+                f"可更新 {self.updated_records}，较早版本 {self.stale_records}，"
+                f"冲突 {self.conflict_records}"
+            ),
+            (
+                "分项评价："
+                f"新增 {self.new_inspections}，已存在 {self.existing_inspections}，"
+                f"随记录更新 {self.updated_inspections}"
+            ),
+            f"影像：新增 {self.new_media}，已存在 {self.existing_media}",
+        ]
+
+        if not self.issues:
+            lines.append("未发现需要处理的问题。")
+            return "\n".join(lines)
+
+        labels = {
+            SEVERITY_ERROR: "需处理",
+            SEVERITY_WARNING: "请注意",
+            SEVERITY_INFO: "说明",
+        }
+        lines.append("")
+        for item in self.issues:
+            lines.append(
+                f"[{labels.get(item.severity, '说明')}] {item.message}"
+            )
         return "\n".join(lines)
 
 def _clean_text(value):
@@ -2176,12 +2228,20 @@ def preflight_survey_result_import(
             if current_scope is None:
                 _append(
                     issues,
-                    SEVERITY_WARNING,
+                    (
+                        SEVERITY_INFO
+                        if authority_ok
+                        else SEVERITY_WARNING
+                    ),
                     "SOURCE_SCOPE_CURRENT_MASTER_MISSING",
                     (
-                        "该历史任务分管范围当前已不在"
-                        "CanalManagementScope 主数据中；"
-                        "仍以原始下发冻结快照作为历史真值。"
+                        "任务下发后，这条分管范围在当前基础资料中已不存在。"
+                        "系统已按任务下发时保存的范围完成核验，"
+                        "不影响本次历史成果导入。"
+                        if authority_ok
+                        else
+                        "当前基础资料中已找不到这条分管范围，"
+                        "且任务来源核验未完全通过，请先检查任务和分管范围。"
                     ),
                     entity_uid=scope_uid,
                 )
@@ -2199,11 +2259,20 @@ def preflight_survey_result_import(
             ):
                 _append(
                     issues,
-                    SEVERITY_WARNING,
+                    (
+                        SEVERITY_INFO
+                        if authority_ok
+                        else SEVERITY_WARNING
+                    ),
                     "SOURCE_SCOPE_CURRENT_MASTER_CHANGED",
                     (
-                        "该分管范围当前主数据与下发时冻结快照"
-                        "已经不同；历史成果仍按原始下发事实校验。"
+                        "这条分管范围在任务下发后已经调整。"
+                        "系统已按任务下发时保存的范围完成核验，"
+                        "不影响本次历史成果导入。"
+                        if authority_ok
+                        else
+                        "这条分管范围与任务下发时的范围不同，"
+                        "且任务来源核验未完全通过，请先确认后再导入。"
                     ),
                     entity_uid=scope_uid,
                 )
@@ -2214,8 +2283,8 @@ def preflight_survey_result_import(
                 SEVERITY_INFO,
                 "AGGREGATE_SUBMISSION_AUTHORITY_VERIFIED",
                 (
-                    "已按处级父任务冻结范围核验逐级汇总成果；"
-                    "调查记录仍保留原始 source_task_uid。"
+                    "处级汇总成果已按上级下发的任务范围核验通过；"
+                    "各调查记录的原始来源保持不变。"
                 ),
                 entity_uid=(
                     submission_task_uid
@@ -2229,8 +2298,9 @@ def preflight_survey_result_import(
                 SEVERITY_INFO,
                 "SOURCE_TASK_PROVENANCE_VERIFIED",
                 (
-                    "已按上级端原始下发冻结历史核验 "
-                    f"{len(verified_pairs)} 个任务/分管范围来源组合。"
+                    "成果来源任务已核验，"
+                    f"共确认 {len(verified_pairs)} 组任务与分管范围，"
+                    "调查记录均在任务授权范围内。"
                 ),
             )
 

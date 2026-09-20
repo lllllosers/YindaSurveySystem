@@ -101,6 +101,46 @@ class SurveyTaskPackageInspection:
         return "\n".join(lines)
 
 
+    def format_user_text(self):
+        lines = [
+            f"任务包：{self.package_path.name}",
+            f"检查结果：{self.error_count} 个必须处理的问题",
+        ]
+        if self.task:
+            name = self.task.get("task_name")
+            if name:
+                lines.append(f"任务名称：{name}")
+            assignment = self.task.get("assignment")
+            if isinstance(assignment, dict):
+                org = assignment.get("organization_name")
+                if org:
+                    lines.append(f"管理单位：{org}")
+            scope = self.task.get("scope")
+            if isinstance(scope, dict):
+                count = scope.get("selected_management_scope_count")
+                if count is not None:
+                    lines.append(f"分管范围：{count} 项")
+
+        if not self.issues:
+            lines.append("任务包内容完整，可以继续使用。")
+            return "\n".join(lines)
+
+        messages = []
+        for issue in self.issues:
+            code = str(issue.code or "")
+            if "SCHEMA" in code:
+                message = "任务包版本与当前软件不兼容，请使用当前版本重新生成任务包。"
+            elif code.startswith("REFERENCE_") or code.startswith("TASK_"):
+                message = "任务包中的任务或基础资料信息不完整，请由上级重新生成任务包。"
+            else:
+                message = "任务包内容不完整或文件已损坏，请重新获取任务包。"
+            if message not in messages:
+                messages.append(message)
+
+        lines.append("")
+        lines.extend(f"[需处理] {m}" for m in messages)
+        return "\n".join(lines)
+
 def _inspection(
     package_path,
     manifest,

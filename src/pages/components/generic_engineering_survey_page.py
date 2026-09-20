@@ -490,13 +490,60 @@ class GenericEngineeringSurveyPage(QWidget):
             self._entry_task_workspace
         )
 
+        target_unit_type = (
+            str(
+                task_workspace.get(
+                    "target_unit_type"
+                )
+                or "water_office"
+            ).strip()
+            if task_workspace
+            else ""
+        )
+
+        # A water-office task remains restricted to its one target office.
         allowed_office_id = (
             int(
                 task_workspace[
                     "organization_unit_id"
                 ]
             )
-            if task_workspace
+            if (
+                task_workspace
+                and target_unit_type
+                == "water_office"
+            )
+            else None
+        )
+
+        # A department parent task may choose only offices that actually
+        # own one or more frozen scopes in the received parent task.
+        allowed_office_uids = (
+            {
+                str(
+                    scope.get(
+                        "organization_unit_uid"
+                    )
+                    or ""
+                ).strip()
+                for scope in (
+                    task_workspace.get(
+                        "management_scopes"
+                    )
+                    or ()
+                )
+                if str(
+                    scope.get(
+                        "organization_unit_uid"
+                    )
+                    or ""
+                ).strip()
+            }
+            if (
+                task_workspace
+                and target_unit_type
+                == "department"
+            )
             else None
         )
 
@@ -504,9 +551,18 @@ class GenericEngineeringSurveyPage(QWidget):
             department_data["id"]
         )
 
-        for office in offices:
+        for raw_office in offices:
+            office = dict(raw_office)
+
             if office["status"] != "active":
                 continue
+
+            office_uid = str(
+                office.get(
+                    "organization_unit_uid"
+                )
+                or ""
+            ).strip()
 
             if (
                 allowed_office_id
@@ -515,6 +571,17 @@ class GenericEngineeringSurveyPage(QWidget):
                     office["id"]
                 )
                 != allowed_office_id
+            ):
+                continue
+
+            if (
+                allowed_office_uids
+                is not None
+                and (
+                    not office_uid
+                    or office_uid
+                    not in allowed_office_uids
+                )
             ):
                 continue
 
@@ -527,12 +594,70 @@ class GenericEngineeringSurveyPage(QWidget):
                             "business_code"
                         ]
                     ),
+                    "organization_unit_uid": (
+                        office_uid
+                    ),
                 },
             )
 
         self.office_combo.blockSignals(False)
 
         self.office_changed()
+
+
+    def _task_scope_matches_selected_office(
+        self,
+        scope,
+    ):
+        """
+        Check whether a frozen task scope belongs to the currently
+        selected water office.
+
+        Department parent tasks fail closed when owner UID is missing.
+        Legacy/direct water-office tasks keep the previous single-office
+        compatibility behavior.
+        """
+        task_workspace = self._entry_task_workspace
+
+        if not task_workspace:
+            return True
+
+        office_data = self.office_combo.currentData()
+
+        if not isinstance(office_data, dict):
+            return False
+
+        selected_office_uid = str(
+            office_data.get(
+                "organization_unit_uid"
+            )
+            or ""
+        ).strip()
+
+        scope_office_uid = str(
+            scope.get(
+                "organization_unit_uid"
+            )
+            or ""
+        ).strip()
+
+        target_unit_type = str(
+            task_workspace.get(
+                "target_unit_type"
+            )
+            or "water_office"
+        ).strip()
+
+        if selected_office_uid and scope_office_uid:
+            return (
+                selected_office_uid
+                == scope_office_uid
+            )
+
+        if target_unit_type == "department":
+            return False
+
+        return True
 
 
     def office_changed(
@@ -571,6 +696,13 @@ class GenericEngineeringSurveyPage(QWidget):
                 )
                 or ()
             ):
+                if not (
+                    self._task_scope_matches_selected_office(
+                        scope
+                    )
+                ):
+                    continue
+
                 canal_id = int(
                     scope[
                         "canal_unit_id"
@@ -733,6 +865,13 @@ class GenericEngineeringSurveyPage(QWidget):
                 )
                 or ()
             ):
+                if not (
+                    self._task_scope_matches_selected_office(
+                        scope
+                    )
+                ):
+                    continue
+
                 if (
                     int(
                         scope[
@@ -1114,7 +1253,7 @@ class GenericEngineeringSurveyPage(QWidget):
 
             if not management_scope_uid:
                 raise ValueError(
-                    "任务分管范围缺少稳定 UID。"
+                    "当前任务的分管范围信息不完整，请重新接收任务包后再试。"
                 )
 
         business_code = (
@@ -1450,7 +1589,7 @@ class GenericEngineeringSurveyPage(QWidget):
                     raise ValueError("当前页面保存失败，" "因此没有执行完成调查。")
 
             if self.editing_record_id is None:
-                raise ValueError("没有有效的调查记录ID。")
+                raise ValueError("当前调查记录信息无效，请返回列表后重新打开。")
 
             # _save_current_record() 对新记录
             # 建立draft后，页面内容没有变化；
@@ -1914,8 +2053,6 @@ class GenericEngineeringSurveyPage(QWidget):
         success_box.setText(
             (
                 "当前工程调查已标记为已完成。\n\n"
-                f"调查记录ID："
-                f"{result['survey_record_id']}\n"
                 f"已填写分项评价："
                 f"{result['inspection_count']} 项\n\n"
                 "请选择下一步操作。"

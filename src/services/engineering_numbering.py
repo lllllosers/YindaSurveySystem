@@ -51,6 +51,21 @@ class EngineeringNumberingPreview:
         return "\n".join(lines)
 
 
+    def format_user_text(self):
+        lines = [
+            f"参与整理工程：{self.total_assets}",
+            f"编号分组：{self.group_count}",
+            f"预计编号变化：{self.changed_code_count}",
+            f"正式编号转回暂编：{self.final_to_provisional_count}",
+        ]
+        if not self.issues:
+            lines.append("未发现需要先处理的编号问题。")
+        else:
+            lines.append("")
+            lines.append("请先处理以下问题：")
+            lines.extend(f"• {issue.message}" for issue in self.issues)
+        return "\n".join(lines)
+
 @dataclass(frozen=True)
 class EngineeringNumberingResult:
     project_id: int

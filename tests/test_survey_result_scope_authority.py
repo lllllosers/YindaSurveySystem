@@ -26,7 +26,7 @@ from services.application_bootstrap import (
     initialize_application_database,
 )
 from services.survey_result_import_preflight import (
-    SEVERITY_WARNING,
+    SEVERITY_INFO,
     preflight_survey_result_import,
 )
 from services.survey_result_package import (
@@ -719,7 +719,7 @@ class SurveyResultScopeAuthorityTestCase(
             codes,
         )
 
-    def test_current_scope_change_is_warning_only(
+    def test_verified_current_scope_change_is_info_only(
         self,
     ):
         self._seed_matching_issue_history()
@@ -749,16 +749,16 @@ class SurveyResultScopeAuthorityTestCase(
             report.format_text(),
         )
 
-        warning_codes = {
+        info_codes = {
             item.code
             for item in report.issues
             if item.severity
-            == SEVERITY_WARNING
+            == SEVERITY_INFO
         }
 
         self.assertIn(
             "SOURCE_SCOPE_CURRENT_MASTER_CHANGED",
-            warning_codes,
+            info_codes,
         )
 
 

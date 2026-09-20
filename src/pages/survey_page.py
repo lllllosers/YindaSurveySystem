@@ -30,8 +30,6 @@ from pages.components.generic_engineering_survey_page import (
 
 
 class SurveyPage(QWidget):
-    return_to_module_requested = Signal(str)
-
     """
     调查录入模块。
 
@@ -52,6 +50,8 @@ class SurveyPage(QWidget):
     中的正式定义生成，SurveyPage 不再维护
     第二套表单注册或专属列表页类型。
     """
+
+    return_to_module_requested = Signal(str)
 
     def __init__(
         self,
