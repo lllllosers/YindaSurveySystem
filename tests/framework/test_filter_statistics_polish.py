@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -15,14 +16,28 @@ class FilterStatisticsPolishContractTestCase(unittest.TestCase):
         source = self._read(
             "src/pages/components/engineering_survey_list_page.py"
         )
-        for fragment in (
-            'setObjectName("filterCard")',
-            'setObjectName("filterTitle")',
-            'setObjectName("filterRowLabel")',
-            "filter_action_row = QHBoxLayout()",
-            'self.count_label.setObjectName("summaryLabel")',
+
+        for object_name in (
+            "filterCard",
+            "filterTitle",
+            "filterRowLabel",
+            "summaryLabel",
         ):
-            self.assertIn(fragment, source)
+            self.assertRegex(
+                source,
+                (
+                    r"setObjectName\(\s*"
+                    + re.escape(
+                        f'\"{object_name}\"'
+                    )
+                    + r"\s*\)"
+                ),
+            )
+
+        self.assertIn(
+            "filter_action_row = QHBoxLayout()",
+            source,
+        )
 
     def test_data_query_uses_filter_card(self):
         source = self._read("src/pages/data_query_page.py")

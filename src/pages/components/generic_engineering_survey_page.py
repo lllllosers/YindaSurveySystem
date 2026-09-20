@@ -11,6 +11,7 @@ from PySide6.QtGui import (
 )
 
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -228,7 +229,21 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.scroll_area.setWidgetResizable(True)
 
+        # 不允许表单内容的 sizeHint 反向把主窗口撑宽。
+        # 宽度不足时由滚动区域自身处理，而不是改变顶层窗口尺寸。
+        self.scroll_area.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.scroll_area.setMinimumWidth(0)
+
         self.form_container = QWidget()
+        self.form_container.setMinimumWidth(0)
 
         self.form_layout = QVBoxLayout(self.form_container)
 
@@ -966,7 +981,8 @@ class GenericEngineeringSurveyPage(QWidget):
                 raise ValueError("当前水管所没有业务代码。")
 
             existing_codes = get_engineering_business_codes(
-                self.current_context["project_id"]
+                self.current_context["project_id"],
+                canal_unit_id=int(canal_data["id"]),
             )
 
             sequence = suggest_next_sequence(

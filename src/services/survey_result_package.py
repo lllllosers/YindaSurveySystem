@@ -29,9 +29,10 @@ SURVEY_RESULT_EXTENSION = (
     ".ydresult"
 )
 
-RESULT_SCHEMA_VERSION = "2.1"
+RESULT_SCHEMA_VERSION = "2.2"
 SUPPORTED_RESULT_SCHEMA_VERSIONS = (
     "2.0",
+    "2.1",
     RESULT_SCHEMA_VERSION,
 )
 
@@ -318,7 +319,8 @@ def _load_export_context(
                     sr.record_data_json,
                     sr.void_reason,
                     sr.created_at,
-                    sr.updated_at
+                    sr.updated_at,
+                    sr.revision_no
                 FROM survey_records AS sr
                 JOIN projects AS p
                   ON p.id = sr.project_id
@@ -423,7 +425,8 @@ def _load_export_context(
                         ea.status,
                         ea.notes,
                         ea.created_at,
-                        ea.updated_at
+                        ea.updated_at,
+                        ea.revision_no
                     FROM engineering_assets AS ea
                     JOIN projects AS p
                       ON p.id = ea.project_id
@@ -1050,6 +1053,10 @@ def _serialize_assets(
                 "updated_at": (
                     row["updated_at"]
                 ),
+                "revision_no": int(
+                    row["revision_no"]
+                    or 1
+                ),
             }
         )
 
@@ -1213,6 +1220,10 @@ def _serialize_records(
                 ),
                 "updated_at": (
                     row["updated_at"]
+                ),
+                "revision_no": int(
+                    row["revision_no"]
+                    or 1
                 ),
             }
         )

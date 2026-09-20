@@ -5,6 +5,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -23,6 +24,16 @@ from forms.engineering.registry import (
 
 from pages.engineering_asset_detail_dialog import (
     EngineeringAssetDetailDialog,
+)
+
+from services.engineering_numbering import (
+    preview_engineering_business_code_renumber,
+    renumber_engineering_business_codes,
+)
+
+from services.engineering_numbering_finalization import (
+    finalize_engineering_business_codes,
+    preview_engineering_numbering_finalization,
 )
 
 class EngineeringAssetPage(QWidget):
@@ -76,6 +87,27 @@ class EngineeringAssetPage(QWidget):
             self.open_current_survey
         )
 
+        self.renumber_button = QPushButton(
+            "整理业务编号"
+        )
+        self.renumber_button.setToolTip(
+            "按具体渠系和工程类型分组，"
+            "按桩号从上游到下游重新整理三位顺序号。"
+        )
+        self.renumber_button.clicked.connect(
+            self.renumber_business_codes
+        )
+
+        self.finalize_number_button = QPushButton(
+            "锁定正式编号"
+        )
+        self.finalize_number_button.setToolTip(
+            "重新按桩号核验并排序后，将当前调查批次编号锁定为正式编号。"
+        )
+        self.finalize_number_button.clicked.connect(
+            self.finalize_business_codes
+        )
+
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
@@ -84,6 +116,12 @@ class EngineeringAssetPage(QWidget):
         top_layout.addWidget(self.detail_button)
         top_layout.addWidget(
             self.open_survey_button
+        )
+        top_layout.addWidget(
+            self.renumber_button
+        )
+        top_layout.addWidget(
+            self.finalize_number_button
         )
         top_layout.addWidget(refresh_button)
 
@@ -103,7 +141,7 @@ class EngineeringAssetPage(QWidget):
             self.update_action_buttons
         )
 
-        self.table.setColumnCount(12)
+        self.table.setColumnCount(13)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -119,6 +157,7 @@ class EngineeringAssetPage(QWidget):
                 "工程状况类别",
                 "调查时间",
                 "工程状态",
+                "编号状态",
             ]
         )
 
@@ -142,6 +181,7 @@ class EngineeringAssetPage(QWidget):
         self.table.setColumnWidth(9, 110)
         self.table.setColumnWidth(10, 120)
         self.table.setColumnWidth(11, 100)
+        self.table.setColumnWidth(12, 100)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         layout.addWidget(
@@ -222,6 +262,24 @@ class EngineeringAssetPage(QWidget):
                 overall_grade_value,
                 survey_date_value,
                 asset_status_text,
+                {
+                    "provisional": "暂编",
+                    "final": "正式",
+                }.get(
+                    (
+                        asset["code_status"]
+                        if "code_status" in asset.keys()
+                        else ""
+                    ),
+                    str(
+                        (
+                            asset["code_status"]
+                            if "code_status" in asset.keys()
+                            else ""
+                        )
+                        or ""
+                    ),
+                ),
             ]
 
             for column, value in enumerate(values):
@@ -247,10 +305,226 @@ class EngineeringAssetPage(QWidget):
                     item,
                 )
 
+        provisional_count = sum(
+            1
+            for asset in assets
+            if (
+                asset["code_status"]
+                if "code_status" in asset.keys()
+                else ""
+            )
+            != "final"
+        )
+        final_count = len(assets) - provisional_count
+
         self.count_label.setText(
-            f"当前工程台账共 {len(assets)} 个工程对象"
+            f"当前工程台账共 {len(assets)} 个工程对象；"
+            f"暂编 {provisional_count}，正式 {final_count}"
         )
         self.update_action_buttons()
+
+    def renumber_business_codes(self):
+        context = self.current_context
+
+        if (
+            not context
+            or context.get("project_id") is None
+            or context.get("batch_id") is None
+        ):
+            QMessageBox.information(
+                self,
+                "无法整理业务编号",
+                "当前没有可用项目或调查批次。",
+            )
+            return
+
+        try:
+            preview = preview_engineering_business_code_renumber(
+                project_id=context["project_id"],
+                survey_batch_id=context["batch_id"],
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "编号预检失败", str(error))
+            return
+
+        if not preview.can_apply:
+            QMessageBox.warning(
+                self,
+                "暂不能整理业务编号",
+                preview.format_text(),
+            )
+            return
+
+        if preview.total_assets == 0:
+            QMessageBox.information(
+                self,
+                "无需整理",
+                "当前调查批次没有可参与业务编号整理的工程记录。",
+            )
+            return
+
+        reopen_text = ""
+        if preview.final_to_provisional_count > 0:
+            reopen_text = (
+                "\n\n其中有 "
+                f"{preview.final_to_provisional_count} 个工程当前标记为正式编号；"
+                "本次重新整理会将其重新置为“暂编”。"
+            )
+
+        reply = QMessageBox.question(
+            self,
+            "确认整理业务编号",
+            (
+                "系统将按具体渠系 + 工程类型分组，"
+                "按桩号从上游到下游重新生成三位顺序号。\n\n"
+                f"参与工程：{preview.total_assets}\n"
+                f"编号分组：{preview.group_count}\n"
+                f"预计编号变化：{preview.changed_code_count}"
+                f"{reopen_text}\n\n"
+                "本操作只整理编号，不增加调查业务 revision；"
+                "同一批次 SurveyRecord 编号会同步更新。\n"
+                "整理后仍为“暂编”，后续补录工程可以再次执行。"
+            ),
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = renumber_engineering_business_codes(
+                project_id=context["project_id"],
+                survey_batch_id=context["batch_id"],
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "业务编号整理失败", str(error))
+            return
+
+        self.load_data()
+        QMessageBox.information(
+            self,
+            "业务编号整理完成",
+            (
+                f"参与工程：{result.total_assets}\n"
+                f"编号分组：{result.group_count}\n"
+                f"实际编号变化：{result.changed_code_count}\n"
+                f"同步调查记录：{result.synchronized_record_count}\n\n"
+                "当前编号状态为“暂编”，后续新增工程后可以再次整理。"
+            ),
+        )
+
+
+    def finalize_business_codes(self):
+        context = self.current_context
+
+        if (
+            not context
+            or context.get("project_id") is None
+            or context.get("batch_id") is None
+        ):
+            QMessageBox.information(
+                self,
+                "无法锁定正式编号",
+                "当前没有可用项目或调查批次。",
+            )
+            return
+
+        try:
+            preview = preview_engineering_numbering_finalization(
+                project_id=context["project_id"],
+                survey_batch_id=context["batch_id"],
+            )
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "正式锁号预检失败",
+                str(error),
+            )
+            return
+
+        if not preview.can_finalize:
+            QMessageBox.warning(
+                self,
+                "暂不能锁定正式编号",
+                preview.format_text(),
+            )
+            return
+
+        if preview.total_assets == 0:
+            QMessageBox.information(
+                self,
+                "无需锁号",
+                "当前调查批次没有可参与正式锁号的工程记录。",
+            )
+            return
+
+        warning_text = ""
+        if preview.has_warnings:
+            warning_text = (
+                "\n\n需要人工核验的提示：\n"
+                + "\n".join(
+                    f"• {issue.message}"
+                    for issue in preview.warnings[:12]
+                )
+            )
+            if len(preview.warnings) > 12:
+                warning_text += (
+                    "\n• ……其余提示请以预检结果为准。"
+                )
+
+        reply = QMessageBox.question(
+            self,
+            "确认锁定正式编号",
+            (
+                "系统会在同一事务内再次按桩号从上游到下游排序，"
+                "然后将当前调查批次参与工程的编号状态设为“正式”。\n\n"
+                f"参与工程：{preview.total_assets}\n"
+                f"编号分组：{preview.group_count}\n"
+                f"预计编号变化：{preview.changed_code_count}\n"
+                f"当前暂编：{preview.provisional_count}\n"
+                f"当前正式：{preview.already_final_count}"
+                f"{warning_text}\n\n"
+                "编号整理和锁号不会增加业务 revision。"
+            ),
+            (
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+            ),
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = finalize_engineering_business_codes(
+                project_id=context["project_id"],
+                survey_batch_id=context["batch_id"],
+                accept_warnings=preview.has_warnings,
+            )
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "正式锁号失败",
+                str(error),
+            )
+            return
+
+        self.load_data()
+
+        QMessageBox.information(
+            self,
+            "正式编号已锁定",
+            (
+                f"正式编号工程：{result.finalized_count}\n"
+                f"编号分组：{result.group_count}\n"
+                f"实际编号变化：{result.changed_code_count}\n"
+                f"同步调查记录：{result.synchronized_record_count}\n"
+                f"确认提示：{result.warning_count}"
+            ),
+        )
+
 
     def _selected_identity(self, row=None):
         if row is None:

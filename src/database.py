@@ -973,6 +973,209 @@ def _ensure_canal_unit_physical_schema(
         "row_count": row_count_before,
     }
 
+
+def _ensure_v102_engineering_code_scope_schema(
+    connection,
+):
+    """
+    V1.0.2 编号模型迁移。
+
+    旧模型：UNIQUE(project_id, business_code)
+
+    新模型：
+    - business_code 不再承担工程身份；
+    - 不同具体渠道允许相同五段式编号；
+    - provisional 编号允许临时重复；
+    - final 编号仅在具体渠道内唯一。
+    """
+    row = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'engineering_assets'
+        """
+    ).fetchone()
+
+    if row is None:
+        return {"rebuilt": False}
+
+    compact_sql = "".join(
+        str(row["sql"] or "").lower().split()
+    )
+
+    if "unique(project_id,business_code)" not in compact_sql:
+        return {"rebuilt": False}
+
+    columns = {
+        item["name"]
+        for item in connection.execute(
+            "PRAGMA table_info(engineering_assets)"
+        ).fetchall()
+    }
+
+    def source(column_name, fallback_sql):
+        return column_name if column_name in columns else fallback_sql
+
+    if connection.in_transaction:
+        connection.commit()
+
+    original_foreign_keys = int(
+        connection.execute("PRAGMA foreign_keys").fetchone()[0]
+    )
+    connection.execute("PRAGMA foreign_keys = OFF")
+
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "DROP TABLE IF EXISTS engineering_assets__code_scope_v102"
+        )
+        connection.execute(
+            """
+            CREATE TABLE engineering_assets__code_scope_v102 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                asset_name TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                organization_unit_id INTEGER NOT NULL,
+                canal_unit_id INTEGER NOT NULL,
+                business_code TEXT NOT NULL,
+                code_scheme_version TEXT NOT NULL DEFAULT 'V1',
+                single_stake_text TEXT,
+                single_stake_value REAL,
+                start_stake_text TEXT,
+                start_stake_value REAL,
+                end_stake_text TEXT,
+                end_stake_value REAL,
+                first_survey_batch_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','inactive','retired')),
+                notes TEXT,
+                created_at TEXT NOT NULL
+                    DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL
+                    DEFAULT (datetime('now','localtime')),
+                engineering_asset_uid TEXT,
+                revision_no INTEGER NOT NULL DEFAULT 1
+                    CHECK (revision_no >= 1),
+                source_revision_no INTEGER NOT NULL DEFAULT 0
+                    CHECK (source_revision_no >= 0),
+                code_status TEXT NOT NULL DEFAULT 'final'
+                    CHECK (code_status IN ('provisional','final')),
+                FOREIGN KEY (project_id) REFERENCES projects(id),
+                FOREIGN KEY (organization_unit_id)
+                    REFERENCES organization_units(id),
+                FOREIGN KEY (canal_unit_id) REFERENCES canal_units(id),
+                FOREIGN KEY (first_survey_batch_id)
+                    REFERENCES survey_batches(id)
+            )
+            """
+        )
+
+        before_count = int(
+            connection.execute(
+                "SELECT COUNT(*) AS value FROM engineering_assets"
+            ).fetchone()["value"]
+        )
+
+        connection.execute(
+            f"""
+            INSERT INTO engineering_assets__code_scope_v102 (
+                id,
+                project_id,
+                asset_name,
+                asset_type,
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                code_scheme_version,
+                single_stake_text,
+                single_stake_value,
+                start_stake_text,
+                start_stake_value,
+                end_stake_text,
+                end_stake_value,
+                first_survey_batch_id,
+                status,
+                notes,
+                created_at,
+                updated_at,
+                engineering_asset_uid,
+                revision_no,
+                source_revision_no,
+                code_status
+            )
+            SELECT
+                id,
+                project_id,
+                asset_name,
+                asset_type,
+                organization_unit_id,
+                canal_unit_id,
+                business_code,
+                code_scheme_version,
+                single_stake_text,
+                single_stake_value,
+                start_stake_text,
+                start_stake_value,
+                end_stake_text,
+                end_stake_value,
+                first_survey_batch_id,
+                status,
+                notes,
+                created_at,
+                updated_at,
+                {source('engineering_asset_uid', 'NULL')},
+                {source('revision_no', '1')},
+                {source('source_revision_no', '0')},
+                {source('code_status', "'final'")}
+            FROM engineering_assets
+            ORDER BY id
+            """
+        )
+
+        after_count = int(
+            connection.execute(
+                "SELECT COUNT(*) AS value "
+                "FROM engineering_assets__code_scope_v102"
+            ).fetchone()["value"]
+        )
+        if after_count != before_count:
+            raise RuntimeError(
+                "engineering_assets 编号作用域迁移复制行数不一致。"
+            )
+
+        connection.execute("DROP TABLE engineering_assets")
+        connection.execute(
+            "ALTER TABLE engineering_assets__code_scope_v102 "
+            "RENAME TO engineering_assets"
+        )
+        connection.commit()
+
+    except Exception:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+
+    finally:
+        connection.execute(
+            "PRAGMA foreign_keys = ON"
+            if original_foreign_keys
+            else "PRAGMA foreign_keys = OFF"
+        )
+
+    if original_foreign_keys:
+        problems = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if problems:
+            preview = "; ".join(str(tuple(item)) for item in problems[:5])
+            raise RuntimeError(
+                "engineering_assets 编号作用域迁移后外键检查失败："
+                f"{preview}"
+            )
+
+    return {"rebuilt": True, "row_count": before_count}
+
+
 def _ensure_survey_record_provenance_schema(
     connection,
 ):
@@ -1056,6 +1259,168 @@ def _ensure_survey_record_signature_schema(
             "ALTER TABLE survey_records "
             f"ADD COLUMN {column_name} TEXT"
         )
+
+
+
+def _ensure_v102_production_feedback_schema(
+    connection,
+):
+    """
+    V1.0.2 生产反馈基础字段。
+
+    revision_no:
+        当前本地实体内容版本，内容修改时递增。
+
+    source_revision_no:
+        最近一次从成果包接收的下级版本。
+        上级本地修改只递增 revision_no，
+        不修改 source_revision_no，
+        后续用于识别“仅下级更新 / 上下级双方均修改”。
+
+    code_status:
+        工程业务编号状态。
+        既有 V1.0.1 数据迁移后视为 final；
+        后续新增工程将在编号重构阶段改为 provisional。
+    """
+    asset_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(engineering_assets)"
+        ).fetchall()
+    }
+
+    if "revision_no" not in asset_columns:
+        connection.execute(
+            """
+            ALTER TABLE engineering_assets
+            ADD COLUMN revision_no INTEGER
+            NOT NULL DEFAULT 1
+            CHECK (revision_no >= 1)
+            """
+        )
+
+    if "source_revision_no" not in asset_columns:
+        connection.execute(
+            """
+            ALTER TABLE engineering_assets
+            ADD COLUMN source_revision_no INTEGER
+            NOT NULL DEFAULT 0
+            CHECK (source_revision_no >= 0)
+            """
+        )
+
+    if "code_status" not in asset_columns:
+        connection.execute(
+            """
+            ALTER TABLE engineering_assets
+            ADD COLUMN code_status TEXT
+            NOT NULL DEFAULT 'final'
+            CHECK (
+                code_status IN (
+                    'provisional',
+                    'final'
+                )
+            )
+            """
+        )
+
+    record_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(survey_records)"
+        ).fetchall()
+    }
+
+    if "revision_no" not in record_columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN revision_no INTEGER
+            NOT NULL DEFAULT 1
+            CHECK (revision_no >= 1)
+            """
+        )
+
+    if "source_revision_no" not in record_columns:
+        connection.execute(
+            """
+            ALTER TABLE survey_records
+            ADD COLUMN source_revision_no INTEGER
+            NOT NULL DEFAULT 0
+            CHECK (source_revision_no >= 0)
+            """
+        )
+
+    # V1.0.1 以前已经由成果包导入的记录没有来源版本字段。
+    # 升级时把其当前内容视为“已接收 revision 1”基线。
+    connection.execute(
+        """
+        UPDATE survey_records
+        SET source_revision_no = revision_no
+        WHERE source_revision_no = 0
+          AND source_task_uid IS NOT NULL
+          AND trim(source_task_uid) <> ''
+        """
+    )
+
+    # 与既有下级成果记录关联的工程对象同样建立来源版本基线。
+    # 某些历史数据库的 survey_records 只有极简旧字段；
+    # engineering_asset_id 尚不存在时必须跳过关联回填，
+    # 不能让 V1.0.2 新迁移阻断更早版本的安全升级路径。
+    if "engineering_asset_id" in record_columns:
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET source_revision_no = revision_no
+            WHERE source_revision_no = 0
+              AND EXISTS (
+                  SELECT 1
+                  FROM survey_records AS sr
+                  WHERE sr.engineering_asset_id
+                        = engineering_assets.id
+                    AND sr.source_task_uid IS NOT NULL
+                    AND trim(sr.source_task_uid) <> ''
+              )
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_engineering_assets_code_status
+        ON engineering_assets (
+            project_id,
+            canal_unit_id,
+            code_status,
+            id
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_survey_records_revision
+        ON survey_records (
+            survey_record_uid,
+            revision_no,
+            source_revision_no
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            uq_engineering_assets_final_business_code_scope
+        ON engineering_assets (
+            project_id,
+            canal_unit_id,
+            business_code
+        )
+        WHERE code_status = 'final'
+        """
+    )
 
 
 def init_database():
@@ -1302,11 +1667,6 @@ def init_database():
                 updated_at TEXT NOT NULL
                     DEFAULT (datetime('now', 'localtime')),
 
-                UNIQUE (
-                    project_id,
-                    business_code
-                ),
-
                 FOREIGN KEY (project_id)
                     REFERENCES projects(id),
 
@@ -1513,6 +1873,10 @@ def init_database():
             connection
         )
 
+        _ensure_v102_engineering_code_scope_schema(
+            connection
+        )
+
         _ensure_survey_record_provenance_schema(
             connection
         )
@@ -1522,6 +1886,10 @@ def init_database():
         )
 
         _ensure_stable_identity_schema(connection)
+
+        _ensure_v102_production_feedback_schema(
+            connection
+        )
 
         _ensure_official_master_data_schema(connection)
 
@@ -3166,22 +3534,43 @@ def delete_canal_unit(
 
 def get_engineering_business_codes(
     project_id,
+    canal_unit_id=None,
 ):
     """
-    获取当前项目已经使用的工程业务编号。
+    获取工程业务编号。
+
+    正式调查页面传入具体 canal_unit_id，
+    使不同物理渠道各自从 001 开始暂编。
+    canal_unit_id 为空时保留旧调用语义。
     """
     with get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT business_code
-            FROM engineering_assets
-            WHERE project_id = ?
-            ORDER BY id
-            """,
-            (project_id,),
-        ).fetchall()
+        if canal_unit_id is None:
+            rows = connection.execute(
+                """
+                SELECT business_code
+                FROM engineering_assets
+                WHERE project_id = ?
+                ORDER BY id
+                """,
+                (project_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT business_code
+                FROM engineering_assets
+                WHERE project_id = ?
+                  AND canal_unit_id = ?
+                ORDER BY id
+                """,
+                (project_id, canal_unit_id),
+            ).fetchall()
 
-        return [row["business_code"] for row in rows if row["business_code"]]
+        return [
+            row["business_code"]
+            for row in rows
+            if row["business_code"]
+        ]
 
 
 def get_current_form_version(
@@ -3803,6 +4192,15 @@ def create_engineering_survey(
             asset_cursor.lastrowid
         )
 
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET code_status = 'provisional'
+            WHERE id = ?
+            """,
+            (engineering_asset_id,),
+        )
+
         record_cursor = connection.execute(
             """
             INSERT INTO survey_records (
@@ -4108,6 +4506,15 @@ def create_range_engineering_survey(
 
         engineering_asset_id = (
             asset_cursor.lastrowid
+        )
+
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET code_status = 'provisional'
+            WHERE id = ?
+            """,
+            (engineering_asset_id,),
         )
 
         record_cursor = connection.execute(
@@ -4853,13 +5260,34 @@ def update_point_engineering_survey(
 
         engineering_asset_id = record["engineering_asset_id"]
 
+        current_asset = connection.execute(
+            """
+            SELECT single_stake_value, code_status
+            FROM engineering_assets
+            WHERE id = ?
+            """,
+            (engineering_asset_id,),
+        ).fetchone()
+
+        point_position_changed = (
+            current_asset is None
+            or current_asset["single_stake_value"] != single_stake_value
+        )
+        next_code_status = (
+            "provisional"
+            if point_position_changed
+            else (current_asset["code_status"] or "provisional")
+        )
+
         connection.execute(
             """
             UPDATE engineering_assets
             SET
                 asset_name = ?,
+                code_status = ?,
                 single_stake_text = ?,
                 single_stake_value = ?,
+                revision_no = revision_no + 1,
                 updated_at = datetime(
                     'now',
                     'localtime'
@@ -4868,6 +5296,7 @@ def update_point_engineering_survey(
             """,
             (
                 asset_name.strip(),
+                next_code_status,
                 single_stake_text,
                 single_stake_value,
                 engineering_asset_id,
@@ -4886,6 +5315,7 @@ def update_point_engineering_survey(
                 engineering_section_chief_signature = ?,
                 department_head_signature = ?,
                 record_data_json = ?,
+                revision_no = revision_no + 1,
                 updated_at = datetime(
                     'now',
                     'localtime'
@@ -5250,6 +5680,26 @@ def update_range_engineering_survey(
 
         engineering_asset_id = record["engineering_asset_id"]
 
+        current_asset = connection.execute(
+            """
+            SELECT start_stake_value, end_stake_value, code_status
+            FROM engineering_assets
+            WHERE id = ?
+            """,
+            (engineering_asset_id,),
+        ).fetchone()
+
+        range_position_changed = (
+            current_asset is None
+            or current_asset["start_stake_value"] != start_stake_value
+            or current_asset["end_stake_value"] != end_stake_value
+        )
+        next_code_status = (
+            "provisional"
+            if range_position_changed
+            else (current_asset["code_status"] or "provisional")
+        )
+
         # =====================================================
         # EngineeringAsset
         # =====================================================
@@ -5259,6 +5709,7 @@ def update_range_engineering_survey(
             UPDATE engineering_assets
             SET
                 asset_name = ?,
+                code_status = ?,
 
                 organization_unit_id = ?,
                 canal_unit_id = ?,
@@ -5272,6 +5723,7 @@ def update_range_engineering_survey(
                 end_stake_text = ?,
                 end_stake_value = ?,
 
+                revision_no = revision_no + 1,
                 updated_at = datetime(
                     'now',
                     'localtime'
@@ -5281,6 +5733,7 @@ def update_range_engineering_survey(
             """,
             (
                 asset_name.strip(),
+                next_code_status,
                 target_organization_unit_id,
                 target_canal_unit_id,
                 target_business_code,
@@ -5313,6 +5766,7 @@ def update_range_engineering_survey(
                 department_head_signature = ?,
                 record_data_json = ?,
 
+                revision_no = revision_no + 1,
                 updated_at = datetime(
                     'now',
                     'localtime'
@@ -5368,6 +5822,7 @@ def get_engineering_assets(
             SELECT
                 ea.id AS engineering_asset_id,
                 ea.business_code,
+                ea.code_status,
                 ea.asset_name,
                 ea.asset_type,
 

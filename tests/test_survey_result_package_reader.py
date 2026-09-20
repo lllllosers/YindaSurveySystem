@@ -332,7 +332,7 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
         )
         self.assertEqual(
             loaded.result["result_schema_version"],
-            "2.1",
+            "2.2",
         )
         self.assertEqual(
             loaded.survey_records[0][

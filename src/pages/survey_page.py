@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -79,6 +80,20 @@ class SurveyPage(QWidget):
         )
 
         self.stack = QStackedWidget()
+
+        # QStackedWidget 默认会把全部隐藏子页的 sizeHint
+        # 一并参与父布局计算。调查录入模块会预注册附表2.1～2.14，
+        # 某张较宽的表单因此可能在进入本模块时把主窗口横向撑大。
+        #
+        # 水平方向使用 Ignored：
+        # - 保持主窗口当前宽度；
+        # - 子页按现有工作区宽度布局；
+        # - 需要滚动的内容交给各子页自己的 QScrollArea。
+        self.stack.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.stack.setMinimumWidth(0)
 
         # =====================================================
         # 两级业务导航页面

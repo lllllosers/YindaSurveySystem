@@ -26,11 +26,11 @@ from services.survey_result_package import (
 
 
 class SignatureExportContractTestCase(unittest.TestCase):
-    def test_result_schema_is_2_1_and_reader_keeps_2_0_compatibility(self):
-        self.assertEqual(RESULT_SCHEMA_VERSION, "2.1")
+    def test_result_schema_is_2_2_and_reader_keeps_2_0_2_1_compatibility(self):
+        self.assertEqual(RESULT_SCHEMA_VERSION, "2.2")
         self.assertEqual(
             SUPPORTED_RESULT_SCHEMA_VERSIONS,
-            ("2.0", "2.1"),
+            ("2.0", "2.1", "2.2"),
         )
 
     def test_all_14_original_form_signature_cells_follow_footer_contract(self):

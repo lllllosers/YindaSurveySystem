@@ -24,9 +24,13 @@ class SharedEngineeringUiContractTestCase(unittest.TestCase):
             'delete_button.setProperty("uiRole", "danger")',
             source,
         )
-        self.assertIn(
-            'search_button.setProperty("uiRole", "primary")',
+        self.assertRegex(
             source,
+            (
+                r"search_button\.setProperty\(\s*"
+                r"\"uiRole\"\s*,\s*"
+                r"\"primary\"\s*,?\s*\)"
+            ),
         )
         self.assertIn(
             '"导出正式原表"',

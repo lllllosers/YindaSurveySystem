@@ -28,9 +28,13 @@ class ControlWidthSystemContractTestCase(unittest.TestCase):
             "src/pages/components/engineering_survey_list_page.py",
         ):
             source = self._read(relative_path)
-            self.assertIn(
-                'setProperty("uiWidthRole", "filter")',
+            self.assertRegex(
                 source,
+                (
+                    r'setProperty\(\s*'
+                    r'"uiWidthRole"\s*,\s*'
+                    r'"filter"\s*,?\s*\)'
+                ),
             )
             self.assertNotIn(".setMinimumWidth(", source)
             self.assertNotIn(".setMaximumWidth(", source)

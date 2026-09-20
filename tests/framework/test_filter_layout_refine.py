@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -24,28 +25,45 @@ class FilterLayoutRefineContractTestCase(unittest.TestCase):
         source = self._read(
             "src/pages/components/engineering_survey_list_page.py"
         )
+
+        for target in (
+            "self.keyword_edit",
+            "self.department_filter",
+            "self.office_filter",
+            "self.canal_filter",
+        ):
+            self.assertRegex(
+                source,
+                (
+                    rf"{re.escape(target)}"
+                    r"\.setProperty\(\s*"
+                    r"\"uiWidthRole\"\s*,\s*"
+                    r"\"filter\"\s*,?\s*\)"
+                ),
+            )
+
+        # V1.0.2: 工程调查列表由原来的两条横向 HBox
+        # 改为响应式 Grid，避免默认窗口宽度下控件互相挤压。
+        self.assertRegex(
+            source,
+            (
+                r"range_grid\.setObjectName\(\s*"
+                r"\"filterRangeGrid\"\s*\)"
+            ),
+        )
+        self.assertRegex(
+            source,
+            (
+                r"status_grid\.setObjectName\(\s*"
+                r"\"filterStatusGrid\"\s*\)"
+            ),
+        )
         self.assertIn(
-            'self.keyword_edit.setProperty("uiWidthRole", "filter")',
+            "range_grid.setColumnStretch(",
             source,
         )
         self.assertIn(
-            'self.department_filter.setProperty("uiWidthRole", "filter")',
-            source,
-        )
-        self.assertIn(
-            'self.office_filter.setProperty("uiWidthRole", "filter")',
-            source,
-        )
-        self.assertIn(
-            'self.canal_filter.setProperty("uiWidthRole", "filter")',
-            source,
-        )
-        self.assertIn(
-            "filter_layout_1.addStretch()",
-            source,
-        )
-        self.assertIn(
-            "filter_layout_2.addStretch()",
+            "status_grid.setColumnStretch(",
             source,
         )
 

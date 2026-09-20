@@ -32,6 +32,8 @@ class SurveyResultImportPreflight:
     project_uid: str
     survey_batch_uid: str
 
+    # V1.0.1 以前已经公开使用的构造参数保持原顺序和必填语义，
+    # 这样旧 UI / 单元测试 / 外部调用无需跟随内部统计扩展修改。
     new_assets: int
     existing_assets: int
 
@@ -45,6 +47,22 @@ class SurveyResultImportPreflight:
     existing_media: int
 
     issues: tuple[SurveyResultPreflightIssue, ...]
+
+    # V1.0.2 新增分类均提供向后兼容默认值。
+    updated_assets: int = 0
+    stale_assets: int = 0
+    conflict_assets: int = 0
+
+    updated_records: int = 0
+    stale_records: int = 0
+    conflict_records: int = 0
+
+    updated_inspections: int = 0
+
+    asset_update_uids: tuple[str, ...] = ()
+    asset_stale_uids: tuple[str, ...] = ()
+    record_update_uids: tuple[str, ...] = ()
+    record_stale_uids: tuple[str, ...] = ()
 
     @property
     def error_count(self):
@@ -68,6 +86,7 @@ class SurveyResultImportPreflight:
 
     @property
     def has_new_data(self):
+        # 保留 Stage 12.8 旧接口语义：这里只回答“是否有新增”。
         return any(
             (
                 self.new_assets,
@@ -76,6 +95,20 @@ class SurveyResultImportPreflight:
                 self.new_media,
             )
         )
+
+    @property
+    def has_updates(self):
+        return any(
+            (
+                self.updated_assets,
+                self.updated_records,
+                self.updated_inspections,
+            )
+        )
+
+    @property
+    def has_importable_changes(self):
+        return self.has_new_data or self.has_updates
 
     def format_text(self):
         lines = [
@@ -88,17 +121,24 @@ class SurveyResultImportPreflight:
             (
                 "工程对象："
                 f"新增 {self.new_assets}，"
-                f"已存在 {self.existing_assets}"
+                f"已存在 {self.existing_assets}，"
+                f"待更新 {self.updated_assets}，"
+                f"旧版本 {self.stale_assets}，"
+                f"冲突 {self.conflict_assets}"
             ),
             (
                 "调查记录："
                 f"新增 {self.new_records}，"
-                f"已存在 {self.existing_records}"
+                f"已存在 {self.existing_records}，"
+                f"待更新 {self.updated_records}，"
+                f"旧版本 {self.stale_records}，"
+                f"冲突 {self.conflict_records}"
             ),
             (
                 "分项评价："
                 f"新增 {self.new_inspections}，"
-                f"已存在 {self.existing_inspections}"
+                f"已存在 {self.existing_inspections}，"
+                f"随记录更新 {self.updated_inspections}"
             ),
             (
                 "影像："
@@ -108,9 +148,7 @@ class SurveyResultImportPreflight:
         ]
 
         if not self.issues:
-            lines.append(
-                "未发现目标数据库冲突。"
-            )
+            lines.append("未发现目标数据库冲突。")
         else:
             label = {
                 SEVERITY_ERROR: "错误",
@@ -131,7 +169,6 @@ class SurveyResultImportPreflight:
 
         return "\n".join(lines)
 
-
 def _clean_text(value):
     return str(
         value or ""
@@ -144,6 +181,161 @@ def _optional_text(value):
     )
     return value or None
 
+
+
+def _safe_revision(
+    value,
+    default=1,
+):
+    try:
+        parsed = int(
+            value
+            if value is not None
+            else default
+        )
+    except (
+        TypeError,
+        ValueError,
+    ):
+        parsed = int(default)
+
+    return max(
+        0,
+        parsed,
+    )
+
+
+def _asset_identity_signature(item):
+    return {
+        "project_uid": _clean_text(
+            item.get("project_uid")
+        ),
+        "asset_type": _clean_text(
+            item.get("asset_type")
+        ),
+        "organization_unit_uid": _clean_text(
+            item.get("organization_unit_uid")
+        ),
+        "canal_unit_uid": _clean_text(
+            item.get("canal_unit_uid")
+        ),
+        "first_survey_batch_uid": _optional_text(
+            item.get("first_survey_batch_uid")
+        ),
+    }
+
+
+def _record_identity_signature(item):
+    form = (
+        item.get("form")
+        if isinstance(
+            item.get("form"),
+            dict,
+        )
+        else {}
+    )
+
+    return {
+        "source_task_uid": _optional_text(
+            item.get("source_task_uid")
+        ),
+        "source_management_scope_uid": _optional_text(
+            item.get("source_management_scope_uid")
+        ),
+        "project_uid": _clean_text(
+            item.get("project_uid")
+        ),
+        "survey_batch_uid": _clean_text(
+            item.get("survey_batch_uid")
+        ),
+        "form_code": _clean_text(
+            form.get("form_code")
+            or item.get("form_code")
+        ),
+        "version_code": _clean_text(
+            form.get("version_code")
+            or item.get("version_code")
+        ),
+        "record_type": _clean_text(
+            item.get("record_type")
+        ),
+        "organization_unit_uid": _clean_text(
+            item.get("organization_unit_uid")
+        ),
+        "canal_unit_uid": _clean_text(
+            item.get("canal_unit_uid")
+        ),
+        "engineering_asset_uid": _clean_text(
+            item.get("engineering_asset_uid")
+        ),
+    }
+
+
+def _revision_state(
+    local_item,
+    incoming_item,
+    *,
+    identity_signature,
+    content_signature,
+):
+    """
+    返回：
+    existing / update / stale /
+    identity_conflict / same_revision_conflict / diverged
+
+    关键规则：完全相同的业务内容永远先按 existing 处理。
+    revision_no 用于判断“内容不同”时谁更新、是否回退、是否双向分叉；
+    不应把同内容仅因来源基线为 0 判成一次业务更新。
+    """
+    if (
+        _canonical_json(identity_signature(local_item))
+        != _canonical_json(identity_signature(incoming_item))
+    ):
+        return ("identity_conflict", None)
+
+    incoming_revision = _safe_revision(
+        incoming_item.get("revision_no"),
+        1,
+    )
+    local_revision = _safe_revision(
+        local_item.get("revision_no"),
+        1,
+    )
+    source_revision = _safe_revision(
+        local_item.get("source_revision_no"),
+        0,
+    )
+
+    same_content = (
+        _canonical_json(content_signature(local_item))
+        == _canonical_json(content_signature(incoming_item))
+    )
+
+    metadata = {
+        "incoming_revision": incoming_revision,
+        "local_revision": local_revision,
+        "source_revision": source_revision,
+        "same_content": same_content,
+    }
+
+    # 幂等优先：相同 UID + 相同身份 + 相同业务内容就是已存在。
+    # 这同时兼容“同库预检”和 V1.0.1 升级后 source_revision_no=0 的记录。
+    if same_content:
+        return ("existing", metadata)
+
+    if incoming_revision < source_revision:
+        return ("stale", metadata)
+
+    if incoming_revision == source_revision:
+        return ("same_revision_conflict", metadata)
+
+    # incoming_revision > source_revision
+    # 上级在最近一次下级版本之后也发生过本地修改，
+    # 同时下级提交更高 revision：需要人工解决双向分叉。
+    if local_revision > source_revision:
+        return ("diverged", metadata)
+
+    return ("update", metadata)
 
 def _canonical_json(value):
     return json.dumps(
@@ -479,7 +671,9 @@ def _load_local_asset(
             fsb.survey_batch_uid
                 AS first_survey_batch_uid,
             ea.status,
-            ea.notes
+            ea.notes,
+            ea.revision_no,
+            ea.source_revision_no
         FROM engineering_assets AS ea
         JOIN projects AS p
           ON p.id = ea.project_id
@@ -493,33 +687,6 @@ def _load_local_asset(
         """,
         (
             engineering_asset_uid,
-        ),
-    ).fetchone()
-
-    return _row_to_dict(
-        row
-    )
-
-
-def _load_local_asset_by_business_code(
-    connection,
-    project_id,
-    business_code,
-):
-    row = connection.execute(
-        """
-        SELECT
-            id,
-            engineering_asset_uid,
-            canal_unit_id,
-            business_code
-        FROM engineering_assets
-        WHERE project_id = ?
-          AND business_code = ?
-        """,
-        (
-            project_id,
-            business_code,
         ),
     ).fetchone()
 
@@ -562,20 +729,6 @@ def _asset_signature(item):
             _clean_text(
                 item.get(
                     "canal_unit_uid"
-                )
-            )
-        ),
-        "business_code": (
-            _clean_text(
-                item.get(
-                    "business_code"
-                )
-            )
-        ),
-        "code_scheme_version": (
-            _optional_text(
-                item.get(
-                    "code_scheme_version"
                 )
             )
         ),
@@ -668,7 +821,9 @@ def _load_local_record(
             sr.department_head_signature,
             sr.record_status,
             sr.record_data_json,
-            sr.void_reason
+            sr.void_reason,
+            sr.revision_no,
+            sr.source_revision_no
         FROM survey_records AS sr
         JOIN projects AS p
           ON p.id = sr.project_id
@@ -809,13 +964,6 @@ def _record_signature(item):
             _clean_text(
                 item.get(
                     "engineering_asset_uid"
-                )
-            )
-        ),
-        "business_code": (
-            _clean_text(
-                item.get(
-                    "business_code"
                 )
             )
         ),
@@ -1150,15 +1298,28 @@ def preflight_survey_result_import(
 
     new_assets = 0
     existing_assets = 0
+    updated_assets = 0
+    stale_assets = 0
+    conflict_assets = 0
 
     new_records = 0
     existing_records = 0
+    updated_records = 0
+    stale_records = 0
+    conflict_records = 0
 
     new_inspections = 0
     existing_inspections = 0
+    updated_inspections = 0
 
     new_media = 0
     existing_media = 0
+
+    asset_update_uids = set()
+    asset_stale_uids = set()
+    record_update_uids = set()
+    record_stale_uids = set()
+    record_conflict_uids = set()
 
     with database.get_connection() as connection:
         target_project = (
@@ -1371,79 +1532,100 @@ def preflight_survey_result_import(
             )
 
             if local_asset is not None:
-                existing_assets += 1
+                state, metadata = _revision_state(
+                    local_asset,
+                    asset,
+                    identity_signature=(
+                        _asset_identity_signature
+                    ),
+                    content_signature=(
+                        _asset_signature
+                    ),
+                )
 
-                if (
-                    _canonical_json(
-                        _asset_signature(
-                            local_asset
-                        )
+                if state == "existing":
+                    existing_assets += 1
+
+                elif state == "update":
+                    updated_assets += 1
+                    asset_update_uids.add(
+                        asset_uid
                     )
-                    !=
-                    _canonical_json(
-                        _asset_signature(
-                            asset
-                        )
+                    _append(
+                        issues,
+                        SEVERITY_INFO,
+                        "ASSET_UPDATE_AVAILABLE",
+                        (
+                            "下级工程对象版本较新，"
+                            "确认后可更新。"
+                            f" 来源版本 {metadata['source_revision']}"
+                            f" -> {metadata['incoming_revision']}。"
+                        ),
+                        entity_uid=asset_uid,
                     )
-                ):
+
+                elif state == "stale":
+                    stale_assets += 1
+                    asset_stale_uids.add(
+                        asset_uid
+                    )
+                    _append(
+                        issues,
+                        SEVERITY_WARNING,
+                        "ASSET_STALE_VERSION",
+                        (
+                            "成果包中的工程对象版本旧于"
+                            "当前已接收来源版本，将自动忽略，"
+                            "不会回退上级数据。"
+                        ),
+                        entity_uid=asset_uid,
+                    )
+
+                else:
+                    conflict_assets += 1
+
+                    code = {
+                        "identity_conflict": (
+                            "ASSET_IDENTITY_CONFLICT"
+                        ),
+                        "same_revision_conflict": (
+                            "ASSET_REVISION_CONTENT_CONFLICT"
+                        ),
+                        "diverged": (
+                            "ASSET_DIVERGED"
+                        ),
+                    }.get(
+                        state,
+                        "ASSET_UID_CONFLICT",
+                    )
+
+                    if state == "diverged":
+                        message = (
+                            "上下级在最近一次已接收版本之后"
+                            "都修改了该工程对象，当前禁止自动覆盖。"
+                        )
+                    elif state == "identity_conflict":
+                        message = (
+                            "相同 engineering_asset_uid 的"
+                            "项目/渠系/工程类型等身份字段发生变化。"
+                        )
+                    else:
+                        message = (
+                            "相同工程对象 revision_no 下出现"
+                            "不同业务内容，版本契约异常。"
+                        )
+
                     _append(
                         issues,
                         SEVERITY_ERROR,
-                        "ASSET_UID_CONFLICT",
-                        (
-                            "相同 engineering_asset_uid "
-                            "在目标数据库中已有不同业务内容。"
-                        ),
+                        code,
+                        message,
                         entity_uid=asset_uid,
                     )
 
                 continue
 
             new_assets += 1
-
-            if project_id is None:
-                continue
-
-            business_code = (
-                _clean_text(
-                    asset.get(
-                        "business_code"
-                    )
-                )
-            )
-
-            if not business_code:
-                continue
-
-            collision = (
-                _load_local_asset_by_business_code(
-                    connection,
-                    project_id,
-                    business_code,
-                )
-            )
-
-            if (
-                collision is not None
-                and _clean_text(
-                    collision.get(
-                        "engineering_asset_uid"
-                    )
-                )
-                != asset_uid
-            ):
-                _append(
-                    issues,
-                    SEVERITY_ERROR,
-                    "ASSET_BUSINESS_CODE_COLLISION",
-                    (
-                        "目标数据库已有另一工程对象使用相同业务编号。"
-                        "当前数据库仍存在项目级 business_code 唯一约束，"
-                        "本阶段不自动改号、不自动合并，也不在导入过程中"
-                        "修改编号模型。"
-                    ),
-                    entity_uid=asset_uid,
-                )
 
         # -----------------------------------------------------
         # SurveyRecord
@@ -1472,29 +1654,97 @@ def preflight_survey_result_import(
                 new_records += 1
                 continue
 
-            existing_records += 1
+            state, metadata = _revision_state(
+                local_record,
+                record,
+                identity_signature=(
+                    _record_identity_signature
+                ),
+                content_signature=(
+                    _record_signature
+                ),
+            )
 
-            if (
-                _canonical_json(
-                    _record_signature(
-                        local_record
-                    )
+            if state == "existing":
+                existing_records += 1
+
+            elif state == "update":
+                updated_records += 1
+                record_update_uids.add(
+                    record_uid
                 )
-                !=
-                _canonical_json(
-                    _record_signature(
-                        record
-                    )
+                _append(
+                    issues,
+                    SEVERITY_INFO,
+                    "RECORD_UPDATE_AVAILABLE",
+                    (
+                        "检测到下级修订记录，确认后可更新。"
+                        f" 来源版本 {metadata['source_revision']}"
+                        f" -> {metadata['incoming_revision']}。"
+                    ),
+                    entity_uid=record_uid,
                 )
-            ):
+
+            elif state == "stale":
+                stale_records += 1
+                record_stale_uids.add(
+                    record_uid
+                )
+                _append(
+                    issues,
+                    SEVERITY_WARNING,
+                    "RECORD_STALE_VERSION",
+                    (
+                        "成果包中的调查记录版本旧于"
+                        "当前已接收来源版本，将自动忽略，"
+                        "不会回退上级数据。"
+                    ),
+                    entity_uid=record_uid,
+                )
+
+            else:
+                conflict_records += 1
+                record_conflict_uids.add(
+                    record_uid
+                )
+
+                code = {
+                    "identity_conflict": (
+                        "RECORD_IDENTITY_CONFLICT"
+                    ),
+                    "same_revision_conflict": (
+                        "RECORD_REVISION_CONTENT_CONFLICT"
+                    ),
+                    "diverged": (
+                        "RECORD_DIVERGED"
+                    ),
+                }.get(
+                    state,
+                    "RECORD_UID_CONFLICT",
+                )
+
+                if state == "diverged":
+                    message = (
+                        "上下级在最近一次已接收版本之后"
+                        "都修改了该调查记录，当前禁止自动覆盖；"
+                        "需要人工决定采用哪一版。"
+                    )
+                elif state == "identity_conflict":
+                    message = (
+                        "相同 survey_record_uid 的任务来源、"
+                        "渠系、工程对象或表单身份发生变化。"
+                    )
+                else:
+                    message = (
+                        "相同调查记录 revision_no 下出现"
+                        "不同业务内容，版本契约异常。"
+                    )
+
                 _append(
                     issues,
                     SEVERITY_ERROR,
-                    "RECORD_UID_CONFLICT",
-                    (
-                        "相同 survey_record_uid "
-                        "在目标数据库中已有不同调查内容。"
-                    ),
+                    code,
+                    message,
                     entity_uid=record_uid,
                 )
 
@@ -1513,6 +1763,19 @@ def preflight_survey_result_import(
                     "item_code"
                 )
             )
+
+            # 调查记录整体更新时，分项评价作为该 revision 的
+            # 权威子内容一并替换；旧版本和冲突记录都不写入。
+            if record_uid in record_update_uids:
+                updated_inspections += 1
+                continue
+
+            if (
+                record_uid in record_stale_uids
+                or record_uid in record_conflict_uids
+            ):
+                existing_inspections += 1
+                continue
 
             local_item = (
                 _load_local_inspection(
@@ -1541,13 +1804,20 @@ def preflight_survey_result_import(
                     )
                 )
             ):
+                # 记录 revision 未变化却出现分项内容变化，
+                # 说明成果版本契约不一致，仍然阻断。
+                if record_uid not in record_conflict_uids:
+                    conflict_records += 1
+                    record_conflict_uids.add(
+                        record_uid
+                    )
+
                 _append(
                     issues,
                     SEVERITY_ERROR,
-                    "INSPECTION_CONFLICT",
+                    "INSPECTION_REVISION_CONFLICT",
                     (
-                        "同一调查记录的相同分项评价"
-                        "在目标数据库中已有不同内容。"
+                        "调查记录 revision 未变化，但分项评价内容不同。"
                     ),
                     entity_uid=(
                         f"{record_uid}:{item_code}"
@@ -1940,18 +2210,47 @@ def preflight_survey_result_import(
         ),
         new_assets=new_assets,
         existing_assets=existing_assets,
+        updated_assets=updated_assets,
+        stale_assets=stale_assets,
+        conflict_assets=conflict_assets,
         new_records=new_records,
         existing_records=(
             existing_records
         ),
+        updated_records=updated_records,
+        stale_records=stale_records,
+        conflict_records=conflict_records,
         new_inspections=(
             new_inspections
         ),
         existing_inspections=(
             existing_inspections
         ),
+        updated_inspections=(
+            updated_inspections
+        ),
         new_media=new_media,
         existing_media=existing_media,
+        asset_update_uids=tuple(
+            sorted(
+                asset_update_uids
+            )
+        ),
+        asset_stale_uids=tuple(
+            sorted(
+                asset_stale_uids
+            )
+        ),
+        record_update_uids=tuple(
+            sorted(
+                record_update_uids
+            )
+        ),
+        record_stale_uids=tuple(
+            sorted(
+                record_stale_uids
+            )
+        ),
         issues=tuple(
             issues
         ),

@@ -31,6 +31,7 @@ class SurveyResultImportResult:
     backup_path: Path | None
     managed_package_path: Path | None
 
+    # 旧公开结果字段保持构造兼容。
     imported_assets: int
     existing_assets: int
 
@@ -45,6 +46,12 @@ class SurveyResultImportResult:
 
     already_imported: bool
 
+    # V1.0.2 新增统计放到末尾并给默认值。
+    updated_assets: int = 0
+    stale_assets: int = 0
+    updated_records: int = 0
+    stale_records: int = 0
+    updated_inspections: int = 0
 
 def ensure_survey_result_import_schema():
     """
@@ -113,6 +120,29 @@ def _optional_text(value):
         value
     )
     return value or None
+
+
+
+def _incoming_revision(
+    item,
+):
+    try:
+        value = int(
+            item.get(
+                "revision_no"
+            )
+            or 1
+        )
+    except (
+        TypeError,
+        ValueError,
+    ):
+        value = 1
+
+    return max(
+        1,
+        value,
+    )
 
 
 def _now_text():
@@ -474,6 +504,8 @@ def _already_imported_result(
                 0,
             )
         ),
+        updated_assets=0,
+        stale_assets=0,
         imported_records=0,
         existing_records=int(
             summary.get(
@@ -481,6 +513,8 @@ def _already_imported_result(
                 0,
             )
         ),
+        updated_records=0,
+        stale_records=0,
         imported_inspections=0,
         existing_inspections=int(
             summary.get(
@@ -488,6 +522,7 @@ def _already_imported_result(
                 0,
             )
         ),
+        updated_inspections=0,
         imported_media=0,
         existing_media=int(
             summary.get(
@@ -850,9 +885,33 @@ def _insert_asset(
         ),
     )
 
-    return int(
+    asset_id = int(
         cursor.lastrowid
     )
+
+    incoming_revision = (
+        _incoming_revision(
+            item
+        )
+    )
+
+    connection.execute(
+        """
+        UPDATE engineering_assets
+        SET
+            revision_no = ?,
+            source_revision_no = ?,
+            code_status = 'provisional'
+        WHERE id = ?
+        """,
+        (
+            incoming_revision,
+            incoming_revision,
+            asset_id,
+        ),
+    )
+
+    return asset_id
 
 
 def _insert_record(
@@ -895,6 +954,21 @@ def _insert_record(
                 "canal_unit_uid"
             ],
         )
+    )
+
+    asset_code_row = connection.execute(
+        """
+        SELECT business_code
+        FROM engineering_assets
+        WHERE id = ?
+        """,
+        (asset_id,),
+    ).fetchone()
+
+    target_business_code = (
+        asset_code_row["business_code"]
+        if asset_code_row is not None
+        else item.get("business_code")
     )
 
     record_data_json = json.dumps(
@@ -964,9 +1038,7 @@ def _insert_record(
             organization_id,
             canal_id,
             asset_id,
-            item.get(
-                "business_code"
-            ),
+            target_business_code,
             item.get(
                 "survey_date"
             ),
@@ -1009,8 +1081,159 @@ def _insert_record(
         ),
     )
 
-    return int(
+    record_id = int(
         cursor.lastrowid
+    )
+
+    incoming_revision = (
+        _incoming_revision(
+            item
+        )
+    )
+
+    connection.execute(
+        """
+        UPDATE survey_records
+        SET
+            revision_no = ?,
+            source_revision_no = ?
+        WHERE id = ?
+        """,
+        (
+            incoming_revision,
+            incoming_revision,
+            record_id,
+        ),
+    )
+
+    return record_id
+
+
+
+def _update_asset_from_package(
+    connection,
+    item,
+    *,
+    asset_id,
+):
+    incoming_revision = _incoming_revision(item)
+
+    current = connection.execute(
+        """
+        SELECT
+            business_code,
+            code_scheme_version,
+            single_stake_value,
+            start_stake_value,
+            end_stake_value,
+            code_status
+        FROM engineering_assets
+        WHERE id = ?
+        """,
+        (asset_id,),
+    ).fetchone()
+
+    if current is None:
+        raise ValueError("待更新工程对象不存在。")
+
+    position_changed = (
+        current["single_stake_value"] != item.get("single_stake_value")
+        or current["start_stake_value"] != item.get("start_stake_value")
+        or current["end_stake_value"] != item.get("end_stake_value")
+    )
+    next_code_status = (
+        "provisional"
+        if position_changed
+        else (current["code_status"] or "provisional")
+    )
+
+    connection.execute(
+        """
+        UPDATE engineering_assets
+        SET
+            asset_name = ?,
+            single_stake_text = ?,
+            single_stake_value = ?,
+            start_stake_text = ?,
+            start_stake_value = ?,
+            end_stake_text = ?,
+            end_stake_value = ?,
+            status = ?,
+            notes = ?,
+            revision_no = ?,
+            source_revision_no = ?,
+            code_status = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            item.get("asset_name") or "",
+            item.get("single_stake_text"),
+            item.get("single_stake_value"),
+            item.get("start_stake_text"),
+            item.get("start_stake_value"),
+            item.get("end_stake_text"),
+            item.get("end_stake_value"),
+            item.get("status") or "active",
+            item.get("notes"),
+            incoming_revision,
+            incoming_revision,
+            next_code_status,
+            _source_timestamp(item.get("updated_at")),
+            asset_id,
+        ),
+    )
+
+
+def _update_record_from_package(
+    connection,
+    item,
+    *,
+    record_id,
+):
+    incoming_revision = _incoming_revision(item)
+
+    record_data_json = json.dumps(
+        item.get("record_data") or {},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    connection.execute(
+        """
+        UPDATE survey_records
+        SET
+            survey_date = ?,
+            overall_grade = ?,
+            survey_comment = ?,
+            surveyor_signatures = ?,
+            water_office_manager_signature = ?,
+            engineering_section_chief_signature = ?,
+            department_head_signature = ?,
+            record_status = ?,
+            record_data_json = ?,
+            void_reason = ?,
+            revision_no = ?,
+            source_revision_no = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            item.get("survey_date"),
+            item.get("overall_grade"),
+            item.get("survey_comment"),
+            item.get("surveyor_signatures"),
+            item.get("water_office_manager_signature"),
+            item.get("engineering_section_chief_signature"),
+            item.get("department_head_signature"),
+            item.get("record_status") or "completed",
+            record_data_json,
+            item.get("void_reason"),
+            incoming_revision,
+            incoming_revision,
+            _source_timestamp(item.get("updated_at")),
+            record_id,
+        ),
     )
 
 
@@ -1462,6 +1685,8 @@ def _result_source_task_uids(
 
 def import_survey_result_package(
     package_path,
+    *,
+    accept_updates=False,
 ):
     """
     事务化导入 .ydresult。
@@ -1604,6 +1829,17 @@ def import_survey_result_package(
             + preflight.format_text()
         )
 
+    if (
+        preflight.has_updates
+        and not accept_updates
+    ):
+        raise ValueError(
+            "成果包包含下级修订数据。"
+            "为避免静默覆盖，必须由用户明确确认"
+            "后才能执行更新导入。\n\n"
+            + preflight.format_text()
+        )
+
     backup_path = (
         create_database_backup(
             reason=(
@@ -1710,12 +1946,30 @@ def import_survey_result_package(
 
         imported_assets = 0
         existing_assets = 0
+        updated_assets = 0
+        stale_assets = 0
         imported_records = 0
         existing_records = 0
+        updated_records = 0
+        stale_records = 0
         imported_inspections = 0
         existing_inspections = 0
+        updated_inspections = 0
         imported_media = 0
         existing_media = 0
+
+        asset_update_uids = set(
+            preflight.asset_update_uids
+        )
+        asset_stale_uids = set(
+            preflight.asset_stale_uids
+        )
+        record_update_uids = set(
+            preflight.record_update_uids
+        )
+        record_stale_uids = set(
+            preflight.record_stale_uids
+        )
 
         with database.get_connection() as connection:
             connection.execute(
@@ -1773,6 +2027,18 @@ def import_survey_result_package(
                             )
                         )
                         imported_assets += 1
+
+                    elif uid in asset_stale_uids:
+                        stale_assets += 1
+
+                    elif uid in asset_update_uids:
+                        _update_asset_from_package(
+                            connection,
+                            item,
+                            asset_id=asset_id,
+                        )
+                        updated_assets += 1
+
                     else:
                         existing_assets += 1
 
@@ -1838,12 +2104,53 @@ def import_survey_result_package(
                             )
                         )
                         imported_records += 1
+
+                    elif uid in record_stale_uids:
+                        stale_records += 1
+
+                    elif uid in record_update_uids:
+                        _update_record_from_package(
+                            connection,
+                            item,
+                            record_id=record_id,
+                        )
+                        updated_records += 1
+
                     else:
                         existing_records += 1
 
                     record_id_by_uid[
                         uid
                     ] = record_id
+
+                # 对已确认更新的调查记录，分项评价属于该 revision
+                # 的权威子内容：先删除旧集合，再按成果包重建。
+                for record_uid in record_update_uids:
+                    record_id = (
+                        record_id_by_uid.get(
+                            record_uid
+                        )
+                        or _lookup_record_id(
+                            connection,
+                            record_uid,
+                        )
+                    )
+
+                    if record_id is None:
+                        raise ValueError(
+                            "待更新记录无法在目标数据库定位："
+                            f"{record_uid}"
+                        )
+
+                    connection.execute(
+                        """
+                        DELETE FROM inspection_results
+                        WHERE survey_record_id = ?
+                        """,
+                        (
+                            record_id,
+                        ),
+                    )
 
                 for item in (
                     contents.inspection_results
@@ -1870,6 +2177,21 @@ def import_survey_result_package(
                             "无法在目标数据库定位："
                             f"{record_uid}"
                         )
+
+                    if record_uid in record_stale_uids:
+                        existing_inspections += 1
+                        continue
+
+                    if record_uid in record_update_uids:
+                        _insert_inspection(
+                            connection,
+                            item,
+                            survey_record_id=(
+                                record_id
+                            ),
+                        )
+                        updated_inspections += 1
+                        continue
 
                     if _inspection_exists(
                         connection,
@@ -2035,17 +2357,32 @@ def import_survey_result_package(
                     "existing_assets": (
                         existing_assets
                     ),
+                    "updated_assets": (
+                        updated_assets
+                    ),
+                    "stale_assets": (
+                        stale_assets
+                    ),
                     "imported_records": (
                         imported_records
                     ),
                     "existing_records": (
                         existing_records
                     ),
+                    "updated_records": (
+                        updated_records
+                    ),
+                    "stale_records": (
+                        stale_records
+                    ),
                     "imported_inspections": (
                         imported_inspections
                     ),
                     "existing_inspections": (
                         existing_inspections
+                    ),
+                    "updated_inspections": (
+                        updated_inspections
                     ),
                     "imported_media": (
                         imported_media
@@ -2126,17 +2463,32 @@ def import_survey_result_package(
             existing_assets=(
                 existing_assets
             ),
+            updated_assets=(
+                updated_assets
+            ),
+            stale_assets=(
+                stale_assets
+            ),
             imported_records=(
                 imported_records
             ),
             existing_records=(
                 existing_records
             ),
+            updated_records=(
+                updated_records
+            ),
+            stale_records=(
+                stale_records
+            ),
             imported_inspections=(
                 imported_inspections
             ),
             existing_inspections=(
                 existing_inspections
+            ),
+            updated_inspections=(
+                updated_inspections
             ),
             imported_media=(
                 imported_media

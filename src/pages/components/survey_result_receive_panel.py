@@ -35,10 +35,15 @@ class SurveyResultImportWorker(QObject):
     def __init__(
         self,
         package_path,
+        *,
+        accept_updates=False,
     ):
         super().__init__()
         self.package_path = Path(
             package_path
+        )
+        self.accept_updates = bool(
+            accept_updates
         )
 
     @Slot()
@@ -46,7 +51,10 @@ class SurveyResultImportWorker(QObject):
         try:
             result = (
                 import_survey_result_package(
-                    self.package_path
+                    self.package_path,
+                    accept_updates=(
+                        self.accept_updates
+                    ),
                 )
             )
         except Exception as error:
@@ -404,19 +412,24 @@ class SurveyResultReceivePanel(QWidget):
         self.asset_label.setText(
             (
                 f"新增 {report.new_assets}，"
-                f"已存在 {report.existing_assets}"
+                f"已存在 {report.existing_assets}，"
+                f"待更新 {report.updated_assets}，"
+                f"旧版本 {report.stale_assets}"
             )
         )
         self.record_label.setText(
             (
                 f"新增 {report.new_records}，"
-                f"已存在 {report.existing_records}"
+                f"已存在 {report.existing_records}，"
+                f"待更新 {report.updated_records}，"
+                f"旧版本 {report.stale_records}"
             )
         )
         self.inspection_label.setText(
             (
                 f"新增 {report.new_inspections}，"
-                f"已存在 {report.existing_inspections}"
+                f"已存在 {report.existing_inspections}，"
+                f"随修订更新 {report.updated_inspections}"
             )
         )
         self.media_label.setText(
@@ -432,32 +445,57 @@ class SurveyResultReceivePanel(QWidget):
                 "当前禁止导入。"
             )
             status = (
-                "预检未通过。请先处理冲突或确认目标数据库是否正确。"
+                "预检未通过。请先处理身份冲突、"
+                "同版本内容冲突或上下级双向修改。"
             )
             style = (
                 "color: #a33;"
             )
 
-        elif not report.has_new_data:
-            conclusion = (
-                "预检通过；成果内容均已存在。"
-            )
-            status = (
-                "该成果包没有需要新增的数据，"
-                "正式导入阶段将按重复成果处理。"
-            )
+        elif not report.has_importable_changes:
+            if (
+                report.stale_assets
+                or report.stale_records
+            ):
+                conclusion = (
+                    "预检通过；没有需要写入的新增或修订数据。"
+                )
+                status = (
+                    "一致数据将跳过；旧版本不会回退上级数据。"
+                )
+            else:
+                conclusion = (
+                    "预检通过；成果内容均已存在。"
+                )
+                status = (
+                    "该成果包没有需要新增或更新的数据，"
+                    "正式导入阶段将按重复成果处理。"
+                )
             style = (
                 "color: #52606d;"
             )
 
-        else:
+        elif report.has_updates:
             conclusion = (
-                "预检通过，可以正式导入。"
+                "预检通过；检测到下级修订，确认后可以导入。"
             )
             status = (
-                "目标数据库未发现阻断性冲突。"
-                "点击“正式导入成果”后，"
-                "系统会先创建安全备份再执行事务化导入。"
+                "新增数据将直接合并；待更新数据只有在本次"
+                "确认后才覆盖最近一次已接收的下级版本。"
+                "系统会先创建安全备份并使用事务执行。"
+            )
+            style = (
+                "color: #2f6f44;"
+            )
+
+        else:
+            conclusion = (
+                "预检通过，可以正式导入（增量合并）。"
+            )
+            status = (
+                "已存在且一致的数据将自动跳过，"
+                "只写入本次新增内容。"
+                "系统会先创建安全备份并使用事务执行。"
             )
             style = (
                 "color: #2f6f44;"
@@ -484,7 +522,7 @@ class SurveyResultReceivePanel(QWidget):
         self.import_button.setEnabled(
             (
                 report.can_import
-                and report.has_new_data
+                and report.has_importable_changes
             )
         )
 
@@ -524,13 +562,13 @@ class SurveyResultReceivePanel(QWidget):
             )
             return None
 
-        if not report.has_new_data:
+        if not report.has_importable_changes:
             QMessageBox.information(
                 self,
-                "无需重复导入",
+                "没有可导入变更",
                 (
-                    "该成果包中的业务数据"
-                    "在当前数据库中均已存在。"
+                    "该成果包没有新增或可确认修订数据。"
+                    "一致内容已存在；旧版本不会回退上级数据。"
                 ),
             )
             return None
@@ -542,9 +580,17 @@ class SurveyResultReceivePanel(QWidget):
                 "系统将把当前成果包写入本地数据库，"
                 "并在导入前自动创建数据库备份。\n\n"
                 f"新增工程对象：{report.new_assets}\n"
+                f"待更新工程对象：{report.updated_assets}\n"
                 f"新增调查记录：{report.new_records}\n"
+                f"待更新调查记录：{report.updated_records}\n"
+                f"旧版本调查记录：{report.stale_records}（自动忽略）\n"
                 f"新增分项评价：{report.new_inspections}\n"
+                f"随修订更新分项评价：{report.updated_inspections}\n"
                 f"新增影像：{report.new_media}\n\n"
+                "已存在且一致的数据会自动跳过；"
+                "旧版本不会覆盖当前数据。\n"
+                "待更新数据表示下级提交了更高 revision，"
+                "本次确认后才会写入。\n\n"
                 "导入过程中如果发生异常，"
                 "数据库事务会回滚，"
                 "本次新安装的文件也会清理。\n\n"
@@ -560,15 +606,23 @@ class SurveyResultReceivePanel(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return None
 
-        self._begin_import(
-            package_path
-        )
+        if report.has_updates:
+            self._begin_import(
+                package_path,
+                accept_updates=True,
+            )
+        else:
+            self._begin_import(
+                package_path
+            )
 
         return package_path
 
     def _begin_import(
         self,
         package_path,
+        *,
+        accept_updates=False,
     ):
         self.preflight_button.setEnabled(
             False
@@ -591,7 +645,8 @@ class SurveyResultReceivePanel(QWidget):
             self
         )
         worker = SurveyResultImportWorker(
-            package_path
+            package_path,
+            accept_updates=accept_updates,
         )
         worker.moveToThread(
             thread
@@ -647,19 +702,24 @@ class SurveyResultReceivePanel(QWidget):
         self.asset_label.setText(
             (
                 f"本次新增 {result.imported_assets}，"
-                f"已存在 {result.existing_assets}"
+                f"已存在 {result.existing_assets}，"
+                f"已更新 {result.updated_assets}，"
+                f"旧版本忽略 {result.stale_assets}"
             )
         )
         self.record_label.setText(
             (
                 f"本次新增 {result.imported_records}，"
-                f"已存在 {result.existing_records}"
+                f"已存在 {result.existing_records}，"
+                f"已更新 {result.updated_records}，"
+                f"旧版本忽略 {result.stale_records}"
             )
         )
         self.inspection_label.setText(
             (
                 f"本次新增 {result.imported_inspections}，"
-                f"已存在 {result.existing_inspections}"
+                f"已存在 {result.existing_inspections}，"
+                f"随修订更新 {result.updated_inspections}"
             )
         )
         self.media_label.setText(
@@ -725,8 +785,12 @@ class SurveyResultReceivePanel(QWidget):
             (
                 f"{headline}\n\n"
                 f"工程对象新增：{result.imported_assets}\n"
+                f"工程对象更新：{result.updated_assets}\n"
                 f"调查记录新增：{result.imported_records}\n"
+                f"调查记录更新：{result.updated_records}\n"
+                f"旧版本记录忽略：{result.stale_records}\n"
                 f"分项评价新增：{result.imported_inspections}\n"
+                f"分项评价更新：{result.updated_inspections}\n"
                 f"影像新增：{result.imported_media}"
             ),
         )
