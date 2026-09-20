@@ -466,7 +466,8 @@ def inspect_survey_task_package(package_path):
             path="task.json",
         )
         department_uid = None
-        office_uid = None
+        target_uid = None
+        target_unit_type = None
     else:
         department_uid = _require_nonempty_string(
             assignment.get("department_uid"),
@@ -475,13 +476,36 @@ def inspect_survey_task_package(package_path):
             issues=issues,
             path="task.json",
         )
-        office_uid = _require_nonempty_string(
+        target_uid = _require_nonempty_string(
             assignment.get("organization_unit_uid"),
             code="TASK_ORGANIZATION_UID_INVALID",
             message="任务缺少 organization_unit_uid。",
             issues=issues,
             path="task.json",
         )
+
+        target_unit_type = (
+            assignment.get("target_unit_type")
+        )
+
+        if (
+            task.get("task_schema_version")
+            == "2.0"
+            and not target_unit_type
+        ):
+            target_unit_type = "water_office"
+
+        if target_unit_type not in {
+            "department",
+            "water_office",
+        }:
+            _append(
+                issues,
+                "TASK_TARGET_UNIT_TYPE_INVALID",
+                "任务目标单位类型必须是基层处或水管所。",
+                path="task.json",
+            )
+            target_unit_type = None
 
     scope = task.get("scope")
     selected_uids = []
@@ -568,28 +592,104 @@ def inspect_survey_task_package(package_path):
                 path="reference/organization_units.json",
             )
             continue
+
+        unit_type = item.get(
+            "unit_type"
+        )
+        if unit_type not in {
+            "department",
+            "water_office",
+        }:
+            _append(
+                issues,
+                "REFERENCE_ORGANIZATION_TYPE_INVALID",
+                "组织参考数据包含无效 unit_type。",
+                path="reference/organization_units.json",
+            )
+
         organization_by_uid[uid] = item
 
-    if department_uid and department_uid not in organization_by_uid:
+    department_reference = (
+        organization_by_uid.get(
+            department_uid
+        )
+        if department_uid
+        else None
+    )
+    target_reference = (
+        organization_by_uid.get(
+            target_uid
+        )
+        if target_uid
+        else None
+    )
+
+    if department_uid and department_reference is None:
         _append(
             issues,
             "TASK_DEPARTMENT_NOT_IN_REFERENCE",
             "任务所属基层处不在组织参考数据中。",
         )
-    if office_uid and office_uid not in organization_by_uid:
+    elif (
+        department_reference is not None
+        and department_reference.get(
+            "unit_type"
+        )
+        != "department"
+    ):
+        _append(
+            issues,
+            "TASK_DEPARTMENT_TYPE_MISMATCH",
+            "任务 department_uid 对应组织不是基层处。",
+        )
+
+    if target_uid and target_reference is None:
         _append(
             issues,
             "TASK_ORGANIZATION_NOT_IN_REFERENCE",
-            "任务管理单位不在组织参考数据中。",
+            "任务目标单位不在组织参考数据中。",
         )
-    if office_uid and department_uid and office_uid in organization_by_uid:
-        office = organization_by_uid[office_uid]
-        if office.get("parent_organization_uid") != department_uid:
-            _append(
-                issues,
-                "TASK_ORGANIZATION_PARENT_MISMATCH",
-                "任务管理单位与所属基层处参考关系不一致。",
-            )
+
+    if (
+        target_reference is not None
+        and target_unit_type
+        and target_reference.get(
+            "unit_type"
+        )
+        != target_unit_type
+    ):
+        _append(
+            issues,
+            "TASK_TARGET_TYPE_MISMATCH",
+            "任务目标单位类型与组织参考数据不一致。",
+        )
+
+    if (
+        target_unit_type == "water_office"
+        and target_reference is not None
+        and department_uid
+        and target_reference.get(
+            "parent_organization_uid"
+        )
+        != department_uid
+    ):
+        _append(
+            issues,
+            "TASK_ORGANIZATION_PARENT_MISMATCH",
+            "任务水管所与所属基层处参考关系不一致。",
+        )
+
+    if (
+        target_unit_type == "department"
+        and target_uid
+        and department_uid
+        and target_uid != department_uid
+    ):
+        _append(
+            issues,
+            "TASK_DEPARTMENT_TARGET_MISMATCH",
+            "处级任务的目标单位必须就是所属基层处。",
+        )
 
     canal_by_uid = {}
     for item in canals:
@@ -680,13 +780,46 @@ def inspect_survey_task_package(package_path):
                 "分管范围对应物理渠系不在渠系参考数据中。",
                 path="reference/canal_management_scopes.json",
             )
-        if office_uid and item_office_uid and item_office_uid != office_uid:
+        if (
+            target_unit_type == "water_office"
+            and target_uid
+            and item_office_uid
+            and item_office_uid != target_uid
+        ):
             _append(
                 issues,
                 "REFERENCE_SCOPE_OWNER_MISMATCH",
-                "分管范围管理单位与任务分配单位不一致。",
+                "分管范围管理单位与任务水管所不一致。",
                 path="reference/canal_management_scopes.json",
             )
+
+        if (
+            target_unit_type == "department"
+            and item_office_uid
+        ):
+            owner_reference = (
+                organization_by_uid.get(
+                    item_office_uid
+                )
+            )
+
+            if (
+                owner_reference is None
+                or owner_reference.get(
+                    "unit_type"
+                )
+                != "water_office"
+                or owner_reference.get(
+                    "parent_organization_uid"
+                )
+                != department_uid
+            ):
+                _append(
+                    issues,
+                    "REFERENCE_SCOPE_OWNER_OUTSIDE_DEPARTMENT",
+                    "处级任务包含不属于该基层处的分管范围。",
+                    path="reference/canal_management_scopes.json",
+                )
         if item.get("status") != "active":
             _append(
                 issues,
