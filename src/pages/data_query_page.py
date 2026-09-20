@@ -207,6 +207,21 @@ class DataQueryPage(QWidget):
         self.grade_combo = QComboBox()
         self.grade_combo.setProperty("uiWidthRole", "filter")
 
+        self.media_combo = QComboBox()
+        self.media_combo.setProperty("uiWidthRole", "filter")
+        self.media_combo.addItem(
+            "全部影像",
+            None,
+        )
+        self.media_combo.addItem(
+            "有影像",
+            "has_media",
+        )
+        self.media_combo.addItem(
+            "无影像",
+            "no_media",
+        )
+
         query_button = QPushButton("查询")
         query_button.setProperty("uiRole", "primary")
         query_button.clicked.connect(self.apply_filters)
@@ -252,9 +267,12 @@ class DataQueryPage(QWidget):
 
         filter_row_3.addWidget(self.grade_combo)
 
-
-
-
+        filter_row_3.addWidget(
+            QLabel("影像：")
+        )
+        filter_row_3.addWidget(
+            self.media_combo
+        )
 
         filter_row_3.addStretch()
 
@@ -297,7 +315,7 @@ class DataQueryPage(QWidget):
             self._update_open_record_button
         )
 
-        self.table.setColumnCount(12)
+        self.table.setColumnCount(13)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -312,6 +330,7 @@ class DataQueryPage(QWidget):
                 "工程状况类别",
                 "调查时间",
                 "状态",
+                "影像",
                 "修改时间",
             ]
         )
@@ -335,6 +354,7 @@ class DataQueryPage(QWidget):
             180,
             105,
             110,
+            90,
             90,
             160,
         ]
@@ -577,6 +597,10 @@ class DataQueryPage(QWidget):
 
         grade = self.grade_combo.currentData()
 
+        media_state = (
+            self.media_combo.currentData()
+        )
+
         result = []
 
         for record in self.all_records:
@@ -615,6 +639,25 @@ class DataQueryPage(QWidget):
             if grade is not None and record["overall_grade"] != grade:
                 continue
 
+            media_count = int(
+                record.get(
+                    "media_count"
+                )
+                or 0
+            )
+
+            if (
+                media_state == "has_media"
+                and media_count <= 0
+            ):
+                continue
+
+            if (
+                media_state == "no_media"
+                and media_count > 0
+            ):
+                continue
+
             result.append(record)
 
         self.filtered_records = result
@@ -634,6 +677,7 @@ class DataQueryPage(QWidget):
             self.canal_combo,
             self.status_combo,
             self.grade_combo,
+            self.media_combo,
         ):
             if combo.count():
                 combo.setCurrentIndex(0)
@@ -655,6 +699,19 @@ class DataQueryPage(QWidget):
                 record["record_status"]
             )
 
+            media_count = int(
+                record.get(
+                    "media_count"
+                )
+                or 0
+            )
+
+            media_text = (
+                f"有（{media_count}）"
+                if media_count > 0
+                else "无"
+            )
+
             values = [
                 record["form_display_name"],
                 record["batch_name"],
@@ -667,6 +724,7 @@ class DataQueryPage(QWidget):
                 record["overall_grade"] or "",
                 record["survey_date"],
                 status_text,
+                media_text,
                 record["updated_at"],
             ]
 
@@ -755,6 +813,18 @@ class DataQueryPage(QWidget):
             1 for record in records if record["record_status"] == "completed"
         )
 
+        media_record_count = sum(
+            1
+            for record in records
+            if int(
+                record.get(
+                    "media_count"
+                )
+                or 0
+            )
+            > 0
+        )
+
         grade_options = (
             self._current_grade_options()
         )
@@ -785,6 +855,7 @@ class DataQueryPage(QWidget):
             f"  |  已完成 {completed_count}"
             f"{grade_statistics}"
             f"  |  未定 {ungraded_count}"
+            f"  |  有影像 {media_record_count}"
         )
 
     # =========================================================

@@ -2052,7 +2052,16 @@ class GenericEngineeringSurveyPage(QWidget):
 
             runtime = self.field_runtimes[field_key]
 
+            # 组合字段（如附表2.3“宽 × 高”）使用紧凑宽度。
+            # 单字段继续保持统一 280px，不互相影响。
+            runtime.widget.setProperty(
+                "uiWidthRole",
+                "formPair",
+            )
+
             row_layout.addWidget(runtime.widget)
+
+        row_layout.addStretch()
 
         label_text = row.label or " / ".join(
             self.field_runtimes[field_key].definition.label
