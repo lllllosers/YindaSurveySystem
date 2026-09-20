@@ -231,6 +231,15 @@ def ensure_survey_task_workspace_schema():
                 """
             )
 
+        if "target_unit_type" not in workspace_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_workspaces
+                ADD COLUMN target_unit_type TEXT
+                    NOT NULL DEFAULT 'water_office'
+                """
+            )
+
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -603,24 +612,34 @@ def _resolve_local_assignment(
     *,
     assignment,
 ):
-    office_uid = _require_text(
-        assignment.get(
-            "organization_unit_uid"
-        ),
-        "任务管理单位 UID",
+    target_uid = _require_text(
+        assignment.get("organization_unit_uid"),
+        "任务目标单位 UID",
     )
-
     department_uid = _require_text(
-        assignment.get(
-            "department_uid"
-        ),
+        assignment.get("department_uid"),
         "任务基层处 UID",
     )
+    target_unit_type = (
+        _clean_text(
+            assignment.get("target_unit_type")
+        )
+        or "water_office"
+    )
 
-    office = connection.execute(
+    if target_unit_type not in {
+        "department",
+        "water_office",
+    }:
+        raise ValueError(
+            "任务目标单位类型必须是基层处或水管所。"
+        )
+
+    target = connection.execute(
         """
         SELECT
             id,
+            organization_unit_uid,
             parent_id,
             name,
             unit_type,
@@ -628,26 +647,31 @@ def _resolve_local_assignment(
         FROM organization_units
         WHERE organization_unit_uid = ?
         """,
-        (
-            office_uid,
-        ),
+        (target_uid,),
     ).fetchone()
 
-    if office is None:
+    if target is None:
         raise ValueError(
-            "本机正式主数据中找不到任务管理单位。"
+            "本机正式主数据中找不到任务目标单位。"
             "请先确认软件版本和正式主数据一致。"
         )
 
-    if (
-        office["unit_type"]
-        != "water_office"
-        or office["status"]
-        != "active"
-    ):
+    if target["status"] != "active":
         raise ValueError(
-            "任务管理单位在本机不是可用的末级管理单位。"
+            "任务目标单位在本机已经停用。"
         )
+
+    if target["unit_type"] != target_unit_type:
+        raise ValueError(
+            "任务目标单位类型与本机正式主数据不一致。"
+        )
+
+    if target_unit_type == "department":
+        if target_uid != department_uid:
+            raise ValueError(
+                "处级任务的目标单位必须就是任务所属基层处。"
+            )
+        return int(target["id"])
 
     department = connection.execute(
         """
@@ -659,30 +683,21 @@ def _resolve_local_assignment(
         FROM organization_units
         WHERE id = ?
         """,
-        (
-            office["parent_id"],
-        ),
+        (target["parent_id"],),
     ).fetchone()
 
     if (
         department is None
-        or department[
-            "unit_type"
-        ]
-        != "department"
-        or department[
-            "organization_unit_uid"
-        ]
-        != department_uid
+        or department["unit_type"] != "department"
+        or department["organization_unit_uid"] != department_uid
+        or department["status"] != "active"
     ):
         raise ValueError(
-            "任务管理单位与所属基层处关系"
+            "任务水管所与所属基层处关系"
             "和本机正式主数据不一致。"
         )
 
-    return int(
-        office["id"]
-    )
+    return int(target["id"])
 
 
 def _resolve_selected_management_scopes(
@@ -692,17 +707,8 @@ def _resolve_selected_management_scopes(
     management_scopes,
     canal_references,
     organization_unit_id,
+    target_unit_type,
 ):
-    """
-    将 .ydtask 中冻结的 management scope 快照解析到本机物理 CanalUnit。
-
-    关键规则：
-    - 权限事实来自包内 management scope snapshot；
-    - 不读取 canal_units.organization_unit_id；
-    - 不要求接收端已经存在同一条 CanalManagementScope；
-    - CanalUnit 只用于解析真实物理渠道；
-    - 同一 CanalUnit 的多个 scope 必须分别保留，不能按渠道去重。
-    """
     if (
         not isinstance(
             selected_management_scope_uids,
@@ -714,106 +720,120 @@ def _resolve_selected_management_scopes(
             "任务没有有效的分管范围。"
         )
 
-    office = connection.execute(
+    target = connection.execute(
         """
-        SELECT organization_unit_uid
+        SELECT
+            id,
+            organization_unit_uid,
+            parent_id,
+            unit_type,
+            status
         FROM organization_units
         WHERE id = ?
         """,
-        (
-            int(organization_unit_id),
-        ),
+        (int(organization_unit_id),),
     ).fetchone()
 
-    if office is None:
+    if target is None:
         raise ValueError(
-            "本机找不到任务管理单位。"
+            "本机找不到任务目标单位。"
         )
 
-    office_uid = _require_text(
-        office["organization_unit_uid"],
-        "任务管理单位 UID",
+    if (
+        target["unit_type"] != target_unit_type
+        or target["status"] != "active"
+    ):
+        raise ValueError(
+            "任务目标单位与本机正式主数据不一致。"
+        )
+
+    target_uid = _require_text(
+        target["organization_unit_uid"],
+        "任务目标单位 UID",
     )
 
-    scope_by_uid = {}
-
-    for item in management_scopes:
-        uid = _require_text(
-            item.get(
-                "management_scope_uid"
-            ),
-            "management_scope_uid",
+    if target_unit_type == "water_office":
+        allowed_owner_uids = {target_uid}
+    elif target_unit_type == "department":
+        allowed_owner_uids = {
+            row["organization_unit_uid"]
+            for row in connection.execute(
+                """
+                SELECT organization_unit_uid
+                FROM organization_units
+                WHERE parent_id = ?
+                  AND unit_type = 'water_office'
+                  AND status = 'active'
+                """,
+                (int(target["id"]),),
+            ).fetchall()
+        }
+        if not allowed_owner_uids:
+            raise ValueError(
+                "当前基层处没有可用于接收任务范围的启用水管所。"
+            )
+    else:
+        raise ValueError(
+            "不支持的任务目标单位类型。"
         )
 
+    scope_by_uid = {}
+    for item in management_scopes:
+        uid = _require_text(
+            item.get("management_scope_uid"),
+            "management_scope_uid",
+        )
         if uid in scope_by_uid:
             raise ValueError(
                 "任务分管范围快照包含重复 UID。"
             )
-
         scope_by_uid[uid] = item
 
     canal_reference_by_uid = {}
-
     for item in canal_references:
         canal_uid = _require_text(
             item.get("canal_uid"),
             "canal_uid",
         )
-
         if canal_uid in canal_reference_by_uid:
             raise ValueError(
                 "任务渠系参考包含重复 canal_uid。"
             )
-
-        canal_reference_by_uid[
-            canal_uid
-        ] = item
+        canal_reference_by_uid[canal_uid] = item
 
     resolved = []
 
-    for raw_uid in (
-        selected_management_scope_uids
-    ):
+    for raw_uid in selected_management_scope_uids:
         uid = _require_text(
             raw_uid,
             "management_scope_uid",
         )
-
         item = scope_by_uid.get(uid)
-
         if item is None:
             raise ValueError(
                 "任务缺少选定分管范围快照："
                 f"{uid}。"
             )
 
-        item_office_uid = _require_text(
-            item.get(
-                "organization_unit_uid"
-            ),
+        item_owner_uid = _require_text(
+            item.get("organization_unit_uid"),
             "分管范围管理单位 UID",
         )
-
-        if item_office_uid != office_uid:
+        if item_owner_uid not in allowed_owner_uids:
             raise ValueError(
-                "任务分管范围与管理单位不一致。"
+                "任务分管范围超出当前目标单位允许的组织边界。"
             )
 
         canal_uid = _require_text(
             item.get("canal_uid"),
             "分管范围 canal_uid",
         )
-
-        canal_reference = (
-            canal_reference_by_uid.get(
-                canal_uid
-            )
+        canal_reference = canal_reference_by_uid.get(
+            canal_uid
         )
-
         if canal_reference is None:
             raise ValueError(
-                "任务缺少分管范围对应的"
-                "物理渠系参考："
+                "任务缺少分管范围对应的物理渠系参考："
                 f"{canal_uid}。"
             )
 
@@ -827,9 +847,7 @@ def _resolve_selected_management_scopes(
             FROM canal_units
             WHERE canal_unit_uid = ?
             """,
-            (
-                canal_uid,
-            ),
+            (canal_uid,),
         ).fetchone()
 
         if local_canal is None:
@@ -837,11 +855,7 @@ def _resolve_selected_management_scopes(
                 "本机正式主数据中找不到任务渠系："
                 f"{canal_uid}。"
             )
-
-        if (
-            local_canal["status"]
-            != "active"
-        ):
+        if local_canal["status"] != "active":
             raise ValueError(
                 "任务包含已停用渠系："
                 f"{local_canal['name']}。"
@@ -858,68 +872,40 @@ def _resolve_selected_management_scopes(
                 "canal_unit_id": int(
                     local_canal["id"]
                 ),
-                "canal_unit_uid": (
-                    canal_uid
+                "canal_unit_uid": canal_uid,
+                "organization_unit_uid": item_owner_uid,
+                "canal_name_snapshot": _require_text(
+                    canal_reference.get("name"),
+                    "任务渠系名称",
                 ),
-                "organization_unit_uid": (
-                    item_office_uid
+                "canal_level_snapshot": _require_text(
+                    canal_reference.get("canal_level"),
+                    "任务渠系级别",
                 ),
-                "canal_name_snapshot": (
-                    _require_text(
-                        canal_reference.get(
-                            "name"
-                        ),
-                        "任务渠系名称",
-                    )
+                "range_mode": range_mode,
+                "start_stake_text": item.get(
+                    "start_stake_text"
                 ),
-                "canal_level_snapshot": (
-                    _require_text(
-                        canal_reference.get(
-                            "canal_level"
-                        ),
-                        "任务渠系级别",
-                    )
+                "start_stake_value": item.get(
+                    "start_stake_value"
                 ),
-                "range_mode": (
-                    range_mode
+                "end_stake_text": item.get(
+                    "end_stake_text"
                 ),
-                "start_stake_text": (
-                    item.get(
-                        "start_stake_text"
-                    )
-                ),
-                "start_stake_value": (
-                    item.get(
-                        "start_stake_value"
-                    )
-                ),
-                "end_stake_text": (
-                    item.get(
-                        "end_stake_text"
-                    )
-                ),
-                "end_stake_value": (
-                    item.get(
-                        "end_stake_value"
-                    )
+                "end_stake_value": item.get(
+                    "end_stake_value"
                 ),
                 "sort_order": int(
-                    item.get(
-                        "sort_order"
-                    )
+                    item.get("sort_order")
                     or 0
                 ),
-                "source_scope_status": (
-                    _require_text(
-                        item.get("status"),
-                        "分管范围状态",
-                    )
+                "source_scope_status": _require_text(
+                    item.get("status"),
+                    "分管范围状态",
                 ),
                 "description": (
                     _clean_text(
-                        item.get(
-                            "description"
-                        )
+                        item.get("description")
                     )
                     or None
                 ),
@@ -1094,6 +1080,7 @@ def get_current_task_workspace():
                 stw.parent_task_uid,
                 stw.root_task_uid,
                 stw.task_depth,
+                stw.target_unit_type,
                 stw.project_id,
                 stw.survey_batch_id,
                 stw.organization_unit_id,
@@ -1106,7 +1093,12 @@ def get_current_task_workspace():
                 p.name AS project_name,
                 sb.batch_name,
                 ou.name AS organization_name,
-                ou.parent_id AS department_id
+                ou.organization_unit_uid,
+                CASE
+                    WHEN stw.target_unit_type = 'department'
+                    THEN ou.id
+                    ELSE ou.parent_id
+                END AS department_id
             FROM survey_task_workspaces AS stw
             JOIN projects AS p
               ON p.id = stw.project_id
@@ -1350,6 +1342,15 @@ def receive_survey_task_package(
         )
     )
 
+    target_unit_type = (
+        _clean_text(
+            assignment.get(
+                "target_unit_type"
+            )
+        )
+        or "water_office"
+    )
+
     package_hash = _sha256_file(
         source_path
     )
@@ -1400,6 +1401,9 @@ def receive_survey_task_package(
                 organization_unit_id=(
                     organization_unit_id
                 ),
+                target_unit_type=(
+                    target_unit_type
+                ),
             )
         )
 
@@ -1417,6 +1421,7 @@ def receive_survey_task_package(
                 parent_task_uid,
                 root_task_uid,
                 task_depth,
+                target_unit_type,
                 project_id,
                 survey_batch_id,
                 organization_unit_id,
@@ -1500,6 +1505,15 @@ def receive_survey_task_package(
                     or 0
                 )
                 != lineage.depth
+                or (
+                    _clean_text(
+                        existing[
+                            "target_unit_type"
+                        ]
+                    )
+                    or "water_office"
+                )
+                != target_unit_type
                 or existing_scope_uids
                 != expected_scope_uids
             ):
@@ -1711,6 +1725,9 @@ def receive_survey_task_package(
                     organization_unit_id=(
                         organization_unit_id
                     ),
+                    target_unit_type=(
+                        target_unit_type
+                    ),
                 )
             )
 
@@ -1731,6 +1748,7 @@ def receive_survey_task_package(
                     parent_task_uid,
                     root_task_uid,
                     task_depth,
+                    target_unit_type,
                     project_id,
                     survey_batch_id,
                     organization_unit_id,
@@ -1740,7 +1758,7 @@ def receive_survey_task_package(
                     source_package_sha256,
                     is_current
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task_uid,
@@ -1748,6 +1766,7 @@ def receive_survey_task_package(
                     lineage.parent_task_uid,
                     lineage.root_task_uid,
                     lineage.depth,
+                    target_unit_type,
                     project_id,
                     survey_batch_id,
                     organization_unit_id,
