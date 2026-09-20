@@ -224,6 +224,23 @@ class SurveyTaskIssueHistoryTestCase(
             ],
             result.package_uid,
         )
+        self.assertIsNone(
+            issue[
+                "parent_task_uid"
+            ]
+        )
+        self.assertEqual(
+            issue[
+                "root_task_uid"
+            ],
+            result.task_uid,
+        )
+        self.assertEqual(
+            issue[
+                "task_depth"
+            ],
+            0,
+        )
         self.assertEqual(
             issue[
                 "selected_scope_count"

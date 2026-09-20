@@ -108,7 +108,13 @@ class SurveyTaskPackageTestCase(unittest.TestCase):
         with zipfile.ZipFile(result.output_path, "r") as archive:
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(manifest["package_kind"], "survey_task")
-            self.assertEqual(manifest["task_schema_version"], "2.0")
+            self.assertEqual(manifest["task_schema_version"], "3.0")
+            self.assertIsNone(manifest["parent_task_uid"])
+            self.assertEqual(
+                manifest["root_task_uid"],
+                manifest["task_uid"],
+            )
+            self.assertEqual(manifest["task_depth"], 0)
             for entry in manifest["files"]:
                 content = archive.read(entry["path"])
                 self.assertEqual(len(content), entry["size"])
@@ -125,7 +131,15 @@ class SurveyTaskPackageTestCase(unittest.TestCase):
                 archive.read("reference/canal_management_scopes.json")
             )["items"]
 
-        self.assertEqual(task["task_schema_version"], "2.0")
+        self.assertEqual(task["task_schema_version"], "3.0")
+        self.assertEqual(
+            task["lineage"],
+            {
+                "parent_task_uid": None,
+                "root_task_uid": task["task_uid"],
+                "depth": 0,
+            },
+        )
         self.assertNotIn("selected_canal_uids", task["scope"])
         self.assertEqual(
             set(task["scope"]["selected_management_scope_uids"]),

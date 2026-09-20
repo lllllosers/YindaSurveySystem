@@ -128,7 +128,7 @@ class SurveyTaskPackageReaderTestCase(unittest.TestCase):
         self.assertEqual(len(inspection.management_scopes), 2)
         self.assertGreater(len(inspection.forms), 0)
         contents = load_survey_task_package(self.package_path)
-        self.assertEqual(contents.task["task_schema_version"], "2.0")
+        self.assertEqual(contents.task["task_schema_version"], "3.0")
         self.assertEqual(len(contents.management_scopes), 2)
 
     def test_tampered_payload_hash_is_rejected(self):
@@ -198,6 +198,85 @@ class SurveyTaskPackageReaderTestCase(unittest.TestCase):
         self.assertIn(
             "REFERENCE_CANAL_LEGACY_OWNER_FIELD",
             {issue.code for issue in inspection.issues},
+        )
+
+    def test_v2_task_without_lineage_is_still_supported(self):
+        def mutate(files):
+            task = json.loads(
+                files["task.json"].decode("utf-8")
+            )
+            task["task_schema_version"] = "2.0"
+            task.pop("lineage", None)
+            self._rewrite_json_payload(
+                files,
+                "task.json",
+                task,
+            )
+
+            manifest = json.loads(
+                files["manifest.json"].decode("utf-8")
+            )
+            manifest["task_schema_version"] = "2.0"
+            manifest.pop("parent_task_uid", None)
+            manifest.pop("root_task_uid", None)
+            manifest.pop("task_depth", None)
+            files["manifest.json"] = (
+                json.dumps(
+                    manifest,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+                + "\n"
+            ).encode("utf-8")
+
+        package = self._rewrite_zip(
+            mutate=mutate
+        )
+
+        inspection = inspect_survey_task_package(
+            package
+        )
+        self.assertTrue(
+            inspection.valid,
+            inspection.format_text(),
+        )
+
+        contents = load_survey_task_package(
+            package
+        )
+        self.assertEqual(
+            contents.task["task_schema_version"],
+            "2.0",
+        )
+
+    def test_v3_invalid_lineage_is_rejected(self):
+        def mutate(files):
+            task = json.loads(
+                files["task.json"].decode("utf-8")
+            )
+            task["lineage"]["root_task_uid"] = "wrong-root"
+            self._rewrite_json_payload(
+                files,
+                "task.json",
+                task,
+            )
+
+        inspection = inspect_survey_task_package(
+            self._rewrite_zip(
+                mutate=mutate
+            )
+        )
+
+        self.assertFalse(
+            inspection.valid
+        )
+        self.assertIn(
+            "TASK_LINEAGE_INVALID",
+            {
+                issue.code
+                for issue in inspection.issues
+            },
         )
 
 

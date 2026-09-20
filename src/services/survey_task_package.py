@@ -6,6 +6,10 @@ from pathlib import Path
 
 import database
 
+from services.survey_task_lineage import (
+    CURRENT_TASK_SCHEMA_VERSION,
+    build_root_task_lineage,
+)
 from services.master_data_integrity import check_master_data_integrity
 from services.survey_task_issue_history import (
     record_issued_survey_task,
@@ -20,7 +24,7 @@ from services.yd_package import (
 from version import APP_VERSION, APP_VERSION_LABEL
 
 
-TASK_SCHEMA_VERSION = "2.0"
+TASK_SCHEMA_VERSION = CURRENT_TASK_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -118,7 +122,7 @@ def _load_context(normalized):
         if int(batch["project_id"]) != int(project["id"]):
             raise ValueError("调查批次不属于指定项目。")
 
-        office = connection.execute(
+        target = connection.execute(
             """
             SELECT id, organization_unit_uid, parent_id, name, unit_type,
                    business_code, status, description, sort_order
@@ -127,24 +131,79 @@ def _load_context(normalized):
             """,
             (normalized["organization_unit_id"],),
         ).fetchone()
-        if office is None:
+        if target is None:
             raise ValueError("没有找到指定管理单位。")
-        if office["unit_type"] != "water_office":
-            raise ValueError("调查任务必须分配给末级管理单位。")
-        if office["status"] != "active":
+        if target["status"] != "active":
             raise ValueError("当前管理单位已停用，不能创建调查任务。")
+        if target["unit_type"] not in {
+            "department",
+            "water_office",
+        }:
+            raise ValueError(
+                "调查任务当前只支持下发给基层处或水管所。"
+            )
 
-        department = connection.execute(
-            """
-            SELECT id, organization_unit_uid, name, unit_type, business_code,
-                   status, description, sort_order
-            FROM organization_units
-            WHERE id = ?
-            """,
-            (office["parent_id"],),
-        ).fetchone()
-        if department is None or department["unit_type"] != "department":
-            raise ValueError("当前管理单位没有有效的所属基层处。")
+        if target["unit_type"] == "water_office":
+            department = connection.execute(
+                """
+                SELECT id, organization_unit_uid, parent_id, name, unit_type,
+                       business_code, status, description, sort_order
+                FROM organization_units
+                WHERE id = ?
+                """,
+                (target["parent_id"],),
+            ).fetchone()
+
+            if (
+                department is None
+                or department["unit_type"] != "department"
+                or department["status"] != "active"
+            ):
+                raise ValueError(
+                    "当前水管所没有有效的所属基层处。"
+                )
+
+            eligible_offices = [
+                dict(target)
+            ]
+
+        else:
+            department = target
+            eligible_offices = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT
+                        id,
+                        organization_unit_uid,
+                        parent_id,
+                        name,
+                        unit_type,
+                        business_code,
+                        status,
+                        description,
+                        sort_order
+                    FROM organization_units
+                    WHERE parent_id = ?
+                      AND unit_type = 'water_office'
+                      AND status = 'active'
+                    ORDER BY
+                        CASE
+                            WHEN sort_order > 0
+                            THEN sort_order
+                            ELSE 1000000 + id
+                        END,
+                        id
+                    """,
+                    (target["id"],),
+                ).fetchall()
+            ]
+
+            if not eligible_offices:
+                raise ValueError(
+                    "当前基层处没有可用的下属水管所，"
+                    "不能创建处级调查任务。"
+                )
 
         all_canals = [
             dict(row)
@@ -160,10 +219,19 @@ def _load_context(normalized):
             ).fetchall()
         ]
 
+        eligible_office_ids = [
+            int(row["id"])
+            for row in eligible_offices
+        ]
+        placeholders = ",".join(
+            "?"
+            for _ in eligible_office_ids
+        )
+
         management_scopes = [
             dict(row)
             for row in connection.execute(
-                """
+                f"""
                 SELECT
                     cms.id,
                     cms.management_scope_uid,
@@ -176,6 +244,10 @@ def _load_context(normalized):
                     cms.organization_unit_id,
                     office.organization_unit_uid,
                     office.name AS organization_name,
+                    office.business_code AS organization_business_code,
+                    office.status AS organization_status,
+                    office.description AS organization_description,
+                    office.sort_order AS organization_sort_order,
                     cms.range_mode,
                     cms.start_stake_text,
                     cms.start_stake_value,
@@ -185,19 +257,27 @@ def _load_context(normalized):
                     cms.status,
                     cms.description
                 FROM canal_management_scopes AS cms
-                JOIN canal_units AS canal ON canal.id = cms.canal_unit_id
-                JOIN organization_units AS office ON office.id = cms.organization_unit_id
-                WHERE cms.organization_unit_id = ?
+                JOIN canal_units AS canal
+                  ON canal.id = cms.canal_unit_id
+                JOIN organization_units AS office
+                  ON office.id = cms.organization_unit_id
+                WHERE cms.organization_unit_id IN ({placeholders})
                   AND cms.status = 'active'
                 ORDER BY
                     CASE
-                        WHEN canal.sort_order > 0 THEN canal.sort_order
+                        WHEN office.sort_order > 0
+                        THEN office.sort_order
+                        ELSE 1000000 + office.id
+                    END,
+                    CASE
+                        WHEN canal.sort_order > 0
+                        THEN canal.sort_order
                         ELSE 1000000 + canal.id
                     END,
                     cms.sort_order,
                     cms.id
                 """,
-                (normalized["organization_unit_id"],),
+                tuple(eligible_office_ids),
             ).fetchall()
         ]
 
@@ -224,8 +304,9 @@ def _load_context(normalized):
     return {
         "project": dict(project),
         "batch": dict(batch),
-        "office": dict(office),
+        "target": dict(target),
         "department": dict(department),
+        "eligible_offices": eligible_offices,
         "all_canals": all_canals,
         "management_scopes": management_scopes,
         "forms": forms,
@@ -285,14 +366,22 @@ def _collect_reference_canal_ids(selected_scopes, all_canals):
     return reference_ids
 
 
-def _build_reference_organizations(context):
+def _build_reference_organizations(
+    context,
+    selected_scopes,
+):
     department = context["department"]
-    office = context["office"]
+    target = context["target"]
+
     department_uid = _require_stable_uid(
-        department, "organization_unit_uid", "所属基层处"
+        department,
+        "organization_unit_uid",
+        "所属基层处",
     )
-    office_uid = _require_stable_uid(
-        office, "organization_unit_uid", "管理单位"
+    target_uid = _require_stable_uid(
+        target,
+        "organization_unit_uid",
+        "任务目标单位",
     )
 
     items = [
@@ -304,20 +393,88 @@ def _build_reference_organizations(context):
             "business_code": department["business_code"],
             "status": department["status"],
             "description": department["description"],
-            "sort_order": int(department["sort_order"] or 0),
-        },
-        {
-            "organization_uid": office_uid,
-            "parent_organization_uid": department_uid,
-            "name": office["name"],
-            "unit_type": office["unit_type"],
-            "business_code": office["business_code"],
-            "status": office["status"],
-            "description": office["description"],
-            "sort_order": int(office["sort_order"] or 0),
-        },
+            "sort_order": int(
+                department["sort_order"]
+                or 0
+            ),
+        }
     ]
-    return items, department_uid, office_uid
+
+    selected_owner_uids = {
+        _require_stable_uid(
+            row,
+            "organization_unit_uid",
+            "分管范围管理单位",
+        )
+        for row in selected_scopes
+    }
+
+    office_by_uid = {
+        _require_stable_uid(
+            row,
+            "organization_unit_uid",
+            "水管所",
+        ): row
+        for row in context["eligible_offices"]
+    }
+
+    for office_uid in sorted(
+        selected_owner_uids,
+        key=lambda uid: (
+            int(
+                office_by_uid[uid].get(
+                    "sort_order"
+                )
+                or 0
+            ),
+            uid,
+        ),
+    ):
+        if office_uid == department_uid:
+            continue
+
+        office = office_by_uid.get(
+            office_uid
+        )
+        if office is None:
+            raise ValueError(
+                "所选分管范围的管理单位不属于"
+                "当前任务目标基层处。"
+            )
+
+        items.append(
+            {
+                "organization_uid": office_uid,
+                "parent_organization_uid": department_uid,
+                "name": office["name"],
+                "unit_type": office["unit_type"],
+                "business_code": office["business_code"],
+                "status": office["status"],
+                "description": office["description"],
+                "sort_order": int(
+                    office["sort_order"]
+                    or 0
+                ),
+            }
+        )
+
+    if (
+        target["unit_type"]
+        == "water_office"
+        and target_uid not in {
+            item["organization_uid"]
+            for item in items
+        }
+    ):
+        raise ValueError(
+            "任务目标水管所没有对应的有效分管范围。"
+        )
+
+    return (
+        items,
+        department_uid,
+        target_uid,
+    )
 
 
 def _build_reference_canals(context, reference_ids):
@@ -418,8 +575,11 @@ def export_survey_task_package(request):
     reference_canal_ids = _collect_reference_canal_ids(
         selected_scopes, context["all_canals"]
     )
-    organization_reference, department_uid, office_uid = (
-        _build_reference_organizations(context)
+    organization_reference, department_uid, target_uid = (
+        _build_reference_organizations(
+            context,
+            selected_scopes,
+        )
     )
     canal_reference = _build_reference_canals(context, reference_canal_ids)
     scope_reference = _build_management_scope_reference(selected_scopes)
@@ -431,10 +591,14 @@ def export_survey_task_package(request):
     task_uid = new_stable_token()
     package_uid = new_stable_token()
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    lineage = build_root_task_lineage(
+        task_uid
+    )
 
     task_data = {
         "task_schema_version": TASK_SCHEMA_VERSION,
         "task_uid": task_uid,
+        "lineage": lineage.as_dict(),
         "task_name": normalized["task_name"],
         "notes": normalized["notes"] or None,
         "project": {
@@ -450,10 +614,11 @@ def export_survey_task_package(request):
             "end_date": context["batch"]["end_date"],
         },
         "assignment": {
+            "target_unit_type": context["target"]["unit_type"],
             "department_uid": department_uid,
             "department_name": context["department"]["name"],
-            "organization_unit_uid": office_uid,
-            "organization_name": context["office"]["name"],
+            "organization_unit_uid": target_uid,
+            "organization_name": context["target"]["name"],
         },
         "scope": {
             "selected_management_scope_uids": selected_scope_uids,
@@ -483,6 +648,9 @@ def export_survey_task_package(request):
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
         "task_uid": task_uid,
+        "parent_task_uid": lineage.parent_task_uid,
+        "root_task_uid": lineage.root_task_uid,
+        "task_depth": lineage.depth,
         "project_uid": project_uid,
         "survey_batch_uid": batch_uid,
     }
@@ -509,6 +677,9 @@ def export_survey_task_package(request):
             canal_units=(
                 canal_reference
             ),
+            organization_units=(
+                organization_reference
+            ),
         )
 
     except Exception:
@@ -533,7 +704,7 @@ def export_survey_task_package(request):
         output_path=write_result.output_path,
         package_uid=package_uid,
         task_uid=task_uid,
-        organization_name=context["office"]["name"],
+        organization_name=context["target"]["name"],
         selected_management_scope_count=len(selected_scope_uids),
         reference_canal_count=len(canal_reference),
         reference_organization_count=len(organization_reference),

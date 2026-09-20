@@ -591,6 +591,38 @@ def inspect_survey_result_package(package_path):
         or result_has_task_set
     )
 
+    manifest_submission = manifest.get("submission_task_uid")
+    result_submission = result_document.get("submission_task_uid")
+
+    def _normalize_submission(value, *, path):
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            _append(
+                issues,
+                "SUBMISSION_TASK_UID_INVALID",
+                "submission_task_uid 必须是非空字符串或 null。",
+                path=path,
+            )
+            return None
+        return value.strip()
+
+    manifest_submission = _normalize_submission(
+        manifest_submission,
+        path="manifest.json",
+    )
+    result_submission = _normalize_submission(
+        result_submission,
+        path="result.json",
+    )
+
+    if manifest_submission != result_submission:
+        _append(
+            issues,
+            "SUBMISSION_TASK_UID_MISMATCH",
+            "manifest 与 result.json 的 submission_task_uid 不一致。",
+        )
+
     # 工程对象
     asset_by_uid = {}
 
