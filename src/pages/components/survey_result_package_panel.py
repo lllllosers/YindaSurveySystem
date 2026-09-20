@@ -34,6 +34,9 @@ from services.survey_result_package import (
 from services.survey_result_package_reader import (
     inspect_survey_result_package,
 )
+from services.survey_department_aggregate import (
+    preview_current_department_aggregate,
+)
 
 
 _INVALID_FILENAME_CHARS = re.compile(
@@ -104,6 +107,7 @@ class SurveyResultPackagePanel(QWidget):
         context_provider,
         scope_provider,
         output_parent_provider=None,
+        workspace_provider=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -116,6 +120,9 @@ class SurveyResultPackagePanel(QWidget):
         )
         self.output_parent_provider = (
             output_parent_provider
+        )
+        self.workspace_provider = (
+            workspace_provider
         )
 
         self._export_thread = None
@@ -257,6 +264,12 @@ class SurveyResultPackagePanel(QWidget):
 
         return context
 
+    def _workspace(self):
+        if not self.workspace_provider:
+            return None
+
+        return self.workspace_provider()
+
     @staticmethod
     def _context_value(
         context,
@@ -380,6 +393,62 @@ class SurveyResultPackagePanel(QWidget):
             identity = (
                 self._current_local_identity()
             )
+
+            workspace = (
+                self._workspace()
+            )
+
+            if (
+                workspace is not None
+                and str(
+                    workspace.get(
+                        "target_unit_type"
+                    )
+                    or ""
+                ).strip()
+                == "department"
+            ):
+                preview = (
+                    preview_current_department_aggregate()
+                )
+
+                if (
+                    not self.result_name_edit
+                    .text()
+                    .strip()
+                ):
+                    self.result_name_edit.setText(
+                        (
+                            f"{identity['batch_name']}"
+                            "处级汇总成果"
+                        )
+                    )
+
+                self.export_button.setText(
+                    "生成处级汇总成果包"
+                )
+
+                self.scope_summary_label.setText(
+                    (
+                        "当前为处级父任务汇总模式："
+                        f"可汇总 {preview.record_count} 条记录，"
+                        f"来源子任务 {preview.source_task_count} 个，"
+                        f"涉及水管所 {preview.source_office_count} 个，"
+                        f"分管范围 {preview.management_scope_count} 项。"
+                        "上方成果范围筛选不会改变 .ydresult 的父任务授权边界。"
+                    )
+                )
+
+                self.export_button.setEnabled(
+                    bool(
+                        preview.survey_record_ids
+                    )
+                )
+
+                return tuple(
+                    preview.survey_record_ids
+                )
+
             _, records = (
                 self._scope_records()
             )
@@ -402,6 +471,10 @@ class SurveyResultPackagePanel(QWidget):
                     )
                 )
 
+            self.export_button.setText(
+                "生成调查成果包"
+            )
+
             self.scope_summary_label.setText(
                 (
                     "当前筛选范围可打包 "
@@ -423,10 +496,6 @@ class SurveyResultPackagePanel(QWidget):
                 False
             )
             return ()
-
-    # =========================================================
-    # export / inspect
-    # =========================================================
 
     def _default_output_path(
         self,
@@ -466,30 +535,91 @@ class SurveyResultPackagePanel(QWidget):
                 self._current_local_identity()
             )
 
-            _, records = (
-                self._scope_records()
+            workspace = (
+                self._workspace()
             )
 
-            record_ids = (
-                self._record_ids(
-                    records
-                )
-            )
+            submission_task_uid = ""
 
-            if not record_ids:
-                raise ValueError(
-                    "当前成果范围没有录入完成的工程调查记录。"
+            if (
+                workspace is not None
+                and str(
+                    workspace.get(
+                        "target_unit_type"
+                    )
+                    or ""
+                ).strip()
+                == "department"
+            ):
+                preview = (
+                    preview_current_department_aggregate()
                 )
 
-            result_name = (
-                self.result_name_edit
-                .text()
-                .strip()
-                or (
-                    f"{identity['batch_name']}"
-                    "调查成果"
+                record_ids = tuple(
+                    preview.survey_record_ids
                 )
-            )
+
+                submission_task_uid = (
+                    preview.parent_task_uid
+                )
+
+                if not record_ids:
+                    raise ValueError(
+                        "当前处级父任务下没有可汇总的已完成调查记录。"
+                    )
+
+                result_name = (
+                    self.result_name_edit
+                    .text()
+                    .strip()
+                    or (
+                        f"{identity['batch_name']}"
+                        "处级汇总成果"
+                    )
+                )
+
+            else:
+                _, records = (
+                    self._scope_records()
+                )
+
+                record_ids = (
+                    self._record_ids(
+                        records
+                    )
+                )
+
+                if not record_ids:
+                    raise ValueError(
+                        "当前成果范围没有录入完成的工程调查记录。"
+                    )
+
+                result_name = (
+                    self.result_name_edit
+                    .text()
+                    .strip()
+                    or (
+                        f"{identity['batch_name']}"
+                        "调查成果"
+                    )
+                )
+
+                if (
+                    workspace is not None
+                    and str(
+                        workspace.get(
+                            "target_unit_type"
+                        )
+                        or ""
+                    ).strip()
+                    == "water_office"
+                ):
+                    submission_task_uid = str(
+                        workspace.get(
+                            "task_uid"
+                        )
+                        or ""
+                    ).strip()
 
             default_path = (
                 self._default_output_path(
@@ -542,6 +672,9 @@ class SurveyResultPackagePanel(QWidget):
                         self.notes_edit
                         .text()
                         .strip()
+                    ),
+                    submission_task_uid=(
+                        submission_task_uid
                     ),
                 )
             )
@@ -609,7 +742,6 @@ class SurveyResultPackagePanel(QWidget):
 
         return request
 
-    @Slot(object)
     def _export_finished(
         self,
         result,

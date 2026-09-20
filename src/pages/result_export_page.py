@@ -49,6 +49,9 @@ from services.engineering_result_preflight import (
     inspect_batch_export_plan,
 )
 from services.survey_scope import SurveyScope
+from services.survey_task_workspace import (
+    get_current_task_workspace,
+)
 from pages.components.survey_result_package_panel import SurveyResultPackagePanel
 
 
@@ -337,6 +340,9 @@ class ResultExportPage(QWidget):
                         .text()
                         .strip()
                     )
+                ),
+                workspace_provider=(
+                    get_current_task_workspace
                 ),
             )
         )
