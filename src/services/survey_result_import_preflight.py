@@ -474,7 +474,8 @@ def _load_issued_task_authority(
             task_uid,
             project_uid,
             survey_batch_uid,
-            organization_unit_uid
+            organization_unit_uid,
+            target_unit_type
         FROM survey_task_issues
         WHERE task_uid = ?
         LIMIT 1
@@ -1873,102 +1874,156 @@ def preflight_survey_result_import(
                 )
 
         # -----------------------------------------------------
-        # 来源任务权威校验。
-        #
-        # 真值来源只允许是“上级当初下发任务时保存的冻结快照”：
-        # survey_task_issues + survey_task_issue_scopes。
-        #
-        # current CanalManagementScope 仅用于提示历史与当前是否有变化，
-        # 绝不作为历史任务合法性的判定依据。
+        # 来源任务 / 汇总提交任务权威校验
         # -----------------------------------------------------
+
+        submission_task_uid = _optional_text(
+            result.get("submission_task_uid")
+        )
+
+        submission_task = None
+
+        if submission_task_uid:
+            submission_task = _load_issued_task_authority(
+                connection,
+                submission_task_uid,
+            )
+
+            if submission_task is None:
+                _append(
+                    issues,
+                    SEVERITY_ERROR,
+                    "SUBMISSION_TASK_ISSUE_MISSING",
+                    (
+                        "成果包声明了汇总提交任务，"
+                        "但当前数据库没有该任务的已下发冻结历史。"
+                    ),
+                    entity_uid=submission_task_uid,
+                )
+            else:
+                if (
+                    _clean_text(
+                        submission_task.get("project_uid")
+                    )
+                    != project_uid
+                ):
+                    _append(
+                        issues,
+                        SEVERITY_ERROR,
+                        "SUBMISSION_TASK_PROJECT_MISMATCH",
+                        "汇总提交任务所属项目与成果包项目不一致。",
+                        entity_uid=submission_task_uid,
+                    )
+
+                if (
+                    _clean_text(
+                        submission_task.get("survey_batch_uid")
+                    )
+                    != survey_batch_uid
+                ):
+                    _append(
+                        issues,
+                        SEVERITY_ERROR,
+                        "SUBMISSION_TASK_BATCH_MISMATCH",
+                        "汇总提交任务所属调查批次与成果包批次不一致。",
+                        entity_uid=submission_task_uid,
+                    )
 
         issued_task_cache = {}
         issued_scope_cache = {}
         current_scope_cache = {}
         verified_pairs = set()
+        aggregate_verified = False
 
         for record in contents.survey_records:
             task_uid = _clean_text(
-                record.get(
-                    "source_task_uid"
-                )
+                record.get("source_task_uid")
             )
             scope_uid = _clean_text(
-                record.get(
-                    "source_management_scope_uid"
-                )
+                record.get("source_management_scope_uid")
             )
 
             if not task_uid:
                 continue
 
             record_uid = _clean_text(
-                record.get(
-                    "survey_record_uid"
-                )
+                record.get("survey_record_uid")
             )
 
-            if task_uid not in issued_task_cache:
-                issued_task_cache[
-                    task_uid
-                ] = (
-                    _load_issued_task_authority(
-                        connection,
-                        task_uid,
+            if submission_task_uid:
+                issued_task = submission_task
+                authority_task_uid = submission_task_uid
+
+                if issued_task is None:
+                    continue
+
+                target_unit_type = (
+                    _clean_text(
+                        issued_task.get("target_unit_type")
                     )
+                    or "water_office"
                 )
 
-            issued_task = issued_task_cache[
-                task_uid
-            ]
+                if (
+                    task_uid != submission_task_uid
+                    and target_unit_type != "department"
+                ):
+                    _append(
+                        issues,
+                        SEVERITY_ERROR,
+                        "SUBMISSION_TASK_AGGREGATION_NOT_ALLOWED",
+                        (
+                            "成果记录来源任务与本次提交任务不同，"
+                            "但提交任务不是处级父任务。"
+                        ),
+                        entity_uid=record_uid,
+                    )
+            else:
+                authority_task_uid = task_uid
 
-            if issued_task is None:
-                _append(
-                    issues,
-                    SEVERITY_ERROR,
-                    "SOURCE_TASK_ISSUE_MISSING",
-                    (
-                        "成果记录声明了来源任务，"
-                        "但当前上级数据库没有该任务的"
-                        "已下发冻结历史。"
-                    ),
-                    entity_uid=record_uid,
-                )
-                continue
+                if authority_task_uid not in issued_task_cache:
+                    issued_task_cache[authority_task_uid] = (
+                        _load_issued_task_authority(
+                            connection,
+                            authority_task_uid,
+                        )
+                    )
+
+                issued_task = issued_task_cache[
+                    authority_task_uid
+                ]
+
+                if issued_task is None:
+                    _append(
+                        issues,
+                        SEVERITY_ERROR,
+                        "SOURCE_TASK_ISSUE_MISSING",
+                        (
+                            "成果记录声明了来源任务，"
+                            "但当前上级数据库没有该任务的已下发冻结历史。"
+                        ),
+                        entity_uid=record_uid,
+                    )
+                    continue
 
             if (
-                _clean_text(
-                    issued_task.get(
-                        "project_uid"
-                    )
-                )
-                != _clean_text(
-                    record.get(
-                        "project_uid"
-                    )
-                )
+                _clean_text(issued_task.get("project_uid"))
+                != _clean_text(record.get("project_uid"))
             ):
                 _append(
                     issues,
                     SEVERITY_ERROR,
                     "SOURCE_TASK_PROJECT_MISMATCH",
-                    (
-                        "成果记录所属项目与原始下发任务"
-                        "冻结项目不一致。"
-                    ),
+                    "成果记录所属项目与验收任务冻结项目不一致。",
                     entity_uid=record_uid,
                 )
 
             if (
                 _clean_text(
-                    issued_task.get(
-                        "survey_batch_uid"
-                    )
+                    issued_task.get("survey_batch_uid")
                 )
                 != _clean_text(
-                    record.get(
-                        "survey_batch_uid"
-                    )
+                    record.get("survey_batch_uid")
                 )
             ):
                 _append(
@@ -1976,28 +2031,19 @@ def preflight_survey_result_import(
                     SEVERITY_ERROR,
                     "SOURCE_TASK_BATCH_MISMATCH",
                     (
-                        "成果记录所属调查批次与原始下发任务"
+                        "成果记录所属调查批次与验收任务"
                         "冻结批次不一致。"
                     ),
                     entity_uid=record_uid,
                 )
 
             scope_key = (
-                int(
-                    issued_task[
-                        "id"
-                    ]
-                ),
+                int(issued_task["id"]),
                 scope_uid,
             )
 
-            if (
-                scope_key
-                not in issued_scope_cache
-            ):
-                issued_scope_cache[
-                    scope_key
-                ] = (
+            if scope_key not in issued_scope_cache:
+                issued_scope_cache[scope_key] = (
                     _load_issued_scope_authority(
                         connection,
                         scope_key[0],
@@ -2005,11 +2051,9 @@ def preflight_survey_result_import(
                     )
                 )
 
-            issued_scope = (
-                issued_scope_cache[
-                    scope_key
-                ]
-            )
+            issued_scope = issued_scope_cache[
+                scope_key
+            ]
 
             if issued_scope is None:
                 _append(
@@ -2018,63 +2062,68 @@ def preflight_survey_result_import(
                     "SOURCE_SCOPE_ISSUE_MISSING",
                     (
                         "成果记录声明的分管范围"
-                        "不在该来源任务的下发冻结范围中。"
+                        "不在本次验收任务的下发冻结范围中。"
                     ),
                     entity_uid=record_uid,
                 )
                 continue
 
-            record_org_uid = (
-                _clean_text(
-                    record.get(
-                        "organization_unit_uid"
-                    )
-                )
+            record_org_uid = _clean_text(
+                record.get("organization_unit_uid")
             )
 
-            if (
+            target_unit_type = (
                 _clean_text(
-                    issued_task.get(
-                        "organization_unit_uid"
-                    )
+                    issued_task.get("target_unit_type")
                 )
-                != record_org_uid
-                or _clean_text(
-                    issued_scope.get(
-                        "organization_unit_uid"
+                or "water_office"
+            )
+
+            task_org_matches = True
+
+            if target_unit_type == "water_office":
+                task_org_matches = (
+                    _clean_text(
+                        issued_task.get("organization_unit_uid")
                     )
+                    == record_org_uid
                 )
-                != record_org_uid
-            ):
+
+            scope_org_matches = (
+                _clean_text(
+                    issued_scope.get("organization_unit_uid")
+                )
+                == record_org_uid
+            )
+
+            if not task_org_matches or not scope_org_matches:
                 _append(
                     issues,
                     SEVERITY_ERROR,
                     "SOURCE_SCOPE_ORGANIZATION_MISMATCH",
                     (
-                        "成果记录管理单位与原始下发任务"
+                        "成果记录管理单位与验收任务"
                         "及其分管范围冻结快照不一致。"
                     ),
                     entity_uid=record_uid,
                 )
 
-            if (
+            canal_matches = (
                 _clean_text(
-                    issued_scope.get(
-                        "canal_unit_uid"
-                    )
+                    issued_scope.get("canal_unit_uid")
                 )
-                != _clean_text(
-                    record.get(
-                        "canal_unit_uid"
-                    )
+                == _clean_text(
+                    record.get("canal_unit_uid")
                 )
-            ):
+            )
+
+            if not canal_matches:
                 _append(
                     issues,
                     SEVERITY_ERROR,
                     "SOURCE_SCOPE_CANAL_MISMATCH",
                     (
-                        "成果记录物理渠系与原始下发任务"
+                        "成果记录物理渠系与验收任务"
                         "分管范围冻结快照不一致。"
                     ),
                     entity_uid=record_uid,
@@ -2082,75 +2131,47 @@ def preflight_survey_result_import(
 
             authority_ok = (
                 _clean_text(
-                    issued_task.get(
-                        "project_uid"
-                    )
+                    issued_task.get("project_uid")
                 )
                 == _clean_text(
-                    record.get(
-                        "project_uid"
-                    )
+                    record.get("project_uid")
                 )
                 and _clean_text(
-                    issued_task.get(
-                        "survey_batch_uid"
-                    )
+                    issued_task.get("survey_batch_uid")
                 )
                 == _clean_text(
-                    record.get(
-                        "survey_batch_uid"
-                    )
+                    record.get("survey_batch_uid")
                 )
-                and _clean_text(
-                    issued_task.get(
-                        "organization_unit_uid"
-                    )
-                )
-                == record_org_uid
-                and _clean_text(
-                    issued_scope.get(
-                        "organization_unit_uid"
-                    )
-                )
-                == record_org_uid
-                and _clean_text(
-                    issued_scope.get(
-                        "canal_unit_uid"
-                    )
-                )
-                == _clean_text(
-                    record.get(
-                        "canal_unit_uid"
-                    )
-                )
+                and task_org_matches
+                and scope_org_matches
+                and canal_matches
             )
 
             if authority_ok:
                 verified_pairs.add(
                     (
-                        task_uid,
+                        authority_task_uid,
                         scope_uid,
                     )
                 )
 
-            if (
-                scope_uid
-                not in current_scope_cache
-            ):
-                current_scope_cache[
-                    scope_uid
-                ] = (
+                if (
+                    submission_task_uid
+                    and task_uid != submission_task_uid
+                ):
+                    aggregate_verified = True
+
+            if scope_uid not in current_scope_cache:
+                current_scope_cache[scope_uid] = (
                     _load_current_management_scope(
                         connection,
                         scope_uid,
                     )
                 )
 
-            current_scope = (
-                current_scope_cache[
-                    scope_uid
-                ]
-            )
+            current_scope = current_scope_cache[
+                scope_uid
+            ]
 
             if current_scope is None:
                 _append(
@@ -2164,15 +2185,13 @@ def preflight_survey_result_import(
                     ),
                     entity_uid=scope_uid,
                 )
-
             elif (
                 _canonical_json(
                     _scope_authority_signature(
                         current_scope
                     )
                 )
-                !=
-                _canonical_json(
+                != _canonical_json(
                     _scope_authority_signature(
                         issued_scope
                     )
@@ -2188,6 +2207,21 @@ def preflight_survey_result_import(
                     ),
                     entity_uid=scope_uid,
                 )
+
+        if aggregate_verified:
+            _append(
+                issues,
+                SEVERITY_INFO,
+                "AGGREGATE_SUBMISSION_AUTHORITY_VERIFIED",
+                (
+                    "已按处级父任务冻结范围核验逐级汇总成果；"
+                    "调查记录仍保留原始 source_task_uid。"
+                ),
+                entity_uid=(
+                    submission_task_uid
+                    or ""
+                ),
+            )
 
         if verified_pairs:
             _append(
