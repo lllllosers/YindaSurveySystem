@@ -3691,7 +3691,13 @@ def get_engineering_survey_query_records(
             office.name AS office_name,
             department.name AS department_name,
 
-            canal.name AS canal_name
+            canal.name AS canal_name,
+
+            (
+                SELECT COUNT(*)
+                FROM survey_media AS sm
+                WHERE sm.survey_record_id = sr.id
+            ) AS media_count
 
         FROM survey_records AS sr
 
@@ -3933,6 +3939,12 @@ def get_engineering_survey_query_records(
                 "updated_at": (
                     row["updated_at"]
                     or ""
+                ),
+                "media_count": (
+                    int(
+                        row["media_count"]
+                        or 0
+                    )
                 ),
             }
         )
@@ -5909,7 +5921,23 @@ def get_engineering_assets(
                     AND sr.record_status != 'void'
                     ORDER BY sr.id DESC
                     LIMIT 1
-                ) AS survey_date
+                ) AS survey_date,
+
+                (
+                    SELECT COUNT(*)
+                    FROM survey_media AS sm
+                    JOIN survey_records AS media_sr
+                      ON media_sr.id =
+                        sm.survey_record_id
+                    WHERE
+                        media_sr.engineering_asset_id =
+                        ea.id
+                    AND (
+                        ? IS NULL
+                        OR media_sr.survey_batch_id = ?
+                    )
+                    AND media_sr.record_status != 'void'
+                ) AS media_count
 
             FROM engineering_assets AS ea
 
@@ -5932,6 +5960,8 @@ def get_engineering_assets(
                 ea.id
             """,
             (
+                survey_batch_id,
+                survey_batch_id,
                 survey_batch_id,
                 survey_batch_id,
                 survey_batch_id,

@@ -141,7 +141,7 @@ class EngineeringAssetPage(QWidget):
             self.update_action_buttons
         )
 
-        self.table.setColumnCount(13)
+        self.table.setColumnCount(14)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -156,6 +156,7 @@ class EngineeringAssetPage(QWidget):
                 "当前调查批次状态",
                 "工程状况类别",
                 "调查时间",
+                "影像",
                 "工程状态",
                 "编号状态",
             ]
@@ -180,8 +181,9 @@ class EngineeringAssetPage(QWidget):
 
         self.table.setColumnWidth(9, 110)
         self.table.setColumnWidth(10, 120)
-        self.table.setColumnWidth(11, 100)
+        self.table.setColumnWidth(11, 90)
         self.table.setColumnWidth(12, 100)
+        self.table.setColumnWidth(13, 100)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         layout.addWidget(
@@ -249,6 +251,21 @@ class EngineeringAssetPage(QWidget):
                 else ""
             )
 
+            media_count = int(
+                (
+                    asset["media_count"]
+                    if "media_count" in asset.keys()
+                    else 0
+                )
+                or 0
+            )
+
+            media_text = (
+                f"有（{media_count}）"
+                if media_count > 0
+                else "无"
+            )
+
             values = [
                 asset["business_code"],
                 asset["asset_name"],
@@ -261,6 +278,7 @@ class EngineeringAssetPage(QWidget):
                 survey_status_text,
                 overall_grade_value,
                 survey_date_value,
+                media_text,
                 asset_status_text,
                 {
                     "provisional": "暂编",

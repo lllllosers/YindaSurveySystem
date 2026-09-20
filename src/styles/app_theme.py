@@ -470,6 +470,12 @@ QComboBox[uiWidthRole="form"] {
     min-width: 280px;
     max-width: 280px;
 }
+
+QLineEdit[uiWidthRole="formPair"],
+QComboBox[uiWidthRole="formPair"] {
+    min-width: 130px;
+    max-width: 130px;
+}
 """
 
 APP_QSS += CONTROL_WIDTH_SYSTEM_QSS
