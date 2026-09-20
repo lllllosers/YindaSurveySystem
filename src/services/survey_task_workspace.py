@@ -11,6 +11,9 @@ import database
 from services.survey_task_package_reader import (
     load_survey_task_package,
 )
+from services.survey_task_lineage import (
+    normalize_task_lineage,
+)
 
 
 @dataclass(frozen=True)
@@ -194,6 +197,49 @@ def ensure_survey_task_workspace_schema():
                 management_scope_uid,
                 task_workspace_id
             );
+            """
+        )
+
+        workspace_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(survey_task_workspaces)"
+            ).fetchall()
+        }
+
+        if "parent_task_uid" not in workspace_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_workspaces
+                ADD COLUMN parent_task_uid TEXT
+                """
+            )
+
+        if "root_task_uid" not in workspace_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_workspaces
+                ADD COLUMN root_task_uid TEXT
+                """
+            )
+
+        if "task_depth" not in workspace_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_workspaces
+                ADD COLUMN task_depth INTEGER NOT NULL DEFAULT 0
+                """
+            )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_survey_task_workspaces_root
+            ON survey_task_workspaces(
+                root_task_uid,
+                task_depth,
+                id
+            )
             """
         )
 
@@ -1045,6 +1091,9 @@ def get_current_task_workspace():
                 stw.id,
                 stw.task_uid,
                 stw.source_package_uid,
+                stw.parent_task_uid,
+                stw.root_task_uid,
+                stw.task_depth,
                 stw.project_id,
                 stw.survey_batch_id,
                 stw.organization_unit_id,
@@ -1076,6 +1125,15 @@ def get_current_task_workspace():
         result = _workspace_row_to_dict(
             row
         )
+
+        if not _clean_text(
+            result.get("root_task_uid")
+        ):
+            result["root_task_uid"] = result[
+                "task_uid"
+            ]
+            result["parent_task_uid"] = None
+            result["task_depth"] = 0
 
         scope_rows = connection.execute(
             """
@@ -1241,6 +1299,11 @@ def receive_survey_task_package(
         "task_uid",
     )
 
+    lineage = normalize_task_lineage(
+        task,
+        manifest=manifest,
+    )
+
     package_uid = _require_text(
         manifest.get("package_uid"),
         "package_uid",
@@ -1351,6 +1414,9 @@ def receive_survey_task_package(
                 id,
                 task_uid,
                 source_package_uid,
+                parent_task_uid,
+                root_task_uid,
+                task_depth,
                 project_id,
                 survey_batch_id,
                 organization_unit_id,
@@ -1407,6 +1473,33 @@ def receive_survey_task_package(
                     ]
                 )
                 != organization_unit_id
+                or (
+                    _clean_text(
+                        existing[
+                            "parent_task_uid"
+                        ]
+                    )
+                    or None
+                )
+                != lineage.parent_task_uid
+                or (
+                    _clean_text(
+                        existing[
+                            "root_task_uid"
+                        ]
+                    )
+                    or existing[
+                        "task_uid"
+                    ]
+                )
+                != lineage.root_task_uid
+                or int(
+                    existing[
+                        "task_depth"
+                    ]
+                    or 0
+                )
+                != lineage.depth
                 or existing_scope_uids
                 != expected_scope_uids
             ):
@@ -1635,6 +1728,9 @@ def receive_survey_task_package(
                 INSERT INTO survey_task_workspaces (
                     task_uid,
                     source_package_uid,
+                    parent_task_uid,
+                    root_task_uid,
+                    task_depth,
                     project_id,
                     survey_batch_id,
                     organization_unit_id,
@@ -1644,11 +1740,14 @@ def receive_survey_task_package(
                     source_package_sha256,
                     is_current
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task_uid,
                     package_uid,
+                    lineage.parent_task_uid,
+                    lineage.root_task_uid,
+                    lineage.depth,
                     project_id,
                     survey_batch_id,
                     organization_unit_id,

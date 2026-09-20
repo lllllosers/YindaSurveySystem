@@ -6,6 +6,10 @@ from pathlib import Path
 
 import database
 
+from services.survey_task_lineage import (
+    CURRENT_TASK_SCHEMA_VERSION,
+    build_root_task_lineage,
+)
 from services.master_data_integrity import check_master_data_integrity
 from services.survey_task_issue_history import (
     record_issued_survey_task,
@@ -20,7 +24,7 @@ from services.yd_package import (
 from version import APP_VERSION, APP_VERSION_LABEL
 
 
-TASK_SCHEMA_VERSION = "2.0"
+TASK_SCHEMA_VERSION = CURRENT_TASK_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -431,10 +435,14 @@ def export_survey_task_package(request):
     task_uid = new_stable_token()
     package_uid = new_stable_token()
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    lineage = build_root_task_lineage(
+        task_uid
+    )
 
     task_data = {
         "task_schema_version": TASK_SCHEMA_VERSION,
         "task_uid": task_uid,
+        "lineage": lineage.as_dict(),
         "task_name": normalized["task_name"],
         "notes": normalized["notes"] or None,
         "project": {
@@ -483,6 +491,9 @@ def export_survey_task_package(request):
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
         "task_uid": task_uid,
+        "parent_task_uid": lineage.parent_task_uid,
+        "root_task_uid": lineage.root_task_uid,
+        "task_depth": lineage.depth,
         "project_uid": project_uid,
         "survey_batch_uid": batch_uid,
     }

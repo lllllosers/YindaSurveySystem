@@ -4,6 +4,9 @@ import sqlite3
 
 import database
 
+from services.survey_task_lineage import (
+    normalize_task_lineage,
+)
 
 def _clean_text(value):
     return str(
@@ -227,11 +230,55 @@ def ensure_survey_task_issue_history_schema():
             """
         )
 
+        issue_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(survey_task_issues)"
+            ).fetchall()
+        }
+
+        if "parent_task_uid" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN parent_task_uid TEXT
+                """
+            )
+
+        if "root_task_uid" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN root_task_uid TEXT
+                """
+            )
+
+        if "task_depth" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN task_depth INTEGER NOT NULL DEFAULT 0
+                """
+            )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_survey_task_issues_root
+            ON survey_task_issues(
+                root_task_uid,
+                task_depth,
+                id
+            )
+            """
+        )
+
     return {
         "ready": True,
         "issue_table": True,
         "scope_snapshot_table": True,
         "immutable": True,
+        "lineage_fields": True,
     }
 
 
@@ -489,6 +536,11 @@ def record_issued_survey_task(
             "manifest 与 task.json 的 task_schema_version 不一致。"
         )
 
+    lineage = normalize_task_lineage(
+        task_document,
+        manifest=manifest,
+    )
+
     app_version = _require_text(
         manifest.get(
             "app_version"
@@ -738,6 +790,9 @@ def record_issued_survey_task(
                 source_package_uid,
                 task_schema_version,
                 app_version,
+                parent_task_uid,
+                root_task_uid,
+                task_depth,
 
                 project_uid,
                 project_name_snapshot,
@@ -761,7 +816,7 @@ def record_issued_survey_task(
                 task_created_at
             )
             VALUES (
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?,
@@ -774,6 +829,9 @@ def record_issued_survey_task(
                 package_uid,
                 task_schema_version,
                 app_version,
+                lineage.parent_task_uid,
+                lineage.root_task_uid,
+                lineage.depth,
 
                 project_uid,
                 _require_text(
@@ -933,6 +991,13 @@ def record_issued_survey_task(
         "package_uid": (
             package_uid
         ),
+        "parent_task_uid": (
+            lineage.parent_task_uid
+        ),
+        "root_task_uid": (
+            lineage.root_task_uid
+        ),
+        "task_depth": lineage.depth,
         "selected_management_scope_count": (
             len(
                 snapshots
@@ -1017,6 +1082,16 @@ def get_issued_survey_task(
     result = _issue_row_to_dict(
         issue
     )
+
+    if not _clean_text(
+        result.get("root_task_uid")
+    ):
+        result["root_task_uid"] = result[
+            "task_uid"
+        ]
+        result["parent_task_uid"] = None
+        result["task_depth"] = 0
+
     result[
         "management_scopes"
     ] = tuple(

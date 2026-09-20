@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from services.survey_task_package import TASK_SCHEMA_VERSION
+from services.survey_task_lineage import (
+    SUPPORTED_TASK_SCHEMA_VERSIONS,
+    normalize_task_lineage,
+)
 from services.yd_package import SURVEY_TASK_PACKAGE_KIND
 from services.yd_package_reader import (
     PackageInspectionIssue,
@@ -195,16 +199,22 @@ def _validate_task_schema(task, manifest, issues):
         manifest.get("task_schema_version") if isinstance(manifest, dict) else None
     )
 
-    if (
-        task_version != TASK_SCHEMA_VERSION
-        or manifest_version != TASK_SCHEMA_VERSION
-    ):
+    if task_version != manifest_version:
+        _append(
+            issues,
+            "TASK_SCHEMA_VERSION_MISMATCH",
+            "manifest 与 task.json 的 task_schema_version 不一致。",
+        )
+        return False
+
+    if task_version not in SUPPORTED_TASK_SCHEMA_VERSIONS:
         _append(
             issues,
             "TASK_SCHEMA_VERSION_UNSUPPORTED",
-            "该调查任务包属于旧测试格式或不受支持的任务格式，请使用当前版本重新生成任务包。",
+            "该调查任务包格式不受当前版本支持。",
         )
         return False
+
     return True
 
 
@@ -364,6 +374,24 @@ def inspect_survey_task_package(package_path):
             "TASK_UID_MISMATCH",
             "manifest 与 task.json 的 task_uid 不一致。",
         )
+
+    if (
+        task_uid
+        and task.get("task_schema_version")
+        in SUPPORTED_TASK_SCHEMA_VERSIONS
+    ):
+        try:
+            normalize_task_lineage(
+                task,
+                manifest=manifest,
+            )
+        except ValueError as error:
+            _append(
+                issues,
+                "TASK_LINEAGE_INVALID",
+                str(error),
+                path="task.json",
+            )
 
     project = task.get("project")
     if not isinstance(project, dict):
