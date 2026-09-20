@@ -62,7 +62,7 @@ class V1ReleaseIdentityContractTestCase(
                 source,
                 "APP_VERSION",
             ),
-            "1.1.0",
+            "1.1.1",
         )
         self.assertEqual(
             _constant(
@@ -85,7 +85,7 @@ class V1ReleaseIdentityContractTestCase(
             source,
         )
         self.assertIn(
-            "**V1.1.0 正式版**",
+            "**V1.1.1 正式版**",
             source,
         )
         self.assertNotIn(

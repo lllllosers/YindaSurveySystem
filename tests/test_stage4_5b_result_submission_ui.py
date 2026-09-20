@@ -128,7 +128,7 @@ class Stage45BResultSubmissionUiTestCase(
             )
 
             self.assertIn(
-                "上方成果范围筛选不会改变",
+                "不受上方普通筛选条件影响",
                 panel.scope_summary_label.text(),
             )
 

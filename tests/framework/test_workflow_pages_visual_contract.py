@@ -89,8 +89,8 @@ class WorkflowPagesVisualContractTestCase(unittest.TestCase):
             "src/pages/components/survey_result_receive_panel.py"
         )
 
-        self.assertIn('"选择成果包并预检"', source)
-        self.assertNotIn('"选择 .ydresult 并预检"', source)
+        self.assertIn('"选择成果包并检查"', source)
+        self.assertNotIn('"选择 .ydresult 并检查"', source)
 
         start = source.index("action_row = QHBoxLayout()")
         end = source.index("root.addLayout(", start)

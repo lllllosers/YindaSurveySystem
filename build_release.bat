@@ -19,10 +19,10 @@ set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 
 if not "%EXIT_CODE%"=="0" (
-    echo [FAILED] V1.1.0 production release build failed.
+    echo [FAILED] V1.1.1 production release build failed.
     echo Review the error above and run again.
 ) else (
-    echo [SUCCESS] V1.1.0 production release build finished.
+    echo [SUCCESS] V1.1.1 production release build finished.
 )
 
 echo.

@@ -123,7 +123,7 @@ class ResultReceiveHistoryUiContractTestCase(
             "管理单位",
             "成果名称",
             "调查记录",
-            "工程对象",
+            "工程",
             "分项评价",
             "影像",
             "接收状态",

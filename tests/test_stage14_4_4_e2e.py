@@ -34,7 +34,7 @@ from services.survey_result_import import (
     import_survey_result_package,
 )
 from services.survey_result_import_preflight import (
-    SEVERITY_WARNING,
+    SEVERITY_INFO,
     preflight_survey_result_import,
 )
 from services.survey_result_package import (
@@ -842,11 +842,11 @@ class Stage1444EndToEndTestCase(
             report.format_text(),
         )
 
-        warning_codes = {
+        info_codes = {
             issue.code
             for issue in report.issues
             if issue.severity
-            == SEVERITY_WARNING
+            == SEVERITY_INFO
         }
         all_codes = {
             issue.code
@@ -855,7 +855,7 @@ class Stage1444EndToEndTestCase(
 
         self.assertIn(
             "SOURCE_SCOPE_CURRENT_MASTER_CHANGED",
-            warning_codes,
+            info_codes,
         )
         self.assertIn(
             "SOURCE_TASK_PROVENANCE_VERIFIED",
