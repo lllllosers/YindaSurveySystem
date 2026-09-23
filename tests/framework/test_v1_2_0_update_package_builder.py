@@ -52,6 +52,7 @@ class V120UpdatePackageBuilderTestCase(
             '$currentVersion -ne "1.1.1"',
             '$newVersion -ne "1.2.0"',
             "Restore-ProgramFiles",
+            "update_v1_2_0.ps1",
         ):
             self.assertIn(
                 expected,
@@ -128,7 +129,7 @@ class V120UpdatePackageBuilderTestCase(
             self.assertTrue(
                 (
                     update_dir
-                    / "升级到V1.2.0.ps1"
+                    / "update_v1_2_0.ps1"
                 ).exists()
             )
             self.assertTrue(

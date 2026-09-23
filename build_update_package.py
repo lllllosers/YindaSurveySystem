@@ -297,7 +297,7 @@ echo.
 powershell.exe ^
   -NoProfile ^
   -ExecutionPolicy Bypass ^
-  -File "%~dp0升级到V1.2.0.ps1"
+  -File "%~dp0update_v1_2_0.ps1"
 
 set "EXIT_CODE=%ERRORLEVEL%"
 
@@ -440,7 +440,7 @@ def write_manifest(payload_dir: Path, manifest_path: Path) -> None:
 def verify_update_tree(update_dir: Path) -> None:
     required = (
         update_dir / "升级到V1.2.0.bat",
-        update_dir / "升级到V1.2.0.ps1",
+        update_dir / "update_v1_2_0.ps1",
         update_dir / "V1.2.0_升级说明.txt",
         update_dir / "UPDATE_INFO.txt",
         update_dir / "UPDATE_MANIFEST.sha256",
@@ -470,7 +470,7 @@ def verify_zip(zip_path: Path) -> None:
 
     required = {
         "升级到V1.2.0.bat",
-        "升级到V1.2.0.ps1",
+        "update_v1_2_0.ps1",
         "V1.2.0_升级说明.txt",
         "UPDATE_INFO.txt",
         "UPDATE_MANIFEST.sha256",
@@ -523,7 +523,7 @@ def build_update_package(
     payload_dir = update_dir / "update_payload"
     shutil.copytree(source_release, payload_dir)
 
-    (update_dir / "升级到V1.2.0.ps1").write_text(
+    (update_dir / "update_v1_2_0.ps1").write_text(
         POWERSHELL_UPDATER,
         encoding="utf-8-sig",
         newline="\r\n",
