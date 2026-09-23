@@ -759,12 +759,34 @@ def _lookup_batch_id_optional(
     )
 
 
+def _normalize_v120_legacy_chainage_asset(item):
+    normalized = dict(item or {})
+    start_text = str(normalized.get("start_stake_text") or "").strip()
+    single_text = str(normalized.get("single_stake_text") or "").strip()
+    if not start_text and (single_text or normalized.get('single_stake_value') is not None):
+        normalized["start_stake_text"] = normalized.get("single_stake_text")
+        normalized["start_stake_value"] = normalized.get("single_stake_value")
+    return normalized
+
+
+def _normalize_v120_legacy_chainage_record(item):
+    normalized = dict(item or {})
+    record_data = dict(normalized.get("record_data") or {})
+    start_text = str(record_data.get("start_stake") or "").strip()
+    legacy_text = str(record_data.get("stake") or "").strip()
+    if not start_text and legacy_text:
+        record_data["start_stake"] = legacy_text
+    normalized["record_data"] = record_data
+    return normalized
+
 def _insert_asset(
     connection,
     item,
     *,
     project_id,
 ):
+    item = _normalize_v120_legacy_chainage_asset(item)
+
     organization_id = (
         _lookup_org_id(
             connection,
@@ -922,6 +944,8 @@ def _insert_record(
     batch_id,
     asset_id,
 ):
+    item = _normalize_v120_legacy_chainage_record(item)
+
     form = item.get(
         "form"
     ) or {}
@@ -1116,6 +1140,8 @@ def _update_asset_from_package(
     *,
     asset_id,
 ):
+    item = _normalize_v120_legacy_chainage_asset(item)
+
     incoming_revision = _incoming_revision(item)
 
     current = connection.execute(
@@ -1191,6 +1217,8 @@ def _update_record_from_package(
     *,
     record_id,
 ):
+    item = _normalize_v120_legacy_chainage_record(item)
+
     incoming_revision = _incoming_revision(item)
 
     record_data_json = json.dumps(

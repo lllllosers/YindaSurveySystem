@@ -2,6 +2,10 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QAbstractItemView,
@@ -695,6 +699,8 @@ class DataQueryPage(QWidget):
         self.table.setRowCount(len(records))
 
         for row_index, record in enumerate(records):
+            incomplete_chainage = bool(record.get("chainage_incomplete"))
+
             status_text = format_record_status(
                 record["record_status"]
             )
@@ -730,6 +736,12 @@ class DataQueryPage(QWidget):
 
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value or ""))
+
+                if incomplete_chainage:
+                    item.setBackground(QBrush(QColor(255, 244, 204)))
+                    item.setToolTip(
+                        "起止桩号未补充完整，请打开该记录补充后保存。"
+                    )
 
                 if column == 0:
                     item.setData(

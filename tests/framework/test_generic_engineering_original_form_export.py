@@ -71,7 +71,8 @@ class GenericEngineeringOriginalFormExportTestCase(
                 ),
                 "asset_name": "测试倒虹吸",
                 "record_data": {
-                    "stake": "K10+500",
+                    "start_stake": "K10+500",
+                    "end_stake": "K10+760",
                     "design_flow": 8.5,
                     "structure_grade": "3级",
                     "build_date": "2010-06",

@@ -17,6 +17,10 @@ from forms.engineering.extension_models import (
     ValueBindingDefinition,
 )
 
+from forms.engineering.formatters import (
+    format_stake_range_compact,
+)
+
 from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
@@ -32,10 +36,12 @@ FORM_2_4 = EngineeringFormDefinition(
     asset_type="inverted_siphon",
     business_type_code="04",
     asset_name_field="asset_name",
-    position=PositionDefinition.point(
-        stake_field="stake",
-        stake_value_key="stake_value",
-    ),
+    position=PositionDefinition.range(
+                 start_stake_field="start_stake",
+                 start_stake_value_key="start_stake_value",
+                 end_stake_field="end_stake",
+                 end_stake_value_key="end_stake_value",
+             ),
     fields=(
         # -----------------------------------------------------
         # 二、工程基本信息
@@ -48,11 +54,18 @@ FORM_2_4 = EngineeringFormDefinition(
             placeholder="填写倒虹吸名称",
         ),
         FieldDefinition(
-            key="stake",
-            label="桩号",
+            key="start_stake",
+            label="起始桩号",
             input_type="stake",
             required=True,
             placeholder="例如：CH12+350",
+        ),
+        FieldDefinition(
+            key="end_stake",
+            label="终止桩号",
+            input_type="stake",
+            required=True,
+            placeholder="例如：CH12+360",
         ),
         FieldDefinition(
             key="design_flow",
@@ -143,7 +156,8 @@ FORM_2_4 = EngineeringFormDefinition(
             title="二、工程基本信息",
             rows=(
                 FieldRowDefinition(("asset_name",)),
-                FieldRowDefinition(("stake",)),
+                FieldRowDefinition(("start_stake",)),
+                FieldRowDefinition(("end_stake",)),
                 FieldRowDefinition(("design_flow",)),
                 FieldRowDefinition(("structure_grade",)),
                 FieldRowDefinition(("build_date",)),
@@ -221,10 +235,11 @@ FORM_2_4 = EngineeringFormDefinition(
             SummaryColumnDefinition(
                 header="桩号",
                 width=14,
-                binding=ValueBindingDefinition.single(
-                    source="record_data",
-                    key="stake",
-                ),
+                binding=ValueBindingDefinition.composite(
+                            source="record_data",
+                            keys=("start_stake", "end_stake"),
+                            formatter=format_stake_range_compact,
+                        ),
                 alignment="center",
             ),
             SummaryColumnDefinition(
@@ -349,10 +364,11 @@ FORM_2_4 = EngineeringFormDefinition(
             ),
             OriginalFormCellBinding(
                 cell="H5",
-                binding=ValueBindingDefinition.single(
-                    source="record_data",
-                    key="stake",
-                ),
+                binding=ValueBindingDefinition.composite(
+                            source="record_data",
+                            keys=("start_stake", "end_stake"),
+                            formatter=format_stake_range_compact,
+                        ),
             ),
             OriginalFormCellBinding(
                 cell="J5",

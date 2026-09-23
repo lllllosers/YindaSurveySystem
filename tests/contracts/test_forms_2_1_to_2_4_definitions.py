@@ -148,17 +148,17 @@ class Forms21To24DefinitionTestCase(
             with self.subTest(form_code=definition.form_code):
                 self.assertEqual(
                     definition.position.kind,
-                    "point",
+                    "range",
                 )
 
                 self.assertEqual(
-                    (definition.position.single_stake_field),
-                    "stake",
+                    definition.position.start_stake_field,
+                    "start_stake",
                 )
 
                 self.assertEqual(
-                    (definition.position.single_stake_value_key),
-                    "stake_value",
+                    definition.position.end_stake_field,
+                    "end_stake",
                 )
 
     def test_asset_name_contracts(
@@ -250,7 +250,8 @@ class Forms21To24DefinitionTestCase(
     ):
         expected_keys = (
             "asset_name",
-            "stake",
+            "start_stake",
+            "end_stake",
             "design_flow",
             "structure_grade",
             "build_date",
@@ -286,7 +287,8 @@ class Forms21To24DefinitionTestCase(
     ):
         expected_keys = (
             "asset_name",
-            "stake",
+            "start_stake",
+            "end_stake",
             "design_flow",
             "structure_grade",
             "build_date",
@@ -341,7 +343,8 @@ class Forms21To24DefinitionTestCase(
     ):
         expected_keys = (
             "asset_name",
-            "stake",
+            "start_stake",
+            "end_stake",
             "design_flow",
             "structure_grade",
             "build_date",

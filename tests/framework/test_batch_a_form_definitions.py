@@ -21,10 +21,10 @@ class BatchAFormDefinitionTestCase(unittest.TestCase):
     def test_batch_a_core_contracts(self):
         expectations = (
             (FORM_2_7, "range", "07", 16, 10),
-            (FORM_2_8, "point", "08", 13, 7),
-            (FORM_2_9, "point", "09", 12, 9),
-            (FORM_2_12, "point", "12", 11, 10),
-            (FORM_2_13, "point", "13", 18, 4),
+            (FORM_2_8, "range", "08", 14, 7),
+            (FORM_2_9, "range", "09", 13, 9),
+            (FORM_2_12, "range", "12", 12, 10),
+            (FORM_2_13, "range", "13", 19, 4),
         )
 
         for (

@@ -2,6 +2,10 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+)
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -210,16 +214,20 @@ class EngineeringAssetPage(QWidget):
                     asset["asset_type"]
                 )
             )
-            if asset["single_stake_text"]:
-                stake_text = asset["single_stake_text"]
-            elif asset["start_stake_text"] or asset["end_stake_text"]:
-                stake_text = (
-                    f"{asset['start_stake_text'] or ''}"
-                    " ～ "
-                    f"{asset['end_stake_text'] or ''}"
-                )
+            single_stake = str(asset["single_stake_text"] or "").strip()
+            start_stake = str(asset["start_stake_text"] or "").strip()
+            end_stake = str(asset["end_stake_text"] or "").strip()
+
+            incomplete_chainage = not bool(start_stake and end_stake)
+
+            if start_stake and end_stake:
+                stake_text = f"{start_stake} ～ {end_stake}"
+            elif start_stake:
+                stake_text = start_stake
+            elif end_stake:
+                stake_text = end_stake
             else:
-                stake_text = ""
+                stake_text = single_stake
 
             survey_status_text = {
                 "draft": "草稿",
@@ -302,6 +310,12 @@ class EngineeringAssetPage(QWidget):
 
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value or ""))
+
+                if incomplete_chainage:
+                    item.setBackground(QBrush(QColor(255, 244, 204)))
+                    item.setToolTip(
+                        "起止桩号未补充完整，请打开对应调查记录补充后保存。"
+                    )
 
                 if column == 0:
                     item.setData(

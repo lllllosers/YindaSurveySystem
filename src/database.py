@@ -1423,6 +1423,130 @@ def _ensure_v102_production_feedback_schema(
     )
 
 
+_V120_LEGACY_POINT_FORM_CODES = (
+    "form_2_2",
+    "form_2_3",
+    "form_2_4",
+    "form_2_6",
+    "form_2_8",
+    "form_2_9",
+    "form_2_10",
+    "form_2_11",
+    "form_2_12",
+    "form_2_13",
+    "form_2_14",
+)
+
+
+def _migrate_v120_legacy_point_chainage(connection):
+    """V1.2.0：旧单桩号复制为起始桩号；终止桩号留空待补。"""
+    # 兼容极早期/裁剪版历史库：
+    # 某些旧库可能已经存在 survey_records 表，
+    # 但还没有后续工程调查字段。此时本迁移应安全跳过，
+    # 由各自既有 schema migration 继续处理，不能阻断 init_database。
+    required_tables = {
+        "survey_records",
+        "engineering_assets",
+        "form_versions",
+        "form_definitions",
+    }
+    existing_tables = {
+        str(row["name"])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+
+    if not required_tables.issubset(existing_tables):
+        return {"asset_count": 0, "record_count": 0}
+
+    survey_columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(survey_records)"
+        ).fetchall()
+    }
+    asset_columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(engineering_assets)"
+        ).fetchall()
+    }
+
+    required_survey_columns = {
+        "id",
+        "engineering_asset_id",
+        "form_version_id",
+        "record_data_json",
+    }
+    required_asset_columns = {
+        "id",
+        "single_stake_text",
+        "single_stake_value",
+        "start_stake_text",
+        "start_stake_value",
+    }
+
+    if (
+        not required_survey_columns.issubset(survey_columns)
+        or not required_asset_columns.issubset(asset_columns)
+    ):
+        return {"asset_count": 0, "record_count": 0}
+
+    placeholders = ",".join("?" for _ in _V120_LEGACY_POINT_FORM_CODES)
+    rows = connection.execute(
+        f"""
+        SELECT sr.id AS survey_record_id, sr.record_data_json,
+               ea.id AS engineering_asset_id,
+               ea.single_stake_text, ea.single_stake_value,
+               ea.start_stake_text, ea.start_stake_value
+        FROM survey_records AS sr
+        JOIN engineering_assets AS ea ON ea.id = sr.engineering_asset_id
+        JOIN form_versions AS fv ON fv.id = sr.form_version_id
+        JOIN form_definitions AS fd ON fd.id = fv.form_definition_id
+        WHERE fd.form_code IN ({placeholders})
+        ORDER BY sr.id
+        """ ,
+        _V120_LEGACY_POINT_FORM_CODES,
+    ).fetchall()
+    migrated_assets = set()
+    migrated_records = 0
+    for row in rows:
+        asset_id = int(row["engineering_asset_id"])
+        single_text = str(row["single_stake_text"] or "").strip()
+        start_text = str(row["start_stake_text"] or "").strip()
+        if (
+            asset_id not in migrated_assets
+            and not start_text
+            and (single_text or row["single_stake_value"] is not None)
+        ):
+            connection.execute(
+                """
+                UPDATE engineering_assets
+                SET start_stake_text = ?, start_stake_value = ?
+                WHERE id = ?
+                """ ,
+                (row["single_stake_text"], row["single_stake_value"], asset_id),
+            )
+            migrated_assets.add(asset_id)
+        raw_json = row["record_data_json"] or "{}"
+        try:
+            record_data = json.loads(raw_json)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(record_data, dict):
+            continue
+        current_start = str(record_data.get("start_stake") or "").strip()
+        legacy_stake = str(record_data.get("stake") or single_text or "").strip()
+        if not current_start and legacy_stake:
+            record_data["start_stake"] = legacy_stake
+            connection.execute(
+                "UPDATE survey_records SET record_data_json = ? WHERE id = ?",
+                (json.dumps(record_data, ensure_ascii=False), int(row["survey_record_id"])),
+            )
+            migrated_records += 1
+    return {"asset_count": len(migrated_assets), "record_count": migrated_records}
+
 def init_database():
     """
     初始化数据库。
@@ -1888,6 +2012,10 @@ def init_database():
         _ensure_stable_identity_schema(connection)
 
         _ensure_v102_production_feedback_schema(
+            connection
+        )
+
+        _migrate_v120_legacy_point_chainage(
             connection
         )
 
@@ -2515,38 +2643,60 @@ def create_initial_forms():
                     existing["id"]
                 )
 
-            version = connection.execute(
+            # V1 保留作历史兼容；V2 为起止桩号统一后的当前版本。
+            v1_version = connection.execute(
                 """
-                SELECT id
-                FROM form_versions
-                WHERE form_definition_id = ?
-                AND version_code = 'V1'
-                """,
-                (
-                    form_definition_id,
-                ),
+                SELECT id FROM form_versions
+                WHERE form_definition_id = ? AND version_code = 'V1'
+                """ ,
+                (form_definition_id,),
             ).fetchone()
-
-            if version is None:
+            if v1_version is None:
                 connection.execute(
                     """
                     INSERT INTO form_versions (
-                        form_definition_id,
-                        version_code,
-                        version_name,
-                        effective_date,
-                        schema_json,
-                        is_current
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+                        form_definition_id, version_code, version_name,
+                        effective_date, schema_json, is_current
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """ ,
+                    (form_definition_id, 'V1', '2026版', '2026-09-01', '{}', 0),
+                )
+            connection.execute(
+                "UPDATE form_versions SET is_current = 0 WHERE form_definition_id = ?",
+                (form_definition_id,),
+            )
+            v2_version = connection.execute(
+                """
+                SELECT id FROM form_versions
+                WHERE form_definition_id = ? AND version_code = 'V2'
+                """ ,
+                (form_definition_id,),
+            ).fetchone()
+            if v2_version is None:
+                connection.execute(
+                    """
+                    INSERT INTO form_versions (
+                        form_definition_id, version_code, version_name,
+                        effective_date, schema_json, is_current, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """ ,
                     (
-                        form_definition_id,
-                        "V1",
-                        "2026版",
-                        "2026-09-01",
-                        "{}",
-                        1,
+                        form_definition_id, 'V2', '2026起止桩号统一版',
+                        '2026-09-23', '{}', 1,
+                        '附表2.1～2.14统一采用起止桩号；旧单桩号记录兼容保留并补为起始桩号。',
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE form_versions
+                    SET is_current = 1, version_name = ?, effective_date = ?, notes = ?
+                    WHERE id = ?
+                    """ ,
+                    (
+                        '2026起止桩号统一版', '2026-09-23',
+                        '附表2.1～2.14统一采用起止桩号；旧单桩号记录兼容保留并补为起始桩号。',
+                        int(v2_version["id"]),
                     ),
                 )
 
@@ -3917,6 +4067,9 @@ def get_engineering_survey_query_records(
                 # ---------------------------------------------
                 "engineering_position": (
                     engineering_position
+                ),
+                "chainage_incomplete": (
+                    not bool(start_stake and end_stake)
                 ),
 
                 # ---------------------------------------------
