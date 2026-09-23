@@ -55,6 +55,8 @@ class V1ReleaseBuilderContractTestCase(
             "verify_release_tree",
             "verify_zip",
             "calculate_sha256",
+            "build_update_package.py",
+            "V1.1.1 -> V1.2.0",
             "RELEASE_INFO.txt",
             "V1.2.0_发布说明.md",
             "V1.2.0_生产验收记录.md",

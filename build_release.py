@@ -184,6 +184,7 @@ def check_required_paths():
         TEMPLATES_DIR,
         ROOT / "run_tests.py",
         ROOT / "src" / "version.py",
+        ROOT / "build_update_package.py",
         ROOT / "README.md",
         ROOT / "docs" / "14_V1.2.0发布说明.md",
         ROOT / "docs" / "15_V1.2.0生产升级验收记录.md",
@@ -906,6 +907,26 @@ def build_release():
         newline="\n",
     )
 
+    run_command(
+        [
+            str(
+                VENV_PYTHON
+            ),
+            str(
+                ROOT
+                / "build_update_package.py"
+            ),
+            "--source-release",
+            str(
+                release_dir
+            ),
+        ],
+        label=(
+            "V1.1.1 -> V1.2.0 "
+            "safe update package"
+        ),
+    )
+
     print()
     print(
         "=" * 72
@@ -933,9 +954,10 @@ def build_release():
 
     print()
     print(
-        "NEXT: manually launch the EXE from the release directory, "
-        "complete a clean first-run smoke test, close the app, "
-        "and verify local_data is created only after launch."
+        "NEXT: smoke-test both deliverables: "
+        "(1) the full V1.2.0 release on a clean directory; "
+        "(2) the V1.1.1 -> V1.2.0 update package against "
+        "a copy of a V1.1.1 installation."
     )
     print(
         "=" * 72

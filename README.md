@@ -140,6 +140,19 @@ EngineeringFormRegistry
 
 任务分发历史中的“已有成果返回”也只表示该任务已有调查记录回到总库，不等于任务整体已经全部完成。
 
+## V1.2.0 升级交付
+
+V1.2.0 正式构建同时提供：
+
+```text
+YindaSurveySystem_V1.2.0_Windows_x64.zip
+YindaSurveySystem_V1.1.1_to_V1.2.0_Update.zip
+```
+
+已有 V1.1.1 正式系统优先使用第二个升级包。升级包携带完整 V1.2.0 程序 payload，但通过专用升级器保留 `local_data`，并在程序文件替换前再复制一份完整 `local_data` 到 `upgrade_backups`。首次启动 V1.2.0 后，应用自身继续执行数据库级 `pre_v1_2_0_upgrade` 备份。
+
+这种方式属于安全覆盖升级包，不依赖人工逐文件覆盖，也不采用易产生新旧 PyInstaller 文件混用的源码级差分补丁。
+
 ## 数据安全
 
 系统采用 SQLite 本地数据库。正式成果导入前会自动创建数据库备份，并通过事务执行成果导入。
