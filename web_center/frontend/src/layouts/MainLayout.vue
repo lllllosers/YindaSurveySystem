@@ -68,7 +68,7 @@ async function logout() {
           <el-icon><OfficeBuilding /></el-icon>
           <span>正式主数据</span>
         </el-menu-item>
-        <el-menu-item index="/tasks" disabled>
+        <el-menu-item v-if="auth.hasPermission('tasks.read')" index="/tasks">
           <el-icon><Document /></el-icon>
           <span>任务中心</span>
         </el-menu-item>

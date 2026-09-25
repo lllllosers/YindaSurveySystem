@@ -5,7 +5,7 @@ import {
   DataBoard,
   Files,
   OfficeBuilding,
-  User,
+  Document,
 } from "@element-plus/icons-vue";
 import {
   getDatabaseHealth,
@@ -115,8 +115,8 @@ onMounted(checkServices);
       <div><span>成果提交</span><strong>{{ overview?.result_submission_count ?? "—" }}</strong><small>已接收成果包</small></div>
     </div>
     <div class="metric-card">
-      <div class="metric-icon amber"><User /></div>
-      <div><span>启用用户</span><strong>{{ overview?.active_user_count ?? "—" }}</strong><small>可登录系统账户</small></div>
+      <div class="metric-icon amber"><Document /></div>
+      <div><span>调查任务</span><strong>{{ overview?.survey_task_count ?? "—" }}</strong><small>Web 中心已下发任务</small></div>
     </div>
   </div>
 

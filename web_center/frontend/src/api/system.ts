@@ -20,6 +20,7 @@ export interface OverviewResponse {
   project_count: number;
   active_batch_count: number;
   result_submission_count: number;
+  survey_task_count: number;
   active_user_count: number;
   official_department_count: number;
   official_office_count: number;

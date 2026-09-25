@@ -33,6 +33,12 @@ export const router = createRouter({
           meta: { permission: "master_data.read" },
         },
         {
+          path: "tasks",
+          name: "tasks",
+          component: () => import("../views/TasksView.vue"),
+          meta: { permission: "tasks.read" },
+        },
+        {
           path: "results",
           name: "results",
           component: () => import("../views/ResultsView.vue"),

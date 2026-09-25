@@ -11,6 +11,7 @@ from app.api.routes.survey_batches import (
     router as survey_batches_router,
 )
 from app.api.routes.system import router as system_router
+from app.api.routes.survey_tasks import router as survey_tasks_router
 from app.api.routes.users import router as users_router
 
 
@@ -22,5 +23,6 @@ api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(survey_batches_router)
 api_router.include_router(master_data_router)
+api_router.include_router(survey_tasks_router)
 api_router.include_router(result_submissions_router)
 api_router.include_router(audit_router)

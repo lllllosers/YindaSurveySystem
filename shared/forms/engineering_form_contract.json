@@ -1,0 +1,21 @@
+{
+  "contract_schema_version": "1.0",
+  "form_contract_version": "2026-09-v1.2.0",
+  "source_description": "V1.2.0 EngineeringFormRegistry 当前正式附表2.1～2.14",
+  "items": [
+    {"form_code":"form_2_1","form_number":"2.1","form_name":"防渗衬砌渠道渠段工程状况调查表","asset_type":"lined_channel_section","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_2","form_number":"2.2","form_name":"水闸工程状况调查表","asset_type":"sluice_gate","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_3","form_number":"2.3","form_name":"渡槽（座槽）工程状况调查表","asset_type":"aqueduct","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_4","form_number":"2.4","form_name":"倒虹吸工程状况调查表","asset_type":"inverted_siphon","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_5","form_number":"2.5","form_name":"隧洞工程状况调查表","asset_type":"tunnel","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_6","form_number":"2.6","form_name":"涵洞（暗涵）工程状况调查表","asset_type":"culvert","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_7","form_number":"2.7","form_name":"跌水与陡坡工程状况调查表","asset_type":"drop_steep_slope","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_8","form_number":"2.8","form_name":"渠下涵工程状况调查表","asset_type":"canal_under_culvert","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_9","form_number":"2.9","form_name":"闸门及启闭设施工程状况调查表","asset_type":"gate_hoist_facility","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_10","form_number":"2.10","form_name":"标准断面量水设施工程状况调查表","asset_type":"standard_section_measurement_facility","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_11","form_number":"2.11","form_name":"堰槽量水（巴歇尔/无喉道量水堰）量水设施工程状况调查表","asset_type":"weir_flume_measurement_facility","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_12","form_number":"2.12","form_name":"桥梁工程状况调查表","asset_type":"bridge","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_13","form_number":"2.13","form_name":"砌石工程状况调查表","asset_type":"masonry_structure","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"},
+    {"form_code":"form_2_14","form_number":"2.14","form_name":"沟段工程状况调查表","asset_type":"ditch_section","version_code":"V2","version_name":"2026起止桩号统一版","effective_date":"2026-09-23"}
+  ]
+}

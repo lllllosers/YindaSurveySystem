@@ -10,6 +10,7 @@ from app.db.session import engine
 from app.models.auth import User
 from app.models.project import Project, SurveyBatch
 from app.models.result_submission import ResultSubmission
+from app.models.survey_task import SurveyTask
 from app.services.master_data_service import get_snapshot
 
 
@@ -72,6 +73,9 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
         ),
         "result_submission_count": int(
             db.scalar(select(func.count()).select_from(ResultSubmission)) or 0
+        ),
+        "survey_task_count": int(
+            db.scalar(select(func.count()).select_from(SurveyTask)) or 0
         ),
         "active_user_count": int(
             db.scalar(
