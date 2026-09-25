@@ -66,17 +66,17 @@ class Form26DefinitionTestCase(
 
         self.assertEqual(
             position.kind,
-            "point",
+            "range",
         )
 
         self.assertEqual(
-            position.single_stake_field,
-            "stake",
+            position.start_stake_field,
+            "start_stake",
         )
 
         self.assertEqual(
-            position.single_stake_value_key,
-            "stake_value",
+            position.end_stake_field,
+            "end_stake",
         )
 
     def test_field_contract(
@@ -84,7 +84,8 @@ class Form26DefinitionTestCase(
     ):
         expected_keys = (
             "asset_name",
-            "stake",
+            "start_stake",
+            "end_stake",
             "design_flow",
             "structure_grade",
             "build_date",
@@ -108,7 +109,7 @@ class Form26DefinitionTestCase(
 
         self.assertEqual(
             len(FORM_2_6.fields),
-            16,
+            17,
         )
 
     def test_only_renovation_date_is_optional(
@@ -130,7 +131,8 @@ class Form26DefinitionTestCase(
 
         expected_types = {
             "asset_name": "text",
-            "stake": "stake",
+            "start_stake": "stake",
+            "end_stake": "stake",
             "design_flow": "decimal",
             "structure_grade": "structure_grade",
             "build_date": "month",
@@ -210,7 +212,8 @@ class Form26DefinitionTestCase(
             first_section_keys,
             (
                 "asset_name",
-                "stake",
+                "start_stake",
+                "end_stake",
                 "design_flow",
                 "structure_grade",
                 "build_date",

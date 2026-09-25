@@ -86,6 +86,10 @@ class CulvertWorkflowTestCase(
             "asset_name": asset_name,
             "stake": stake,
             "stake_value": stake_value,
+            "start_stake": stake,
+            "start_stake_value": stake_value,
+            "end_stake": stake,
+            "end_stake_value": stake_value,
             "design_flow": 6.5,
             "structure_grade": "3级",
             "build_date": "2012-06",
@@ -136,6 +140,10 @@ class CulvertWorkflowTestCase(
                 "asset_name": asset_name,
                 "stake": stake,
                 "stake_value": stake_value,
+                "start_stake": stake,
+                "start_stake_value": stake_value,
+                "end_stake": stake,
+                "end_stake_value": stake_value,
                 "design_flow": 6.5,
                 "length": 85.0,
             }
@@ -275,6 +283,10 @@ class CulvertWorkflowTestCase(
                 "asset_name": ("修改后的涵洞"),
                 "stake": "K30+800",
                 "stake_value": 30800.0,
+                "start_stake": "K30+800",
+                "start_stake_value": 30800.0,
+                "end_stake": "K30+800",
+                "end_stake_value": 30800.0,
                 "design_flow": 7.2,
                 "length": 90.0,
             }
@@ -482,7 +494,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K33+500",
+            "K33+500～K33+500",
         )
 
         self.assertEqual(
@@ -677,7 +689,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             worksheet["G2"].value,
-            "K35+600",
+            "K35+600～K35+600",
         )
 
         self.assertEqual(
@@ -739,7 +751,8 @@ class CulvertWorkflowTestCase(
 
         # =========================
         # 调查结论
-        # AG ～ AK
+        # AG ～ AO
+        # AG类别 / AH时间 / AI意见 / AJ～AM四项签字 / AN状态 / AO修改时间
         # =========================
 
         self.assertEqual(
@@ -758,7 +771,7 @@ class CulvertWorkflowTestCase(
         )
 
         self.assertEqual(
-            worksheet["AJ2"].value,
+            worksheet["AN2"].value,
             "草稿",
         )
 

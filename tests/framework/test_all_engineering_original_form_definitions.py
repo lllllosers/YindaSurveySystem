@@ -329,5 +329,39 @@ class AllEngineeringOriginalFormDefinitionsTestCase(
         )
 
 
+    def test_all_signature_bindings_match_template_footer_contract(
+        self,
+    ):
+        for definition in FORMS:
+            original = definition.original_form_export_definition
+
+            self.assertIsNotNone(original)
+            assert original is not None
+
+            conclusion = original.conclusion_binding
+            date_cell = conclusion.survey_date_cell
+
+            self.assertTrue(date_cell.startswith("J"))
+            row = date_cell[1:]
+
+            with self.subTest(form_code=definition.form_code):
+                self.assertEqual(
+                    conclusion.surveyor_signatures_cell,
+                    f"B{row}",
+                )
+                self.assertEqual(
+                    conclusion.water_office_manager_signature_cell,
+                    f"D{row}",
+                )
+                self.assertEqual(
+                    conclusion.engineering_section_chief_signature_cell,
+                    f"F{row}",
+                )
+                self.assertEqual(
+                    conclusion.department_head_signature_cell,
+                    f"H{row}",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -125,15 +125,12 @@ class CanalPage(QWidget):
         root_layout.setSpacing(16)
 
         description = QLabel(
-            "维护干渠、分干渠、支渠和分支渠基础资料。"
-            "渠道实体与管理单位分开维护；"
-            "请通过“管理分管段”配置全渠或分段管理关系。"
-            "无法取得正式边界桩号时，可登记为分段管理（边界未知）。"
-            "已被工程或调查数据引用的渠系仍可修改名称和备注，"
-            "但渠道层级和上级渠道将受到保护。"
+            "维护干渠、分干渠、支渠和分支渠。"
+            "渠道实体与分管范围分别维护；选择渠道后可通过"
+            "“管理分管段”设置管理单位及全渠或分段范围。"
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #607080; font-size: 15px;")
+        description.setObjectName("pageDescription")
 
         root_layout.addWidget(description)
 
@@ -159,19 +156,25 @@ class CanalPage(QWidget):
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.load_data)
 
+        add_button.setProperty(
+            "role",
+            "primary",
+        )
+
+        self.delete_button.setProperty(
+            "role",
+            "danger",
+        )
+
         button_layout.addWidget(add_button)
-
-        button_layout.addSpacing(12)
-
         button_layout.addWidget(self.edit_button)
-
-        button_layout.addWidget(self.status_button)
-
-        button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.management_scope_button)
-        button_layout.addWidget(refresh_button)
 
         button_layout.addStretch()
+
+        button_layout.addWidget(self.status_button)
+        button_layout.addWidget(self.delete_button)
+        button_layout.addWidget(refresh_button)
 
         root_layout.addLayout(button_layout)
 
@@ -186,7 +189,7 @@ class CanalPage(QWidget):
             [
                 "渠道名称",
                 "类型",
-                "管理单位（范围）",
+                "管理单位（分管范围）",
                 "备注",
                 "状态",
             ]
@@ -478,7 +481,7 @@ class CanalPage(QWidget):
         if data is None:
             QMessageBox.information(
                 self,
-                "请选择渠系",
+                "请选择渠道",
                 "请先在列表中选择一个渠道或分管段节点。",
             )
             return None
@@ -504,7 +507,7 @@ class CanalPage(QWidget):
             QMessageBox.warning(
                 self,
                 "数据不存在",
-                "选中的渠系已经不存在，请刷新列表。",
+                "选中的渠道已经不存在，请刷新列表。",
             )
             self.load_data()
             return None
@@ -591,12 +594,14 @@ class CanalPage(QWidget):
         # =========================
 
         name_edit = QLineEdit(canal["name"] or "")
+        name_edit.setProperty("uiWidthRole", "form")
 
         # =========================
         # 渠道层级
         # =========================
 
         level_combo = QComboBox()
+        level_combo.setProperty("uiWidthRole", "form")
 
         for level_code, level_name in (
             ("01", "干渠"),
@@ -617,6 +622,7 @@ class CanalPage(QWidget):
         # =========================
 
         parent_combo = QComboBox()
+        parent_combo.setProperty("uiWidthRole", "form")
 
         parent_combo.addItem(
             "无上级渠道",
@@ -695,7 +701,7 @@ class CanalPage(QWidget):
             level_combo.setEnabled(False)
             parent_combo.setEnabled(False)
             locked_tip = (
-                "该渠系已经产生工程或调查数据，"
+                "该渠道已经产生工程或调查数据，"
                 "渠道层级和上级渠道不能再修改。"
             )
 
@@ -706,12 +712,12 @@ class CanalPage(QWidget):
 
         if usage["structure_locked"]:
             info_label.setText(
-                "该渠系已有业务数据引用。"
+                "该渠道已经被工程或调查记录使用。"
                 "渠道名称和备注仍可修改；"
                 "渠道层级和上级渠道已锁定。"
             )
         else:
-            info_label.setText("当前渠系尚未产生工程或调查数据，" "结构信息允许修改。")
+            info_label.setText("当前渠道尚未产生工程或调查数据，" "结构信息允许修改。")
 
         info_label.setWordWrap(True)
 
@@ -748,7 +754,7 @@ class CanalPage(QWidget):
             QMessageBox.information(
                 self,
                 "保存成功",
-                "渠系资料已更新。",
+                "渠道资料已更新。",
             )
 
         except Exception as error:
@@ -784,7 +790,7 @@ class CanalPage(QWidget):
 
     def toggle_selected_status(self):
         """
-        启用或停用当前渠系。
+        启用或停用当前渠道。
         """
 
         canal = self._require_selected_canal()
@@ -804,7 +810,7 @@ class CanalPage(QWidget):
                 f"确定停用“{canal['name']}”吗？\n\n"
                 "停用后：\n"
                 "• 历史工程和调查记录不会删除；\n"
-                "• 后续新增调查将不再选择该渠系；\n"
+                "• 后续新增调查将不再选择该渠道；\n"
                 "• 以后仍可重新启用。"
             )
         else:
@@ -844,7 +850,7 @@ class CanalPage(QWidget):
 
     def delete_selected(self):
         """
-        永久删除未被使用的渠系资料。
+        永久删除未被使用的渠道资料。
         """
 
         canal = self._require_selected_canal()
@@ -862,7 +868,7 @@ class CanalPage(QWidget):
 
             if usage.get("management_scope_count"):
                 reasons.append(
-                    f"渠道管理范围 "
+                    f"分管段 "
                     f"{usage['management_scope_count']} 条"
                 )
 
@@ -877,7 +883,7 @@ class CanalPage(QWidget):
                 "不能删除",
                 (
                     f"“{canal['name']}”"
-                    "当前不能物理删除。\n\n"
+                    "当前不能永久删除。\n\n"
                     "存在：" + "、".join(reasons) + "。\n\n"
                     "如不再使用，请选择“停用”。"
                 ),
@@ -892,9 +898,9 @@ class CanalPage(QWidget):
                 f"确定永久删除"
                 f"“{canal['name']}”吗？\n\n"
                 "该操作会直接从数据库中删除"
-                "这条渠系基础资料，无法撤销。\n\n"
+                "这条渠道基础资料，无法撤销。\n\n"
                 "只有录入错误且从未被使用的资料"
-                "才建议执行物理删除。"
+                "才建议永久删除。"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -911,7 +917,7 @@ class CanalPage(QWidget):
             QMessageBox.information(
                 self,
                 "删除成功",
-                "渠系基础资料已永久删除。",
+                "渠道基础资料已永久删除。",
             )
 
         except Exception as error:
@@ -930,14 +936,17 @@ class CanalPage(QWidget):
         form = QFormLayout()
 
         name_edit = QLineEdit()
+        name_edit.setProperty("uiWidthRole", "form")
 
         level_combo = QComboBox()
+        level_combo.setProperty("uiWidthRole", "form")
         level_combo.addItem("干渠", "01")
         level_combo.addItem("分干渠", "02")
         level_combo.addItem("支渠", "03")
         level_combo.addItem("分支渠", "04")
 
         parent_combo = QComboBox()
+        parent_combo.setProperty("uiWidthRole", "form")
         parent_combo.addItem(
             "无上级渠道",
             None,
@@ -1008,7 +1017,7 @@ class CanalPage(QWidget):
             QMessageBox.information(
                 self,
                 "保存成功",
-                "渠道已保存。请通过“管理范围”配置管理单位及范围。",
+                "渠道已保存。请通过“管理分管段”配置管理单位及分管范围。",
             )
 
         except Exception as error:

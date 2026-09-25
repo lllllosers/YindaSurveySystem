@@ -25,6 +25,10 @@ _CONCLUSION_HEADERS = (
     "工程状况类别",
     "调查时间",
     "调查意见与建议",
+    "调查人签字",
+    "水管所负责人",
+    "工程科科长",
+    "基层处负责人",
     "状态",
     "修改时间",
 )
@@ -33,6 +37,10 @@ _CONCLUSION_WIDTHS = (
     14,
     14,
     36,
+    24,
+    18,
+    18,
+    18,
     12,
     20,
 )
@@ -41,6 +49,10 @@ _CONCLUSION_ALIGNMENTS = (
     "center",
     "center",
     "left",
+    "left",
+    "center",
+    "center",
+    "center",
     "center",
     "left",
 )
@@ -228,6 +240,10 @@ def export_engineering_summary(
                 record["overall_grade"],
                 record["survey_date"],
                 record["survey_comment"],
+                record.get("surveyor_signatures"),
+                record.get("water_office_manager_signature"),
+                record.get("engineering_section_chief_signature"),
+                record.get("department_head_signature"),
                 format_record_status(
                     record["record_status"]
                 ),

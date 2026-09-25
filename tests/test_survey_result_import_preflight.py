@@ -525,24 +525,12 @@ class SurveyResultImportPreflightTestCase(
             1,
         )
 
-    def test_business_code_collision_is_reported_before_import(
+    def test_provisional_business_code_collision_does_not_block_import(
         self,
     ):
-        project_id, batch_id = (
-            self._prepare_clean_target_context()
-        )
-
-        contents = (
-            load_survey_result_package(
-                self.package_path
-            )
-        )
-
-        source_asset = (
-            contents.engineering_assets[
-                0
-            ]
-        )
+        project_id, batch_id = self._prepare_clean_target_context()
+        contents = load_survey_result_package(self.package_path)
+        source_asset = contents.engineering_assets[0]
 
         with database.get_connection() as connection:
             office = connection.execute(
@@ -551,26 +539,16 @@ class SurveyResultImportPreflightTestCase(
                 FROM organization_units
                 WHERE organization_unit_uid = ?
                 """,
-                (
-                    source_asset[
-                        "organization_unit_uid"
-                    ],
-                ),
+                (source_asset["organization_unit_uid"],),
             ).fetchone()
-
             canal = connection.execute(
                 """
                 SELECT id
                 FROM canal_units
                 WHERE canal_unit_uid = ?
                 """,
-                (
-                    source_asset[
-                        "canal_unit_uid"
-                    ],
-                ),
+                (source_asset["canal_unit_uid"],),
             ).fetchone()
-
             connection.execute(
                 """
                 INSERT INTO engineering_assets (
@@ -581,48 +559,29 @@ class SurveyResultImportPreflightTestCase(
                     canal_unit_id,
                     business_code,
                     first_survey_batch_id,
-                    status
+                    status,
+                    code_status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'provisional')
                 """,
                 (
                     project_id,
-                    "目标库已有另一工程",
-                    source_asset[
-                        "asset_type"
-                    ],
-                    int(
-                        office["id"]
-                    ),
-                    int(
-                        canal["id"]
-                    ),
-                    source_asset[
-                        "business_code"
-                    ],
+                    "目标库已有另一暂编工程",
+                    source_asset["asset_type"],
+                    int(office["id"]),
+                    int(canal["id"]),
+                    source_asset["business_code"],
                     batch_id,
                 ),
             )
 
-        report = (
-            preflight_survey_result_import(
-                self.package_path
-            )
-        )
+        report = preflight_survey_result_import(self.package_path)
+        self.assertTrue(report.can_import, report.format_text())
+        codes = {item.code for item in report.issues}
+        self.assertNotIn("ASSET_BUSINESS_CODE_COLLISION", codes)
+        self.assertEqual(report.new_assets, 1)
 
-        self.assertFalse(
-            report.can_import
-        )
 
-        codes = {
-            item.code
-            for item in report.issues
-        }
-
-        self.assertIn(
-            "ASSET_BUSINESS_CODE_COLLISION",
-            codes,
-        )
 
 
 if __name__ == "__main__":

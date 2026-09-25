@@ -153,7 +153,7 @@ class ResultExportPreflightUiTestCase(
 
         self.assertEqual(
             self.page.status_label.text(),
-            "成果预检未通过。",
+            "成果检查未通过。",
         )
 
 

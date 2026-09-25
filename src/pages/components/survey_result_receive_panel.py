@@ -35,10 +35,15 @@ class SurveyResultImportWorker(QObject):
     def __init__(
         self,
         package_path,
+        *,
+        accept_updates=False,
     ):
         super().__init__()
         self.package_path = Path(
             package_path
+        )
+        self.accept_updates = bool(
+            accept_updates
         )
 
     @Slot()
@@ -46,7 +51,10 @@ class SurveyResultImportWorker(QObject):
         try:
             result = (
                 import_survey_result_package(
-                    self.package_path
+                    self.package_path,
+                    accept_updates=(
+                        self.accept_updates
+                    ),
                 )
             )
         except Exception as error:
@@ -66,9 +74,9 @@ class SurveyResultReceivePanel(QWidget):
 
     Stage 12.8：
     - 选择成果包；
-    - 调用 Stage 12.5 只读预检；
+    - 调用 Stage 12.5 只读检查；
     - 展示新增 / 已存在 / 冲突；
-    - 仅在预检通过且存在新增数据时允许正式导入；
+    - 仅在检查通过且存在新增数据时允许正式导入；
     - 正式导入调用 Stage 12.7 事务化导入核心；
     - 导入完成后发出 result_imported 信号。
     """
@@ -107,11 +115,12 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         description = QLabel(
-            "用于接收下级电脑或下级单位提交的 .ydresult。"
-            "选择成果包后，系统会先进行只读预检；"
-            "只有不存在阻断性冲突且确有新增数据时，"
+            "用于接收下级调查端或管理单位提交的 .ydresult。"
+            "选择成果包后，系统会先进行只读检查；"
+            "只有不存在必须处理的问题且确有新增数据时，"
             "才允许正式导入。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(
             True
         )
@@ -125,8 +134,9 @@ class SurveyResultReceivePanel(QWidget):
         action_row = QHBoxLayout()
 
         self.preflight_button = QPushButton(
-            "选择 .ydresult 并预检"
+            "选择成果包并检查"
         )
+        self.preflight_button.setProperty("uiRole", "secondary")
         self.preflight_button.clicked.connect(
             self.choose_and_preflight
         )
@@ -134,6 +144,7 @@ class SurveyResultReceivePanel(QWidget):
         self.import_button = QPushButton(
             "正式导入成果"
         )
+        self.import_button.setProperty("uiRole", "primary")
         self.import_button.setEnabled(
             False
         )
@@ -141,14 +152,10 @@ class SurveyResultReceivePanel(QWidget):
             self.import_current_package
         )
 
-        action_row.addWidget(
-            self.preflight_button
-        )
-        action_row.addWidget(
-            self.import_button
-        )
-        action_row.addStretch()
 
+        action_row.addWidget(self.preflight_button)
+        action_row.addStretch()
+        action_row.addWidget(self.import_button)
         root.addLayout(
             action_row
         )
@@ -156,6 +163,7 @@ class SurveyResultReceivePanel(QWidget):
         self.package_label = QLabel(
             "尚未选择成果包"
         )
+        self.package_label.setObjectName("workflowSummary")
         self.package_label.setWordWrap(
             True
         )
@@ -167,6 +175,8 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         summary_form = QFormLayout()
+        summary_form.setHorizontalSpacing(18)
+        summary_form.setVerticalSpacing(10)
 
         self.overall_label = QLabel(
             "-"
@@ -196,11 +206,11 @@ class SurveyResultReceivePanel(QWidget):
             )
 
         summary_form.addRow(
-            "预检结论：",
+            "检查结论：",
             self.overall_label,
         )
         summary_form.addRow(
-            "工程对象：",
+            "工程：",
             self.asset_label,
         )
         summary_form.addRow(
@@ -221,6 +231,7 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         self.details_edit = QPlainTextEdit()
+        self.details_edit.setObjectName("workflowDetails")
         self.details_edit.setReadOnly(
             True
         )
@@ -228,7 +239,7 @@ class SurveyResultReceivePanel(QWidget):
             150
         )
         self.details_edit.setPlaceholderText(
-            "预检明细将在这里显示。"
+            "检查明细将在这里显示。"
         )
 
         root.addWidget(
@@ -236,8 +247,9 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         self.status_label = QLabel(
-            "等待预检。"
+            "等待检查。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(
             True
         )
@@ -276,7 +288,7 @@ class SurveyResultReceivePanel(QWidget):
         )
         self.details_edit.clear()
         self.status_label.setText(
-            "等待预检。"
+            "等待检查。"
         )
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -312,9 +324,9 @@ class SurveyResultReceivePanel(QWidget):
         package_path,
     ):
         """
-        对指定 .ydresult 预检。
+        对指定 .ydresult 检查。
 
-        预检始终只读，不会写数据库。
+        检查始终只读，不会写数据库。
         """
 
         if self._import_thread is not None:
@@ -332,7 +344,7 @@ class SurveyResultReceivePanel(QWidget):
         )
 
         self.status_label.setText(
-            "正在预检成果包..."
+            "正在检查成果包..."
         )
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -353,7 +365,7 @@ class SurveyResultReceivePanel(QWidget):
                 str(path)
             )
             self.overall_label.setText(
-                "预检失败"
+                "检查失败"
             )
             self.asset_label.setText(
                 "-"
@@ -379,7 +391,7 @@ class SurveyResultReceivePanel(QWidget):
 
             QMessageBox.warning(
                 self,
-                "成果包预检失败",
+                "成果包检查失败",
                 str(error),
             )
 
@@ -400,19 +412,24 @@ class SurveyResultReceivePanel(QWidget):
         self.asset_label.setText(
             (
                 f"新增 {report.new_assets}，"
-                f"已存在 {report.existing_assets}"
+                f"已存在 {report.existing_assets}，"
+                f"待更新 {report.updated_assets}，"
+                f"旧版本 {report.stale_assets}"
             )
         )
         self.record_label.setText(
             (
                 f"新增 {report.new_records}，"
-                f"已存在 {report.existing_records}"
+                f"已存在 {report.existing_records}，"
+                f"待更新 {report.updated_records}，"
+                f"旧版本 {report.stale_records}"
             )
         )
         self.inspection_label.setText(
             (
                 f"新增 {report.new_inspections}，"
-                f"已存在 {report.existing_inspections}"
+                f"已存在 {report.existing_inspections}，"
+                f"随修订更新 {report.updated_inspections}"
             )
         )
         self.media_label.setText(
@@ -428,32 +445,57 @@ class SurveyResultReceivePanel(QWidget):
                 "当前禁止导入。"
             )
             status = (
-                "预检未通过。请先处理冲突或确认目标数据库是否正确。"
+                "检查未通过。请先处理身份冲突、"
+                "同版本内容冲突或上下级双向修改。"
             )
             style = (
                 "color: #a33;"
             )
 
-        elif not report.has_new_data:
-            conclusion = (
-                "预检通过；成果内容均已存在。"
-            )
-            status = (
-                "该成果包没有需要新增的数据，"
-                "正式导入阶段将按重复成果处理。"
-            )
+        elif not report.has_importable_changes:
+            if (
+                report.stale_assets
+                or report.stale_records
+            ):
+                conclusion = (
+                    "检查通过；没有需要新增或更新的数据。"
+                )
+                status = (
+                    "一致数据将跳过；旧版本不会回退上级数据。"
+                )
+            else:
+                conclusion = (
+                    "检查通过；成果内容均已存在。"
+                )
+                status = (
+                    "该成果包没有需要新增或更新的数据，"
+                    "正式导入阶段将按重复成果处理。"
+                )
             style = (
                 "color: #52606d;"
             )
 
-        else:
+        elif report.has_updates:
             conclusion = (
-                "预检通过，可以正式导入。"
+                "检查通过；检测到下级更新，确认后可以导入。"
             )
             status = (
-                "目标数据库未发现阻断性冲突。"
-                "点击“正式导入成果”后，"
-                "系统会先创建安全备份再执行事务化导入。"
+                "新增数据将直接合并；待更新数据只有在本次"
+                "确认后才覆盖最近一次已接收的下级版本。"
+                "系统会先创建安全备份。"
+            )
+            style = (
+                "color: #2f6f44;"
+            )
+
+        else:
+            conclusion = (
+                "检查通过，可以正式导入。"
+            )
+            status = (
+                "已存在且一致的数据将自动跳过，"
+                "只导入本次新增内容。"
+                "系统会先创建安全备份。"
             )
             style = (
                 "color: #2f6f44;"
@@ -461,14 +503,18 @@ class SurveyResultReceivePanel(QWidget):
 
         if report.warning_count:
             conclusion += (
-                f" 另有 {report.warning_count} 个警告。"
+                f" 另有 {report.warning_count} 条需要注意的信息。"
+            )
+        elif report.info_count:
+            conclusion += (
+                f" 另有 {report.info_count} 条说明。"
             )
 
         self.overall_label.setText(
             conclusion
         )
         self.details_edit.setPlainText(
-            report.format_text()
+            report.format_user_text()
         )
         self.status_label.setText(
             status
@@ -480,7 +526,7 @@ class SurveyResultReceivePanel(QWidget):
         self.import_button.setEnabled(
             (
                 report.can_import
-                and report.has_new_data
+                and report.has_importable_changes
             )
         )
 
@@ -501,10 +547,10 @@ class SurveyResultReceivePanel(QWidget):
         ):
             QMessageBox.information(
                 self,
-                "请先预检成果包",
+                "请先检查成果包",
                 (
                     "正式导入前必须先选择 .ydresult "
-                    "并通过目标数据库预检。"
+                    "并通过目标数据库检查。"
                 ),
             )
             return None
@@ -514,19 +560,19 @@ class SurveyResultReceivePanel(QWidget):
                 self,
                 "当前成果包不可导入",
                 (
-                    "预检仍存在阻断性错误，"
+                    "检查仍存在必须处理的问题，"
                     "请先处理冲突。"
                 ),
             )
             return None
 
-        if not report.has_new_data:
+        if not report.has_importable_changes:
             QMessageBox.information(
                 self,
-                "无需重复导入",
+                "没有可导入变更",
                 (
-                    "该成果包中的业务数据"
-                    "在当前数据库中均已存在。"
+                    "该成果包没有新增或需要更新的数据。"
+                    "一致内容已存在；旧版本不会回退上级数据。"
                 ),
             )
             return None
@@ -537,12 +583,20 @@ class SurveyResultReceivePanel(QWidget):
             (
                 "系统将把当前成果包写入本地数据库，"
                 "并在导入前自动创建数据库备份。\n\n"
-                f"新增工程对象：{report.new_assets}\n"
+                f"新增工程：{report.new_assets}\n"
+                f"待更新工程：{report.updated_assets}\n"
                 f"新增调查记录：{report.new_records}\n"
+                f"待更新调查记录：{report.updated_records}\n"
+                f"旧版本调查记录：{report.stale_records}（自动忽略）\n"
                 f"新增分项评价：{report.new_inspections}\n"
+                f"随修订更新分项评价：{report.updated_inspections}\n"
                 f"新增影像：{report.new_media}\n\n"
+                "已存在且一致的数据会自动跳过；"
+                "旧版本不会覆盖当前数据。\n"
+                "“待更新”表示下级修改了以前提交过的记录，"
+                "本次确认后才会更新。\n\n"
                 "导入过程中如果发生异常，"
-                "数据库事务会回滚，"
+                "系统不会保留未完成的更改，"
                 "本次新安装的文件也会清理。\n\n"
                 "是否继续？"
             ),
@@ -556,15 +610,23 @@ class SurveyResultReceivePanel(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return None
 
-        self._begin_import(
-            package_path
-        )
+        if report.has_updates:
+            self._begin_import(
+                package_path,
+                accept_updates=True,
+            )
+        else:
+            self._begin_import(
+                package_path
+            )
 
         return package_path
 
     def _begin_import(
         self,
         package_path,
+        *,
+        accept_updates=False,
     ):
         self.preflight_button.setEnabled(
             False
@@ -587,7 +649,8 @@ class SurveyResultReceivePanel(QWidget):
             self
         )
         worker = SurveyResultImportWorker(
-            package_path
+            package_path,
+            accept_updates=accept_updates,
         )
         worker.moveToThread(
             thread
@@ -643,19 +706,24 @@ class SurveyResultReceivePanel(QWidget):
         self.asset_label.setText(
             (
                 f"本次新增 {result.imported_assets}，"
-                f"已存在 {result.existing_assets}"
+                f"已存在 {result.existing_assets}，"
+                f"已更新 {result.updated_assets}，"
+                f"旧版本忽略 {result.stale_assets}"
             )
         )
         self.record_label.setText(
             (
                 f"本次新增 {result.imported_records}，"
-                f"已存在 {result.existing_records}"
+                f"已存在 {result.existing_records}，"
+                f"已更新 {result.updated_records}，"
+                f"旧版本忽略 {result.stale_records}"
             )
         )
         self.inspection_label.setText(
             (
                 f"本次新增 {result.imported_inspections}，"
-                f"已存在 {result.existing_inspections}"
+                f"已存在 {result.existing_inspections}，"
+                f"随修订更新 {result.updated_inspections}"
             )
         )
         self.media_label.setText(
@@ -667,9 +735,6 @@ class SurveyResultReceivePanel(QWidget):
 
         details = [
             headline,
-            "",
-            f"package_uid：{result.package_uid}",
-            f"result_uid：{result.result_uid}",
         ]
 
         if result.backup_path is not None:
@@ -677,7 +742,7 @@ class SurveyResultReceivePanel(QWidget):
                 [
                     "",
                     (
-                        "导入前数据库备份："
+                        "导入前备份："
                         f"{result.backup_path}"
                     ),
                 ]
@@ -689,7 +754,7 @@ class SurveyResultReceivePanel(QWidget):
         ):
             details.append(
                 (
-                    "托管成果包："
+                    "成果包保存位置："
                     f"{result.managed_package_path}"
                 )
             )
@@ -702,8 +767,8 @@ class SurveyResultReceivePanel(QWidget):
 
         self.status_label.setText(
             (
-                "成果已安全写入当前数据库。"
-                "返回工程台账、数据查询或成果导出时"
+                "成果已安全合并到当前项目。"
+                "返回工程台账、数据查询或成果提交时"
                 "即可读取合并后的数据。"
             )
         )
@@ -720,9 +785,13 @@ class SurveyResultReceivePanel(QWidget):
             "成果导入完成",
             (
                 f"{headline}\n\n"
-                f"工程对象新增：{result.imported_assets}\n"
+                f"工程新增：{result.imported_assets}\n"
+                f"工程更新：{result.updated_assets}\n"
                 f"调查记录新增：{result.imported_records}\n"
+                f"调查记录更新：{result.updated_records}\n"
+                f"旧版本记录忽略：{result.stale_records}\n"
                 f"分项评价新增：{result.imported_inspections}\n"
+                f"分项评价更新：{result.updated_inspections}\n"
                 f"影像新增：{result.imported_media}"
             ),
         )
@@ -735,8 +804,8 @@ class SurveyResultReceivePanel(QWidget):
         self.status_label.setText(
             (
                 "成果导入失败。"
-                "数据库事务已经回滚；"
-                "如有本次新安装文件，系统已尝试清理。"
+                "系统已恢复到导入前状态；"
+                "本次新增的文件也已尝试清理。"
             )
         )
         self.status_label.setStyleSheet(

@@ -8,11 +8,11 @@
 
 APP_NAME = "引大入秦工程现状调查采集系统"
 
-APP_VERSION = "0.8.0"
+APP_VERSION = "1.2.0"
 
 APP_VERSION_LABEL = f"V{APP_VERSION}"
 
-APP_STAGE = "测试版"
+APP_STAGE = "正式版"
 
 APP_AUTHOR = "Steven_Chen"
 

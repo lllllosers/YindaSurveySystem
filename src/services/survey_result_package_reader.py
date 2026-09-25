@@ -6,6 +6,7 @@ import re
 
 from services.survey_result_package import (
     RESULT_SCHEMA_VERSION,
+    SUPPORTED_RESULT_SCHEMA_VERSIONS,
     SURVEY_RESULT_PACKAGE_KIND,
 )
 from services.yd_package_reader import (
@@ -108,6 +109,44 @@ class SurveyResultPackageInspection:
 
         return "\n".join(lines)
 
+
+    def format_user_text(self):
+        lines = [
+            f"成果包：{self.package_path.name}",
+            f"检查结果：{self.error_count} 个必须处理的问题",
+        ]
+        if self.result:
+            name = self.result.get("result_name")
+            if name:
+                lines.append(f"成果名称：{name}")
+            counts = self.result.get("counts")
+            if isinstance(counts, dict):
+                lines.append(
+                    f"调查记录：{counts.get('survey_records', 0)} 条，"
+                    f"影像：{counts.get('survey_media', 0)} 个"
+                )
+
+        if not self.issues:
+            lines.append("成果包内容完整，可以继续使用。")
+            return "\n".join(lines)
+
+        messages = []
+        for issue in self.issues:
+            code = str(issue.code or "")
+            if "SCHEMA" in code or "VERSION" in code:
+                message = "成果包版本与当前软件不兼容，请使用当前版本重新生成成果包。"
+            elif code.startswith("SOURCE_TASK"):
+                message = "成果包中的任务来源信息不完整，请在原调查端重新生成成果包。"
+            elif code.startswith("RESULT_") or code.startswith("SOURCE_"):
+                message = "成果包中的调查数据不完整或格式异常，请在原调查端重新生成成果包。"
+            else:
+                message = "成果包内容不完整或文件已损坏，请重新获取成果包。"
+            if message not in messages:
+                messages.append(message)
+
+        lines.append("")
+        lines.extend(f"[需处理] {m}" for m in messages)
+        return "\n".join(lines)
 
 def _append(issues, code, message, *, path=""):
     issues.append(
@@ -411,30 +450,32 @@ def inspect_survey_result_package(package_path):
 
     if (
         result_schema_version
-        != RESULT_SCHEMA_VERSION
+        not in SUPPORTED_RESULT_SCHEMA_VERSIONS
     ):
         _append(
             issues,
             "RESULT_SCHEMA_VERSION_UNSUPPORTED",
             (
                 "result.json 的 result_schema_version "
-                f"必须为 {RESULT_SCHEMA_VERSION}；"
-                "旧测试成果包请使用当前版本重新生成。"
+                "必须为受支持版本："
+                + "/".join(SUPPORTED_RESULT_SCHEMA_VERSIONS)
+                + "。"
             ),
             path="result.json",
         )
 
     if (
         manifest_schema_version
-        != RESULT_SCHEMA_VERSION
+        not in SUPPORTED_RESULT_SCHEMA_VERSIONS
     ):
         _append(
             issues,
             "MANIFEST_RESULT_SCHEMA_VERSION_UNSUPPORTED",
             (
                 "manifest 的 result_schema_version "
-                f"必须为 {RESULT_SCHEMA_VERSION}；"
-                "旧测试成果包请使用当前版本重新生成。"
+                "必须为受支持版本："
+                + "/".join(SUPPORTED_RESULT_SCHEMA_VERSIONS)
+                + "。"
             ),
             path="manifest.json",
         )
@@ -587,6 +628,38 @@ def inspect_survey_result_package(package_path):
         manifest_has_task_set
         or result_has_task_set
     )
+
+    manifest_submission = manifest.get("submission_task_uid")
+    result_submission = result_document.get("submission_task_uid")
+
+    def _normalize_submission(value, *, path):
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            _append(
+                issues,
+                "SUBMISSION_TASK_UID_INVALID",
+                "submission_task_uid 必须是非空字符串或 null。",
+                path=path,
+            )
+            return None
+        return value.strip()
+
+    manifest_submission = _normalize_submission(
+        manifest_submission,
+        path="manifest.json",
+    )
+    result_submission = _normalize_submission(
+        result_submission,
+        path="result.json",
+    )
+
+    if manifest_submission != result_submission:
+        _append(
+            issues,
+            "SUBMISSION_TASK_UID_MISMATCH",
+            "manifest 与 result.json 的 submission_task_uid 不一致。",
+        )
 
     # 工程对象
     asset_by_uid = {}

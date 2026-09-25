@@ -268,14 +268,14 @@ class SurveyResultReceiveImportUiTestCase(
         finally:
             panel.deleteLater()
 
-    def test_result_export_page_refreshes_package_scope_after_import(
+    def test_result_receive_page_forwards_import_signal(
         self,
     ):
         page_path = (
             PROJECT_ROOT
             / "src"
             / "pages"
-            / "result_export_page.py"
+            / "result_receive_page.py"
         )
 
         text = page_path.read_text(
@@ -283,10 +283,11 @@ class SurveyResultReceiveImportUiTestCase(
         )
 
         self.assertIn(
-            (
-                "self.result_receive_panel."
-                "result_imported.connect"
-            ),
+            "SurveyResultReceivePanel",
+            text,
+        )
+        self.assertIn(
+            "result_imported.connect",
             text,
         )
 

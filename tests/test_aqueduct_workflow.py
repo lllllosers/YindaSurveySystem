@@ -103,6 +103,10 @@ class AqueductWorkflowTestCase(
             "asset_name": asset_name,
             "stake": stake,
             "stake_value": stake_value,
+            "start_stake": stake,
+            "start_stake_value": stake_value,
+            "end_stake": stake,
+            "end_stake_value": stake_value,
             "design_flow": 4.5,
             "length": 120.0,
         }
@@ -137,6 +141,10 @@ class AqueductWorkflowTestCase(
             "asset_name": asset_name,
             "stake": stake,
             "stake_value": stake_value,
+            "start_stake": stake,
+            "start_stake_value": stake_value,
+            "end_stake": stake,
+            "end_stake_value": stake_value,
             "design_flow": 4.5,
             "structure_grade": "3级",
             "build_date": "2010-06",
@@ -477,6 +485,10 @@ class AqueductWorkflowTestCase(
                 "asset_name": ("修改后的测试渡槽"),
                 "stake": "K1+500",
                 "stake_value": 1500.0,
+                "start_stake": "K1+500",
+                "start_stake_value": 1500.0,
+                "end_stake": "K1+500",
+                "end_stake_value": 1500.0,
                 "design_flow": 8.8,
                 "length": 180.0,
             }
@@ -579,6 +591,10 @@ class AqueductWorkflowTestCase(
                 "asset_name": "测试渡槽",
                 "stake": "K1+250",
                 "stake_value": 1250.0,
+                "start_stake": "K1+250",
+                "start_stake_value": 1250.0,
+                "end_stake": "K1+250",
+                "end_stake_value": 1250.0,
                 "design_flow": 4.5,
                 "length": 120.0,
             },
@@ -1186,7 +1202,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K1+250",
+            "K1+250～K1+250",
         )
 
         self.assertEqual(

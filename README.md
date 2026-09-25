@@ -1,56 +1,115 @@
-# 引大灌区调查数据采集系统
+# 引大入秦工程现状调查采集系统
 
-用于引大入秦灌区现状调查数据的本地化录入、管理、查询与 Excel 成果导出。
+用于引大入秦灌区工程现状调查的本地化录入、任务分发、成果回收、查询、台账管理与 Excel 成果导出。
 
 ## 当前版本
 
-**V0.8.0 测试版**
+**V1.2.0 正式版**
 
-V0.8.0 在 V0.7.0 多电脑调查闭环基础上，完成渠道物理实体与管理范围解耦、management scope 冻结任务范围、`SurveyRecord` 的 task + scope provenance、上级 issued-task 冻结快照权威校验以及 `.ydresult` V2 成果回收闭环，并已通过独立双数据库人工生产验收。
+V1.2.0 是 V1.1.1 的数据兼容升级版本。附表2.1～2.14统一采用“起始桩号 + 终止桩号”工程位置语义；11张原单桩号附表保留历史 V1 数据兼容，新调查使用 V2。既有 V1.1.1 数据首次升级前自动创建 `pre_v1_2_0_upgrade` SQLite 安全备份，历史 completed 状态、业务编号、revision 和来源版本保持不变。
 
-当前开发分支已完成渠道管理范围与跨库任务 provenance 模型收口：`CanalUnit` 仅表示物理渠道，管理责任统一由 `CanalManagementScope` 表达；调查任务使用冻结的 management scope 快照约束录入范围，成果回收按上级端原始下发任务快照核验来源。
+`.ydtask` 继续使用 V3，`.ydresult` 继续使用 2.2；三级任务与成果架构不因本次桩号统一而改变。
 
-## 当前已实现
+V1.1.1 在 V1.1.0 正式三级任务架构基础上修复处级父任务接收后的任务分发和调查录入问题，并完成全页面用户可见文案收口。
 
-- PySide6 + SQLite 单机本地化运行框架
-- 项目与调查批次管理
-- 组织机构与物理渠系基础资料
-- CanalManagementScope 渠道管理范围模型
-- 跨数据库稳定 UID
-- `.ydtask` 调查任务包、冻结任务范围与本地任务工作区
-- `.ydresult` V2 调查成果包、来源任务/分管范围校验、成果预检与事务化导入
-- SurveyRecord 任务与管理范围来源追踪（`source_task_uid` + `source_management_scope_uid`）
-- 工程业务编号
-- EngineeringAsset 工程台账
-- SurveyRecord 历次调查记录
-- InspectionResult 分项评价结果
-- 附表2.1～2.14工程现状调查完整接入
-- A/B/C/D 与 A/B/C 两类分项评价体系
-- 工程状况类别默认按最差分项自动判定，并支持人工调整
-- 建筑物等级规范化录入：如 `3` → `3级`
-- 混凝土强度规范化录入：如 `30` / `c30` / `C30` → `C30`
-- 草稿保存、重新打开和继续编辑
-- draft → completed 调查完成流程
-- 已完成记录继续修改及完整性校验
-- 重复工程/渠段调查保护
-- 调查记录删除与孤立工程对象清理
-- 连续录入、快捷键和未保存修改保护
-- 当前批次工程调查列表、筛选和统计
-- 工程调查入口独立滚动，录入页面新增/编辑自动回到顶部
-- 工程类型统一由 Registry / Definition 显示中文名称
-- 统一数据查询模块
-- 跨调查批次、跨调查表查询
-- 按当前表单动态使用 A/B/C 或 A/B/C/D 等级筛选
-- 查询结果公共汇总 Excel 导出
-- 单调查表详细数据汇总 Excel 导出
-- 附表2.1～2.14单记录正式原表 Excel 导出
-- SQLite 自动备份与数据库恢复维护工具
-- 开发测试数据与正式运行数据分离
-- 独立临时数据库自动化回归测试
+V1.1.0 在 V1.0.2 编号与增量成果汇总基础上，正式加入原生“中心 → 基层处 → 水管所 → 基层处 → 中心”三级任务与成果流转。
+
+V1.1.0 已完成：
+
+- `.ydtask` 引入 `task_uid / parent_task_uid / root_task_uid / task_depth` 任务谱系；
+- 中心可直接向基层处下发父任务，父任务冻结该处所辖已选水管所分管范围集合；
+- 基层处只能从父任务冻结范围派生所级子任务，服务层强制执行 `child scopes ⊆ parent frozen scopes`；
+- 水管所继续使用独立 `local_data` 接收自己的子任务并录入调查数据；
+- 所级成果回处后，调查记录继续保留真实 `source_task_uid + source_management_scope_uid`；
+- 处级汇总成果使用 `submission_task_uid` 对父任务提交，不改写记录真实来源；
+- 中心仅需验证自己实际下发过的处级父任务，不再要求中心伪造或持有所级子任务 issued history；
+- 处级汇总自动按当前父任务冻结范围选择合法 completed 记录，并校验子任务、管理单位、分管范围与渠系一致性；
+- 任务分发与成果提交 UI 已接入三级工作流，同时保留原中心直接向水管所下发的既有流程；
+- 四套独立 `local_data` 的中心—处—两所—处—中心自动化往返及人工生产验收均通过。
+
+截至 2026-09-20，Stage 4.1～4.5C、全量自动化回归及三级任务/成果人工生产验收全部通过。
+
+## 正式业务范围
+
+当前正式软件业务范围为：
+
+- 附表2.1～2.14工程现状调查；
+- 项目与调查批次管理；
+- 组织机构、物理渠系与分管范围维护；
+- 工程调查录入、草稿、完成、修改与删除；
+- 工程台账与历次调查；
+- 数据查询与 Excel 汇总；
+- 单记录正式原表导出；
+- 调查任务分发与任务接收；
+- 调查成果提交与成果接收；
+- SQLite 自动备份与恢复。
+
+附表1.1～1.15“灌区综合与水土资源调查”在 V1.2.0 中继续保留可见预留入口和 `series_1 / comprehensive` 底层扩展能力，但当前不启用软件化录入，继续采用现行业务中的内业查档、统计整理和 Excel 汇总流程。
+
+## 任务与成果工作流
+
+```text
+中心
+  ↓ 处级父任务 T1（.ydtask）
+基层处
+  ├─ 所A子任务 T2
+  └─ 所B子任务 T3
+        ↓
+水管所独立调查
+        ↓
+所级 .ydresult
+        ↓
+基层处预检 / 导入 / 汇总
+        ↓ submission_task_uid = T1
+处级 .ydresult
+        ↓
+中心预检 / 事务化导入
+        ↓
+工程台账 / 数据查询 / 首页统计统一汇总
+```
+
+任务和成果跨数据库传递使用稳定 UID。调查记录继续保存：
+
+```text
+source_task_uid
++
+source_management_scope_uid
+```
+
+表示真实调查来源；分级成果包使用：
+
+```text
+submission_task_uid
+```
+
+表示本次向上级提交所依据的任务。上级端按自己实际下发的不可变 issued-task / issued-scope 冻结快照验收，不伪造下级任务历史，也不使用当前主数据反向改写历史任务事实。
+
+## 核心数据模型
+
+```text
+Project
+└── SurveyBatch
+    ├── EngineeringAsset
+    │   └── SurveyRecord
+    │       ├── InspectionResult
+    │       └── SurveyMedia
+    └── Survey task / result exchange
+
+OrganizationUnit
+└── CanalManagementScope
+    └── CanalUnit
+```
+
+其中：
+
+- `CanalUnit` 只表示物理渠道；
+- `CanalManagementScope` 表示管理责任和分管范围；
+- 同一物理渠道允许存在多个独立分管范围；
+- 历史任务范围以任务分发时冻结快照为准。
 
 ## Engineering Form Framework
 
-附表2.1～2.14已经统一进入声明式工程调查框架。
+附表2.1～2.14统一使用声明式工程调查框架：
 
 ```text
 EngineeringFormDefinition
@@ -61,72 +120,82 @@ EngineeringFormDefinition
         │
         ↓
 EngineeringFormRegistry
-        │
         ├── GenericEngineeringSurveyPage
-        │       ↓
-        │   generic persistence
-        │       ↓
-        │   point / range common DB API
-        │
         ├── GenericEngineeringListPage
-        │       ↓
-        │   EngineeringSurveyListPage
-        │
-        ├── Generic Engineering Summary Exporter
-        └── Generic Original Form Exporter
+        ├── engineering_summary_export
+        └── engineering_original_form_export
 ```
 
-`EngineeringFormRegistry` 是生产代码中工程调查表身份的统一注册入口。
+`EngineeringFormRegistry` 是生产代码中附表2工程调查表身份的统一注册入口。
 
-每张工程调查表主要保留自身的：
+## 首页统计口径
 
-- 正式字段和页面分区
-- 工程位置类型
-- 正式评价项目与标准
-- 列表声明
-- 详细汇总列声明
-- 正式原表 Excel 映射
-- 必要的纯 formatter
+首页“已录记录完成率”定义为：
 
-公共生命周期、当前批次列表行为、详细汇总执行流程和正式原表执行流程均由通用实现承担。
+```text
+录入完成记录数 ÷ 已录记录数
+```
 
-当前不再为每张附表复制：
+当前数据库没有权威的“某单位应调查工程总量”计划基准，因此该指标只描述**已经录入的数据中有多少完成录入**，不等于辖区最终工作量完成率。
 
-- 专属录入页面
-- 专属 CRUD / completion 流程
-- 专属当前批次 List Page
-- 专属 summary exporter
-- 专属 original-form exporter
+任务分发历史中的“已有成果返回”也只表示该任务已有调查记录回到总库，不等于任务整体已经全部完成。
 
-## 后续工程调查表扩展原则
+## V1.2.0 升级交付
 
-标准附表2.x原则上只新增或补充：
+V1.2.0 正式构建同时提供：
 
-1. `FORM_2_X` 正式定义；
-2. 正式评价内容；
-3. List / Summary / Original Form 声明；
-4. 正式 Excel 模板；
-5. 表级合同测试和业务 workflow 回归测试。
+```text
+YindaSurveySystem_V1.2.0_Windows_x64.zip
+YindaSurveySystem_V1.1.1_to_V1.2.0_Update.zip
+```
 
-只有在真实业务差异无法由现有合同清晰表达时，才增加受控扩展点；不预先建设万能动态表单平台。
+已有 V1.1.1 正式系统优先使用第二个升级包。升级包携带完整 V1.2.0 程序 payload，但通过专用升级器保留 `local_data`，并在程序文件替换前再复制一份完整 `local_data` 到 `upgrade_backups`。首次启动 V1.2.0 后，应用自身继续执行数据库级 `pre_v1_2_0_upgrade` 备份。
 
-## 当前开发方向
+这种方式属于安全覆盖升级包，不依赖人工逐文件覆盖，也不采用易产生新旧 PyInstaller 文件混用的源码级差分补丁。
 
-附表2工程现状调查体系已经完成阶段性闭环，V0.8.0 已具备基于 `CanalManagementScope` 的任务下发、基层受控录入、成果上报、来源核验和上级事务化汇总链路。
+## 数据安全
 
-任务范围 provenance 与成果回收校验已完成 Stage 14 自动化与人工双重验收：物理 `CanalUnit`、管理关系 `CanalManagementScope`、任务冻结范围、`SurveyRecord` 来源身份、`.ydresult` V2、上级原始下发快照校验和事务导入均已贯通。双数据库人工验收已覆盖同一物理渠道多 scope、重复成果幂等、以及 current master 变化后历史成果 warning-only 但仍可合法导入的场景。下一阶段进入甲方实际数据试录和使用反馈收集；附表1系列继续作为独立业务域留待后续单独设计。
+系统采用 SQLite 本地数据库。正式成果导入前会自动创建数据库备份，并通过事务执行成果导入。
 
-## 技术栈
+正式发布包不得携带开发数据库或 `local_data` 目录。跨电脑交换使用 `.ydtask` 与 `.ydresult` 文件。
 
-- Python
-- PySide6
-- SQLite
-- openpyxl
+## 开发与测试
+
+开发环境：
+
+```text
+Python
+PySide6
+SQLite
+openpyxl
+```
+
+运行完整测试：
+
+```bat
+run_tests.bat
+```
+
+开发环境启动：
+
+```bat
+.\.venv\Scripts\python.exe src\main.py
+```
+
+## 文档
+
+- `docs/05_当前开发状态与路线图.md`：当前稳定状态和后续维护边界；
+- `docs/06_甲方反馈整改清单.md`：V1.0 反馈整改收口；
+- `docs/07_术语与界面文案规范.md`：正式界面术语规范；
+- `docs/08_V1生产验收矩阵.md`：V1.0 多单位生产验收；
+- `docs/09_V1.0.0发布说明.md`：正式版本范围、验收状态与已知边界。
+- `docs/10_V1.0.1发布说明.md`：签字字段补丁、成果包兼容和升级说明。
+- `docs/11_V1.0.2发布说明.md`：编号重排、增量成果合并、正式锁号及当前任务流转边界。
+- `docs/12_V1.1.0发布说明.md`：原生三级任务链、处级汇总和分级成果提交。
+- `docs/13_V1.1.1发布说明.md`：处级任务 UI 修复及全页面用户化文案收口。
+- `docs/14_V1.2.0发布说明.md`：起止桩号统一、历史数据兼容、自动升级备份和升级说明。
+- `docs/15_V1.2.0生产升级验收记录.md`：V1.1.1 → V1.2.0 真实旧版本数据库升级模拟与生产发布前验收记录。
 
 ## 开发者
 
 **Steven_Chen**
-
-## 版本状态
-
-当前项目处于 `0.x` 开发阶段，尚未进入正式 `1.0.0` 发布版本。

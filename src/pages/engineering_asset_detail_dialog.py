@@ -1,3 +1,8 @@
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+)
+
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -28,6 +33,11 @@ CANAL_LEVEL_NAMES = {
 
 
 class EngineeringAssetDetailDialog(QDialog):
+    open_survey_record_requested = Signal(
+        str,
+        int,
+    )
+
     def __init__(
         self,
         engineering_asset_id,
@@ -124,9 +134,32 @@ class EngineeringAssetDetailDialog(QDialog):
 
         history_layout = QVBoxLayout(history_group)
 
-        self.history_count_label = QLabel()
+        history_header_layout = QHBoxLayout()
 
-        history_layout.addWidget(self.history_count_label)
+        self.history_count_label = QLabel()
+        history_header_layout.addWidget(
+            self.history_count_label
+        )
+        history_header_layout.addStretch()
+
+        self.open_record_button = QPushButton(
+            "打开完整调查表"
+        )
+        self.open_record_button.setProperty(
+            "role",
+            "primary",
+        )
+        self.open_record_button.setEnabled(False)
+        self.open_record_button.clicked.connect(
+            self.open_selected_history_record
+        )
+
+        history_header_layout.addWidget(
+            self.open_record_button
+        )
+        history_layout.addLayout(
+            history_header_layout
+        )
 
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(8)
@@ -135,22 +168,34 @@ class EngineeringAssetDetailDialog(QDialog):
             [
                 "调查批次",
                 "调查表",
-                "表单版本",
+                "调查表版本",
                 "业务编号",
                 "调查日期",
-                "最终等级",
+                "工程状况类别",
                 "记录状态",
                 "修改时间",
             ]
         )
 
-        self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
 
         self.history_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
+        self.history_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
 
         self.history_table.setAlternatingRowColors(True)
+
+        self.history_table.itemSelectionChanged.connect(
+            self._update_open_record_button
+        )
+        self.history_table.cellDoubleClicked.connect(
+            self.open_selected_history_record
+        )
 
         self.history_table.setColumnWidth(
             0,
@@ -210,7 +255,7 @@ class EngineeringAssetDetailDialog(QDialog):
         asset = get_engineering_asset_detail(self.engineering_asset_id)
 
         if asset is None:
-            self.asset_name_label.setText("未找到工程对象")
+            self.asset_name_label.setText("未找到该工程")
             return
 
         asset_type_text = (
@@ -302,10 +347,78 @@ class EngineeringAssetDetailDialog(QDialog):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value or ""))
 
+                if column == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        record["survey_record_id"],
+                    )
+                    item.setData(
+                        Qt.ItemDataRole.UserRole + 1,
+                        record["form_code"],
+                    )
+
                 self.history_table.setItem(
                     row_index,
                     column,
                     item,
                 )
 
-        self.history_count_label.setText(f"该工程共有 {len(history)} 条调查记录")
+        self.history_count_label.setText(
+            f"该工程共有 {len(history)} 条调查记录"
+        )
+        self._update_open_record_button()
+
+    def _selected_history_identity(self):
+        row = self.history_table.currentRow()
+
+        if row < 0:
+            return None
+
+        item = self.history_table.item(row, 0)
+
+        if item is None:
+            return None
+
+        survey_record_id = item.data(
+            Qt.ItemDataRole.UserRole
+        )
+        form_code = item.data(
+            Qt.ItemDataRole.UserRole + 1
+        )
+
+        if (
+            survey_record_id is None
+            or not form_code
+        ):
+            return None
+
+        return (
+            str(form_code),
+            int(survey_record_id),
+        )
+
+    def _update_open_record_button(self):
+        self.open_record_button.setEnabled(
+            self._selected_history_identity()
+            is not None
+        )
+
+    def open_selected_history_record(
+        self,
+        *args,
+    ):
+        identity = (
+            self._selected_history_identity()
+        )
+
+        if identity is None:
+            return
+
+        form_code, survey_record_id = identity
+
+        self.open_survey_record_requested.emit(
+            form_code,
+            survey_record_id,
+        )
+
+        self.accept()

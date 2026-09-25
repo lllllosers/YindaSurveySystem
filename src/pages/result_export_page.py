@@ -49,8 +49,10 @@ from services.engineering_result_preflight import (
     inspect_batch_export_plan,
 )
 from services.survey_scope import SurveyScope
+from services.survey_task_workspace import (
+    get_current_task_workspace,
+)
 from pages.components.survey_result_package_panel import SurveyResultPackagePanel
-from pages.components.survey_result_receive_panel import SurveyResultReceivePanel
 
 
 class BatchExportWorker(QObject):
@@ -127,10 +129,11 @@ class ResultExportPage(QWidget):
         )
 
         description = QLabel(
-            "生成当前调查批次的附表2正式成果。"
-            "正式成果默认只包含“录入完成”记录；"
+            "成果提交用于整理和输出当前调查批次的正式成果。"
+            "可生成正式Excel成果，也可生成用于上交的数据交换成果包（.ydresult）；"
             "草稿不会进入正式成果。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(True)
         description.setStyleSheet(
             "color: #607080; font-size: 14px;"
@@ -140,9 +143,12 @@ class ResultExportPage(QWidget):
         context_group = QGroupBox(
             "一、成果所属调查批次"
         )
+        context_group.setProperty("workflowCard", True)
         context_layout = QFormLayout(
             context_group
         )
+        context_layout.setHorizontalSpacing(18)
+        context_layout.setVerticalSpacing(10)
 
         self.project_value_label = QLabel(
             "未选择项目"
@@ -164,14 +170,21 @@ class ResultExportPage(QWidget):
         scope_group = QGroupBox(
             "二、成果范围"
         )
+        scope_group.setProperty("workflowCard", True)
         scope_layout = QFormLayout(
             scope_group
         )
+        scope_layout.setHorizontalSpacing(18)
+        scope_layout.setVerticalSpacing(10)
 
         self.department_combo = QComboBox()
+        self.department_combo.setProperty("uiWidthRole", "form")
         self.office_combo = QComboBox()
+        self.office_combo.setProperty("uiWidthRole", "form")
         self.canal_combo = QComboBox()
+        self.canal_combo.setProperty("uiWidthRole", "form")
         self.form_combo = QComboBox()
+        self.form_combo.setProperty("uiWidthRole", "form")
 
         self.include_canal_descendants_check = (
             QCheckBox(
@@ -211,6 +224,7 @@ class ResultExportPage(QWidget):
         output_group = QGroupBox(
             "三、输出设置"
         )
+        output_group.setProperty("workflowCard", True)
         output_layout = QVBoxLayout(
             output_group
         )
@@ -251,6 +265,7 @@ class ResultExportPage(QWidget):
             "系统将在所选位置自动新建本次成果目录，"
             "不会覆盖已有成果。"
         )
+        output_note.setObjectName("workflowLead")
         output_note.setWordWrap(True)
         output_note.setStyleSheet(
             "color: #7a8793;"
@@ -262,8 +277,9 @@ class ResultExportPage(QWidget):
         action_row = QHBoxLayout()
 
         self.export_button = QPushButton(
-            "预检并开始导出"
+            "检查并导出正式成果"
         )
+        self.export_button.setProperty("uiRole", "primary")
         self.export_button.clicked.connect(
             self.start_export
         )
@@ -271,6 +287,7 @@ class ResultExportPage(QWidget):
         self.open_output_button = QPushButton(
             "打开成果目录"
         )
+        self.open_output_button.setProperty("uiRole", "secondary")
         self.open_output_button.setEnabled(
             False
         )
@@ -278,13 +295,9 @@ class ResultExportPage(QWidget):
             self.open_output_directory
         )
 
-        action_row.addWidget(
-            self.export_button
-        )
-        action_row.addWidget(
-            self.open_output_button
-        )
+        action_row.addWidget(self.open_output_button)
         action_row.addStretch()
+        action_row.addWidget(self.export_button)
         root_layout.addLayout(action_row)
 
         self.progress_bar = QProgressBar()
@@ -294,8 +307,9 @@ class ResultExportPage(QWidget):
         )
 
         self.status_label = QLabel(
-            "等待导出。"
+            "等待生成正式成果。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -305,8 +319,9 @@ class ResultExportPage(QWidget):
         )
 
         package_group = QGroupBox(
-            "四、数据交换成果包（.ydresult）"
+            "四、调查成果包（.ydresult）"
         )
+        package_group.setProperty("workflowCard", True)
         package_layout = QVBoxLayout(
             package_group
         )
@@ -326,6 +341,9 @@ class ResultExportPage(QWidget):
                         .strip()
                     )
                 ),
+                workspace_provider=(
+                    get_current_task_workspace
+                ),
             )
         )
 
@@ -335,31 +353,6 @@ class ResultExportPage(QWidget):
 
         root_layout.addWidget(
             package_group
-        )
-
-        receive_group = QGroupBox(
-            "五、接收下级成果包（.ydresult）"
-        )
-        receive_layout = QVBoxLayout(
-            receive_group
-        )
-
-        self.result_receive_panel = (
-            SurveyResultReceivePanel()
-        )
-
-        receive_layout.addWidget(
-            self.result_receive_panel
-        )
-
-        self.result_receive_panel.result_imported.connect(
-            lambda result: (
-                self.result_package_panel.refresh_scope_summary()
-            )
-        )
-
-        root_layout.addWidget(
-            receive_group
         )
 
         # Stage 11.3e: auto refresh .ydresult scope
@@ -467,7 +460,7 @@ class ResultExportPage(QWidget):
 
         self.status_label.setText(
             "已加载当前调查批次。"
-            "请选择成果范围后开始导出。"
+            "请选择成果范围后生成正式成果。"
         )
 
     def _load_department_options(self):
@@ -802,7 +795,7 @@ class ResultExportPage(QWidget):
             )
 
             self.status_label.setText(
-                "正在预检成果范围……"
+                "正在检查成果范围……"
             )
 
             plan = build_batch_export_plan(
@@ -817,25 +810,25 @@ class ResultExportPage(QWidget):
         except Exception as error:
             QMessageBox.warning(
                 self,
-                "成果预检失败",
+                "成果检查失败",
                 str(error),
             )
             self.status_label.setText(
-                "成果预检失败。"
+                "成果检查失败。"
             )
             return
 
         if preflight_report.error_count:
             QMessageBox.warning(
                 self,
-                "成果预检未通过",
+                "成果检查未通过",
                 (
                     "正式成果导出前发现"
                     f" {preflight_report.error_count} "
-                    "个必须处理的影像错误。\n"
+                    "个必须处理的影像问题。\n"
                     f"另有 "
                     f"{preflight_report.warning_count} "
-                    "个警告。\n\n"
+                    "条提示。\n\n"
                     "错误修正后才能开始正式导出。"
                     "\n\n"
                     f"{preflight_report.format_preview()}"
@@ -843,7 +836,7 @@ class ResultExportPage(QWidget):
             )
 
             self.status_label.setText(
-                "成果预检未通过。"
+                "成果检查未通过。"
             )
             return
 
@@ -863,12 +856,12 @@ class ResultExportPage(QWidget):
                 f"记录数：{len(plan.records)} 条\n"
                 f"调查表：{len(plan.groups)} 类\n"
                 f"范围：{form_names}\n"
-                f"影像预检：0 个错误，"
+                f"影像检查：0 个问题，"
                 f"{preflight_report.warning_count} "
-                "个警告\n\n"
+                "条提示\n\n"
                 + (
                     (
-                        "以下警告不会阻止本次导出：\n"
+                        "以下提示不会阻止本次导出：\n"
                         f"{preflight_report.format_preview(limit=5)}"
                         "\n\n"
                     )

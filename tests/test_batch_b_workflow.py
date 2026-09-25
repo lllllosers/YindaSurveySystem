@@ -82,7 +82,7 @@ class BatchBWorkflowMixin:
         )
         self.assertEqual(
             self.DEFINITION.position.kind,
-            "point",
+            "range",
         )
         self.assertEqual(
             self.DEFINITION.grade_options,
@@ -224,11 +224,17 @@ class BatchBWorkflowMixin:
                 )
             ),
             "position": {
-                "kind": "point",
-                "single_stake_text": (
+                "kind": "range",
+                "start_stake_text": (
                     self.POINT_STAKE
                 ),
-                "single_stake_value": (
+                "start_stake_value": (
+                    self.POINT_STAKE_VALUE
+                ),
+                "end_stake_text": (
+                    self.POINT_STAKE
+                ),
+                "end_stake_value": (
                     self.POINT_STAKE_VALUE
                 ),
             },
@@ -363,14 +369,28 @@ class BatchBWorkflowMixin:
         )
         self.assertEqual(
             record[
-                "single_stake_text"
+                "start_stake_text"
             ],
             self.POINT_STAKE,
         )
         self.assertAlmostEqual(
             float(
                 record[
-                    "single_stake_value"
+                    "start_stake_value"
+                ]
+            ),
+            self.POINT_STAKE_VALUE,
+        )
+        self.assertEqual(
+            record[
+                "end_stake_text"
+            ],
+            self.POINT_STAKE,
+        )
+        self.assertAlmostEqual(
+            float(
+                record[
+                    "end_stake_value"
                 ]
             ),
             self.POINT_STAKE_VALUE,

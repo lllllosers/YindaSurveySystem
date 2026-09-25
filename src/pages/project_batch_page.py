@@ -384,7 +384,9 @@ class ProjectBatchPage(QWidget):
         form = QFormLayout()
 
         name_edit = QLineEdit()
+        name_edit.setProperty("uiWidthRole", "form")
         short_name_edit = QLineEdit()
+        short_name_edit.setProperty("uiWidthRole", "form")
 
         description_edit = QTextEdit()
         description_edit.setMaximumHeight(90)
@@ -518,12 +520,16 @@ class ProjectBatchPage(QWidget):
         form = QFormLayout()
 
         name_edit = QLineEdit()
+        name_edit.setProperty("uiWidthRole", "form")
         code_edit = QLineEdit()
+        code_edit.setProperty("uiWidthRole", "form")
 
         start_date_edit = QLineEdit()
+        start_date_edit.setProperty("uiWidthRole", "form")
         start_date_edit.setPlaceholderText("YYYY-MM-DD，可留空")
 
         end_date_edit = QLineEdit()
+        end_date_edit.setProperty("uiWidthRole", "form")
         end_date_edit.setPlaceholderText("YYYY-MM-DD，可留空")
 
         description_edit = QTextEdit()
@@ -584,7 +590,7 @@ class ProjectBatchPage(QWidget):
                 message += (
                     "\n\n由于当前项目此前没有"
                     "当前调查批次，"
-                    "该批次已自动设为当前批次。"
+                    "该批次已自动设为当前调查批次。"
                 )
 
             QMessageBox.information(

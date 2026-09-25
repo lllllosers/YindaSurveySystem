@@ -90,7 +90,8 @@ class GenericEngineeringSummaryExportTestCase(
             "business_code": "1-01-01-03-001",
             "asset_name": "测试渡槽",
             "record_data": {
-                "stake": "K26+100",
+                "start_stake": "K26+100",
+                "end_stake": "K26+250",
                 "design_flow": 8.5,
                 "structure_grade": "3级",
                 "build_date": "2010-06",
@@ -169,6 +170,10 @@ class GenericEngineeringSummaryExportTestCase(
                 "桩号",
             )
             self.assertEqual(
+                worksheet["G2"].value,
+                "K26+100～K26+250",
+            )
+            self.assertEqual(
                 worksheet["O2"].value,
                 "3.2×2.4",
             )
@@ -216,7 +221,7 @@ class GenericEngineeringSummaryExportTestCase(
                 worksheet.cell(
                     row=2,
                     column=(
-                        overall_grade_column + 3
+                        overall_grade_column + 7
                     ),
                 ).value,
                 "录入完成",

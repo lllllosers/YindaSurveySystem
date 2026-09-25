@@ -4,6 +4,9 @@ import sqlite3
 
 import database
 
+from services.survey_task_lineage import (
+    normalize_task_lineage,
+)
 
 def _clean_text(value):
     return str(
@@ -227,18 +230,71 @@ def ensure_survey_task_issue_history_schema():
             """
         )
 
+        issue_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(survey_task_issues)"
+            ).fetchall()
+        }
+
+        if "parent_task_uid" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN parent_task_uid TEXT
+                """
+            )
+
+        if "root_task_uid" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN root_task_uid TEXT
+                """
+            )
+
+        if "task_depth" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN task_depth INTEGER NOT NULL DEFAULT 0
+                """
+            )
+
+        if "target_unit_type" not in issue_columns:
+            connection.execute(
+                """
+                ALTER TABLE survey_task_issues
+                ADD COLUMN target_unit_type TEXT
+                    NOT NULL DEFAULT 'water_office'
+                """
+            )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_survey_task_issues_root
+            ON survey_task_issues(
+                root_task_uid,
+                task_depth,
+                id
+            )
+            """
+        )
+
     return {
         "ready": True,
         "issue_table": True,
         "scope_snapshot_table": True,
         "immutable": True,
+        "lineage_fields": True,
     }
 
 
 def _validate_scope_snapshot(
     item,
     *,
-    expected_organization_uid,
+    allowed_organization_uids,
     canal_by_uid,
 ):
     management_scope_uid = _require_text(
@@ -273,10 +329,11 @@ def _validate_scope_snapshot(
 
     if (
         organization_unit_uid
-        != expected_organization_uid
+        not in allowed_organization_uids
     ):
         raise ValueError(
-            "任务分管范围管理单位与任务 assignment 不一致："
+            "任务分管范围管理单位超出任务目标单位"
+            "允许的下发范围："
             f"{management_scope_uid}。"
         )
 
@@ -415,6 +472,7 @@ def record_issued_survey_task(
     task_document,
     management_scopes,
     canal_units,
+    organization_units=(),
 ):
     """
     将已经成功生成的 .ydtask 内容保存为上级端权威历史。
@@ -488,6 +546,11 @@ def record_issued_survey_task(
         raise ValueError(
             "manifest 与 task.json 的 task_schema_version 不一致。"
         )
+
+    lineage = normalize_task_lineage(
+        task_document,
+        manifest=manifest,
+    )
 
     app_version = _require_text(
         manifest.get(
@@ -565,6 +628,140 @@ def record_issued_survey_task(
         ),
         "organization_unit_uid",
     )
+
+    target_unit_type = (
+        _clean_text(
+            assignment.get(
+                "target_unit_type"
+            )
+        )
+        or "water_office"
+    )
+
+    if target_unit_type not in {
+        "department",
+        "water_office",
+    }:
+        raise ValueError(
+            "任务目标单位类型必须是基层处或水管所。"
+        )
+
+    organization_by_uid = {}
+
+    for item in list(
+        organization_units
+        or ()
+    ):
+        if not isinstance(
+            item,
+            dict,
+        ):
+            raise ValueError(
+                "任务冻结 organization reference 项必须是对象。"
+            )
+
+        reference_uid = _require_text(
+            item.get(
+                "organization_uid"
+            ),
+            "organization_uid",
+        )
+
+        if reference_uid in organization_by_uid:
+            raise ValueError(
+                "任务冻结 organization reference "
+                "包含重复 organization_uid。"
+            )
+
+        organization_by_uid[
+            reference_uid
+        ] = item
+
+    if organization_by_uid:
+        department_reference = (
+            organization_by_uid.get(
+                department_uid
+            )
+        )
+        target_reference = (
+            organization_by_uid.get(
+                organization_uid
+            )
+        )
+
+        if (
+            department_reference is None
+            or department_reference.get(
+                "unit_type"
+            )
+            != "department"
+        ):
+            raise ValueError(
+                "任务所属基层处冻结组织参考无效。"
+            )
+
+        if (
+            target_reference is None
+            or target_reference.get(
+                "unit_type"
+            )
+            != target_unit_type
+        ):
+            raise ValueError(
+                "任务目标单位冻结组织参考无效。"
+            )
+
+        if target_unit_type == "water_office":
+            if (
+                target_reference.get(
+                    "parent_organization_uid"
+                )
+                != department_uid
+            ):
+                raise ValueError(
+                    "任务水管所与所属基层处冻结关系不一致。"
+                )
+
+            allowed_scope_owner_uids = {
+                organization_uid
+            }
+
+        else:
+            if organization_uid != department_uid:
+                raise ValueError(
+                    "处级任务的目标单位必须就是所属基层处。"
+                )
+
+            allowed_scope_owner_uids = {
+                uid
+                for uid, item
+                in organization_by_uid.items()
+                if (
+                    item.get(
+                        "unit_type"
+                    )
+                    == "water_office"
+                    and item.get(
+                        "parent_organization_uid"
+                    )
+                    == department_uid
+                )
+            }
+
+            if not allowed_scope_owner_uids:
+                raise ValueError(
+                    "处级任务冻结组织参考中没有下属水管所。"
+                )
+
+    else:
+        if target_unit_type != "water_office":
+            raise ValueError(
+                "处级任务必须提供冻结组织参考。"
+            )
+
+        allowed_scope_owner_uids = {
+            organization_uid
+        }
 
     if (
         _require_text(
@@ -695,8 +892,8 @@ def record_issued_survey_task(
     snapshots = [
         _validate_scope_snapshot(
             item,
-            expected_organization_uid=(
-                organization_uid
+            allowed_organization_uids=(
+                allowed_scope_owner_uids
             ),
             canal_by_uid=(
                 canal_by_uid
@@ -738,6 +935,10 @@ def record_issued_survey_task(
                 source_package_uid,
                 task_schema_version,
                 app_version,
+                parent_task_uid,
+                root_task_uid,
+                task_depth,
+                target_unit_type,
 
                 project_uid,
                 project_name_snapshot,
@@ -761,7 +962,7 @@ def record_issued_survey_task(
                 task_created_at
             )
             VALUES (
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?,
@@ -774,6 +975,10 @@ def record_issued_survey_task(
                 package_uid,
                 task_schema_version,
                 app_version,
+                lineage.parent_task_uid,
+                lineage.root_task_uid,
+                lineage.depth,
+                target_unit_type,
 
                 project_uid,
                 _require_text(
@@ -933,6 +1138,16 @@ def record_issued_survey_task(
         "package_uid": (
             package_uid
         ),
+        "parent_task_uid": (
+            lineage.parent_task_uid
+        ),
+        "root_task_uid": (
+            lineage.root_task_uid
+        ),
+        "task_depth": lineage.depth,
+        "target_unit_type": (
+            target_unit_type
+        ),
         "selected_management_scope_count": (
             len(
                 snapshots
@@ -1017,6 +1232,16 @@ def get_issued_survey_task(
     result = _issue_row_to_dict(
         issue
     )
+
+    if not _clean_text(
+        result.get("root_task_uid")
+    ):
+        result["root_task_uid"] = result[
+            "task_uid"
+        ]
+        result["parent_task_uid"] = None
+        result["task_depth"] = 0
+
     result[
         "management_scopes"
     ] = tuple(

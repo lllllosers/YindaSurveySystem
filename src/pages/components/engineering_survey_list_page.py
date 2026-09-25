@@ -3,9 +3,11 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtWidgets import (
+    QFrame,
     QAbstractItemView,
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -137,30 +139,36 @@ class EngineeringSurveyListPage(QWidget):
         button_layout = QHBoxLayout()
 
         back_button = QPushButton("返回")
+        back_button.setProperty("uiRole", "secondary")
         back_button.clicked.connect(self.back_requested.emit)
 
         new_button = QPushButton(self.NEW_BUTTON_TEXT)
+        new_button.setProperty("uiRole", "primary")
         new_button.clicked.connect(self.new_requested.emit)
 
         refresh_button = QPushButton("刷新")
+        refresh_button.setProperty("uiRole", "secondary")
         refresh_button.clicked.connect(self.load_data)
 
-        export_button = QPushButton("导出结果")
+        export_button = QPushButton("导出正式原表")
+        export_button.setProperty("uiRole", "secondary")
         export_button.clicked.connect(self.export_original_excel)
 
         media_button = QPushButton("影像资料")
+        media_button.setProperty("uiRole", "secondary")
         media_button.clicked.connect(self.manage_selected_media)
 
         delete_button = QPushButton("删除选中记录")
+        delete_button.setProperty("uiRole", "danger")
         delete_button.clicked.connect(self.delete_selected_record)
 
         button_layout.addWidget(back_button)
         button_layout.addWidget(new_button)
-        button_layout.addWidget(refresh_button)
-        button_layout.addWidget(export_button)
         button_layout.addWidget(media_button)
-        button_layout.addWidget(delete_button)
+        button_layout.addWidget(export_button)
         button_layout.addStretch()
+        button_layout.addWidget(refresh_button)
+        button_layout.addWidget(delete_button)
 
         layout.addLayout(button_layout)
 
@@ -169,6 +177,7 @@ class EngineeringSurveyListPage(QWidget):
         # =====================================================
 
         title = QLabel(self.PAGE_TITLE)
+        title.setObjectName("sectionPageTitle")
 
         title.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
@@ -176,59 +185,192 @@ class EngineeringSurveyListPage(QWidget):
 
         description = QLabel(
             "双击记录可打开调查表。"
-            "本页用于当前批次录入管理和快速筛选；"
+            "本页用于当前调查批次录入管理和快速筛选；"
             "跨批次查询、分类统计和汇总导出"
             "请使用“数据查询”模块。"
         )
 
         description.setWordWrap(True)
+        description.setObjectName("pageDescription")
 
         description.setStyleSheet("color: #607080; " "font-size: 14px;")
 
         layout.addWidget(description)
 
         # =====================================================
-        # 第一行筛选
+        # 筛选条件
+        # =====================================================
+        #
+        # 这里不能把“关键词 + 基层处 + 水管所 + 渠系”
+        # 四组固定宽度控件全部塞进一个 QHBoxLayout。
+        # 主窗口不再被隐藏调查表 sizeHint 撑宽以后，
+        # 原横向布局会被强行压缩，表现为标签与控件互相覆盖。
+        #
+        # 范围筛选改为 2 × 2 网格：
+        #   第一行：关键词 / 基层处
+        #   第二行：水管所 / 渠系
+        #
+        # 状态评价保持一行两组。
         # =====================================================
 
-        filter_layout_1 = QHBoxLayout()
+        filter_card = QFrame()
+        filter_card.setObjectName(
+            "filterCard"
+        )
+
+        filter_panel_layout = QVBoxLayout(
+            filter_card
+        )
+        filter_panel_layout.setContentsMargins(
+            16,
+            14,
+            16,
+            14,
+        )
+        filter_panel_layout.setSpacing(10)
+
+        filter_title = QLabel(
+            "筛选条件"
+        )
+        filter_title.setObjectName(
+            "filterTitle"
+        )
+        filter_panel_layout.addWidget(
+            filter_title
+        )
+
+        # =====================================================
+        # 范围检索：两行两组
+        # =====================================================
 
         self.keyword_edit = QLineEdit()
-
-        self.keyword_edit.setPlaceholderText(self.KEYWORD_PLACEHOLDER)
-
-        self.keyword_edit.setMinimumWidth(220)
+        self.keyword_edit.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
+        self.keyword_edit.setPlaceholderText(
+            self.KEYWORD_PLACEHOLDER
+        )
 
         self.department_filter = QComboBox()
-        self.department_filter.setMinimumWidth(130)
+        self.department_filter.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
 
         self.office_filter = QComboBox()
-        self.office_filter.setMinimumWidth(130)
+        self.office_filter.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
 
         self.canal_filter = QComboBox()
-        self.canal_filter.setMinimumWidth(150)
+        self.canal_filter.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
 
-        filter_layout_1.addWidget(QLabel("关键词："))
-        filter_layout_1.addWidget(self.keyword_edit)
+        range_grid = QGridLayout()
+        range_grid.setObjectName(
+            "filterRangeGrid"
+        )
+        range_grid.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+        range_grid.setHorizontalSpacing(
+            10
+        )
+        range_grid.setVerticalSpacing(
+            8
+        )
 
-        filter_layout_1.addWidget(QLabel("基层处："))
-        filter_layout_1.addWidget(self.department_filter)
+        range_section_label = QLabel(
+            "范围检索"
+        )
+        range_section_label.setObjectName(
+            "filterRowLabel"
+        )
+        range_section_label.setFixedWidth(
+            72
+        )
+        range_section_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft
+            | Qt.AlignmentFlag.AlignTop
+        )
 
-        filter_layout_1.addWidget(QLabel("水管所："))
-        filter_layout_1.addWidget(self.office_filter)
+        range_grid.addWidget(
+            range_section_label,
+            0,
+            0,
+            2,
+            1,
+        )
 
-        filter_layout_1.addWidget(QLabel("渠系："))
-        filter_layout_1.addWidget(self.canal_filter)
+        range_grid.addWidget(
+            QLabel("关键词："),
+            0,
+            1,
+        )
+        range_grid.addWidget(
+            self.keyword_edit,
+            0,
+            2,
+        )
 
-        layout.addLayout(filter_layout_1)
+        range_grid.addWidget(
+            QLabel("基层处："),
+            0,
+            3,
+        )
+        range_grid.addWidget(
+            self.department_filter,
+            0,
+            4,
+        )
+
+        range_grid.addWidget(
+            QLabel("水管所："),
+            1,
+            1,
+        )
+        range_grid.addWidget(
+            self.office_filter,
+            1,
+            2,
+        )
+
+        range_grid.addWidget(
+            QLabel("渠系："),
+            1,
+            3,
+        )
+        range_grid.addWidget(
+            self.canal_filter,
+            1,
+            4,
+        )
+
+        range_grid.setColumnStretch(
+            5,
+            1,
+        )
+
+        filter_panel_layout.addLayout(
+            range_grid
+        )
 
         # =====================================================
-        # 第二行筛选
+        # 状态评价
         # =====================================================
-
-        filter_layout_2 = QHBoxLayout()
 
         self.status_filter = QComboBox()
+        self.status_filter.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
 
         self.status_filter.addItem(
             "全部状态",
@@ -244,6 +386,10 @@ class EngineeringSurveyListPage(QWidget):
         )
 
         self.grade_filter = QComboBox()
+        self.grade_filter.setProperty(
+            "uiWidthRole",
+            "filter",
+        )
 
         self.grade_filter.addItem(
             "全部类别",
@@ -256,32 +402,122 @@ class EngineeringSurveyListPage(QWidget):
                 grade,
             )
 
-        search_button = QPushButton("查询")
-        search_button.clicked.connect(self.apply_filters)
+        status_grid = QGridLayout()
+        status_grid.setObjectName(
+            "filterStatusGrid"
+        )
+        status_grid.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+        status_grid.setHorizontalSpacing(
+            10
+        )
 
-        reset_button = QPushButton("重置")
-        reset_button.clicked.connect(self.reset_filters)
+        status_section_label = QLabel(
+            "状态评价"
+        )
+        status_section_label.setObjectName(
+            "filterRowLabel"
+        )
+        status_section_label.setFixedWidth(
+            72
+        )
 
-        self.keyword_edit.returnPressed.connect(self.apply_filters)
+        status_grid.addWidget(
+            status_section_label,
+            0,
+            0,
+        )
 
-        filter_layout_2.addWidget(QLabel("状态："))
-        filter_layout_2.addWidget(self.status_filter)
+        status_grid.addWidget(
+            QLabel("状态："),
+            0,
+            1,
+        )
+        status_grid.addWidget(
+            self.status_filter,
+            0,
+            2,
+        )
 
-        filter_layout_2.addWidget(QLabel("工程状况类别："))
-        filter_layout_2.addWidget(self.grade_filter)
+        status_grid.addWidget(
+            QLabel("工程状况类别："),
+            0,
+            3,
+        )
+        status_grid.addWidget(
+            self.grade_filter,
+            0,
+            4,
+        )
 
-        filter_layout_2.addWidget(search_button)
-        filter_layout_2.addWidget(reset_button)
+        status_grid.setColumnStretch(
+            5,
+            1,
+        )
 
-        filter_layout_2.addStretch()
+        filter_panel_layout.addLayout(
+            status_grid
+        )
 
-        layout.addLayout(filter_layout_2)
+        # =====================================================
+        # 查询操作
+        # =====================================================
+
+        search_button = QPushButton(
+            "查询"
+        )
+        search_button.setProperty(
+            "uiRole",
+            "primary",
+        )
+        search_button.clicked.connect(
+            self.apply_filters
+        )
+
+        reset_button = QPushButton(
+            "重置"
+        )
+        reset_button.setProperty(
+            "uiRole",
+            "secondary",
+        )
+        reset_button.clicked.connect(
+            self.reset_filters
+        )
+
+        self.keyword_edit.returnPressed.connect(
+            self.apply_filters
+        )
+
+        filter_action_row = QHBoxLayout()
+        filter_action_row.setSpacing(8)
+        filter_action_row.addStretch()
+        filter_action_row.addWidget(
+            reset_button
+        )
+        filter_action_row.addWidget(
+            search_button
+        )
+
+        filter_panel_layout.addLayout(
+            filter_action_row
+        )
+
+        layout.addWidget(
+            filter_card
+        )
 
         # =====================================================
         # 统计
         # =====================================================
 
         self.count_label = QLabel()
+        self.count_label.setMinimumHeight(42)
+        self.count_label.setObjectName("summaryLabel")
 
         self.count_label.setStyleSheet("font-size: 14px; " "color: #52606d;")
 
@@ -292,6 +528,7 @@ class EngineeringSurveyListPage(QWidget):
         # =====================================================
 
         self.table = QTableWidget()
+        self.table.setObjectName("dataTable")
 
         self.table.setColumnCount(len(self.TABLE_HEADERS))
 
@@ -304,6 +541,7 @@ class EngineeringSurveyListPage(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setDefaultSectionSize(36)
 
         self.table.cellDoubleClicked.connect(self.open_record)
 
@@ -550,7 +788,7 @@ class EngineeringSurveyListPage(QWidget):
         )
 
         parts = [
-            f"当前批次共 " f"{len(self.all_records)} 条",
+            f"当前调查批次共 " f"{len(self.all_records)} 条",
             f"当前筛选 {len(records)} 条",
             f"草稿 {draft_count}",
             f"已完成 {completed_count}",
@@ -726,7 +964,7 @@ class EngineeringSurveyListPage(QWidget):
                 "删除后，该记录的全部分项评价"
                 "也会同时删除。\n"
                 "如果该工程已经没有其他调查记录，"
-                "工程台账中的工程对象也会一并删除。\n\n"
+                "工程台账中的该工程也会一并删除。\n\n"
                 "此操作无法从软件中恢复。"
             ),
             (QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
@@ -741,10 +979,10 @@ class EngineeringSurveyListPage(QWidget):
 
             if result["asset_deleted"]:
                 extra_message = (
-                    "\n\n该工程已无其他调查记录，" "对应工程台账对象也已删除。"
+                    "\n\n该工程已无其他调查记录，" "工程台账中的该工程也已删除。"
                 )
             else:
-                extra_message = "\n\n该工程仍有其他调查记录，" "工程台账对象已保留。"
+                extra_message = "\n\n该工程仍有其他调查记录，" "工程台账中的该工程已保留。"
 
             QMessageBox.information(
                 self,

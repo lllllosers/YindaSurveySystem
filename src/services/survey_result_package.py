@@ -29,7 +29,12 @@ SURVEY_RESULT_EXTENSION = (
     ".ydresult"
 )
 
-RESULT_SCHEMA_VERSION = "2.0"
+RESULT_SCHEMA_VERSION = "2.2"
+SUPPORTED_RESULT_SCHEMA_VERSIONS = (
+    "2.0",
+    "2.1",
+    RESULT_SCHEMA_VERSION,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,7 @@ class SurveyResultExportRequest:
     result_name: str = ""
     creator: str = ""
     notes: str = ""
+    submission_task_uid: str = ""
 
 
 @dataclass(frozen=True)
@@ -186,7 +192,125 @@ def _normalize_request(
                 request.notes
             )
         ),
+        "submission_task_uid": (
+            _optional_text(
+                request.submission_task_uid
+            )
+        ),
     }
+
+
+def _validate_submission_task_context(
+    normalized,
+    context,
+):
+    submission_task_uid = _optional_text(
+        normalized.get("submission_task_uid")
+    )
+
+    if not submission_task_uid:
+        return None
+
+    with database.get_connection() as connection:
+        workspace = connection.execute(
+            """
+            SELECT
+                id,
+                task_uid,
+                project_id,
+                survey_batch_id,
+                organization_unit_id,
+                target_unit_type
+            FROM survey_task_workspaces
+            WHERE task_uid = ?
+            LIMIT 1
+            """,
+            (submission_task_uid,),
+        ).fetchone()
+
+        if workspace is None:
+            raise ValueError(
+                "本机没有接收过指定 submission_task_uid，"
+                "不能以该任务向上级提交成果。"
+            )
+
+        if (
+            int(workspace["project_id"]) != normalized["project_id"]
+            or int(workspace["survey_batch_id"])
+            != normalized["survey_batch_id"]
+        ):
+            raise ValueError(
+                "submission_task_uid 与当前项目/调查批次不一致。"
+            )
+
+        scope_rows = connection.execute(
+            """
+            SELECT
+                management_scope_uid,
+                organization_unit_uid,
+                canal_unit_uid
+            FROM survey_task_workspace_scopes
+            WHERE task_workspace_id = ?
+            """,
+            (int(workspace["id"]),),
+        ).fetchall()
+
+    scope_by_uid = {
+        _clean_text(row["management_scope_uid"]): dict(row)
+        for row in scope_rows
+    }
+
+    target_unit_type = (
+        _clean_text(workspace["target_unit_type"])
+        or "water_office"
+    )
+
+    for record in context["records"]:
+        source_task_uid = _optional_text(
+            record.get("source_task_uid")
+        )
+        scope_uid = _optional_text(
+            record.get("source_management_scope_uid")
+        )
+
+        if not source_task_uid:
+            continue
+
+        scope = scope_by_uid.get(scope_uid)
+
+        if scope is None:
+            raise ValueError(
+                "成果记录的来源分管范围不属于"
+                "本次 submission task 的冻结范围。"
+            )
+
+        if (
+            _clean_text(scope.get("organization_unit_uid"))
+            != _clean_text(record.get("organization_unit_uid"))
+        ):
+            raise ValueError(
+                "成果记录管理单位与 submission task "
+                "冻结 scope owner 不一致。"
+            )
+
+        if (
+            _clean_text(scope.get("canal_unit_uid"))
+            != _clean_text(record.get("canal_unit_uid"))
+        ):
+            raise ValueError(
+                "成果记录渠系与 submission task "
+                "冻结 scope 不一致。"
+            )
+
+        if (
+            source_task_uid != submission_task_uid
+            and target_unit_type != "department"
+        ):
+            raise ValueError(
+                "只有处级父任务允许汇总其他来源子任务的成果。"
+            )
+
+    return submission_task_uid
 
 
 def _placeholders(
@@ -306,11 +430,16 @@ def _load_export_context(
                     sr.survey_date,
                     sr.overall_grade,
                     sr.survey_comment,
+                    sr.surveyor_signatures,
+                    sr.water_office_manager_signature,
+                    sr.engineering_section_chief_signature,
+                    sr.department_head_signature,
                     sr.record_status,
                     sr.record_data_json,
                     sr.void_reason,
                     sr.created_at,
-                    sr.updated_at
+                    sr.updated_at,
+                    sr.revision_no
                 FROM survey_records AS sr
                 JOIN projects AS p
                   ON p.id = sr.project_id
@@ -415,7 +544,8 @@ def _load_export_context(
                         ea.status,
                         ea.notes,
                         ea.created_at,
-                        ea.updated_at
+                        ea.updated_at,
+                        ea.revision_no
                     FROM engineering_assets AS ea
                     JOIN projects AS p
                       ON p.id = ea.project_id
@@ -1042,6 +1172,10 @@ def _serialize_assets(
                 "updated_at": (
                     row["updated_at"]
                 ),
+                "revision_no": int(
+                    row["revision_no"]
+                    or 1
+                ),
             }
         )
 
@@ -1179,6 +1313,18 @@ def _serialize_records(
                 "survey_comment": (
                     row["survey_comment"]
                 ),
+                "surveyor_signatures": (
+                    row["surveyor_signatures"]
+                ),
+                "water_office_manager_signature": (
+                    row["water_office_manager_signature"]
+                ),
+                "engineering_section_chief_signature": (
+                    row["engineering_section_chief_signature"]
+                ),
+                "department_head_signature": (
+                    row["department_head_signature"]
+                ),
                 "record_status": (
                     row["record_status"]
                 ),
@@ -1193,6 +1339,10 @@ def _serialize_records(
                 ),
                 "updated_at": (
                     row["updated_at"]
+                ),
+                "revision_no": int(
+                    row["revision_no"]
+                    or 1
                 ),
             }
         )
@@ -1284,6 +1434,13 @@ def export_survey_result_package(
     _validate_assets(
         normalized,
         context,
+    )
+
+    submission_task_uid = (
+        _validate_submission_task_context(
+            normalized,
+            context,
+        )
     )
 
     project_uid = (
@@ -1395,6 +1552,9 @@ def export_survey_result_package(
         ),
         "source_task_uids": list(
             source_task_uids
+        ),
+        "submission_task_uid": (
+            submission_task_uid
         ),
         "project": {
             "project_uid": (
@@ -1537,6 +1697,9 @@ def export_survey_result_package(
         ),
         "source_task_uids": list(
             source_task_uids
+        ),
+        "submission_task_uid": (
+            submission_task_uid
         ),
         "project_uid": (
             project_uid

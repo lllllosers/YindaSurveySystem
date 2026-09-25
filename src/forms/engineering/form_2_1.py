@@ -116,9 +116,12 @@ FORM_2_1 = EngineeringFormDefinition(
         FieldDefinition(
             key="channel_grade",
             label="渠道等级",
-            input_type="text",
+            input_type="structure_grade",
             required=True,
-            placeholder="按原始资料填写",
+            placeholder=(
+                "只需输入数字，例如：3；"
+                "离开输入框后自动显示为3级"
+            ),
         ),
         FieldDefinition(
             key="cross_section_form",
@@ -710,6 +713,10 @@ FORM_2_1 = EngineeringFormDefinition(
         conclusion_binding=OriginalFormConclusionBinding(
             survey_comment_cell="C23",
             overall_grade_cell="J23",
+            surveyor_signatures_cell="B24",
+            water_office_manager_signature_cell="D24",
+            engineering_section_chief_signature_cell="F24",
+            department_head_signature_cell="H24",
             survey_date_cell="J24",
         ),
         print_settings=OriginalFormPrintSettings(

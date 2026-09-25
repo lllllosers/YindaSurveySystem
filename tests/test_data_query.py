@@ -284,6 +284,10 @@ class DataQueryTestCase(unittest.TestCase):
         aqueduct_record_data = {
             "stake": "K26+100",
             "stake_value": 26100.0,
+            "start_stake": "K26+100",
+            "start_stake_value": 26100.0,
+            "end_stake": "K26+100",
+            "end_stake_value": 26100.0,
             "design_flow": 8.5,
             "structure_grade": "3级",
             "build_date": "2010-06",
@@ -720,7 +724,7 @@ class DataQueryTestCase(unittest.TestCase):
                 row=detailed_row,
                 column=7,
             ).value,
-            "K26+100",
+            "K26+100～K26+100",
         )
 
         self.assertEqual(

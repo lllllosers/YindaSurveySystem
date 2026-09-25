@@ -91,6 +91,7 @@ class _ScopeEditDialog(QDialog):
         self.organization_combo = (
             QComboBox()
         )
+        self.organization_combo.setProperty("uiWidthRole", "form")
 
         current_organization_id = (
             int(
@@ -162,6 +163,7 @@ class _ScopeEditDialog(QDialog):
         self.range_mode_combo = (
             QComboBox()
         )
+        self.range_mode_combo.setProperty("uiWidthRole", "form")
 
         for mode in (
             RANGE_MODE_WHOLE,
@@ -176,11 +178,13 @@ class _ScopeEditDialog(QDialog):
             )
 
         self.start_edit = QLineEdit()
+        self.start_edit.setProperty("uiWidthRole", "form")
         self.start_edit.setPlaceholderText(
             "例如：K12+000"
         )
 
         self.end_edit = QLineEdit()
+        self.end_edit.setProperty("uiWidthRole", "form")
         self.end_edit.setPlaceholderText(
             "例如：K15+500"
         )
@@ -306,7 +310,7 @@ class _ScopeEditDialog(QDialog):
                     False
                 )
                 self.organization_combo.setToolTip(
-                    "正式主数据范围如需变更管理单位，"
+                    "正式分管范围如需变更管理单位，"
                     "请停用原范围后新增新范围。"
                 )
 
@@ -771,7 +775,7 @@ class CanalManagementScopeDialog(QDialog):
 
         if is_official:
             self.delete_button.setToolTip(
-                "正式主数据管理范围不能物理删除，"
+                "系统预置的正式分管范围不能永久删除，"
                 "如不再适用请停用。"
             )
         else:
@@ -893,8 +897,8 @@ class CanalManagementScopeDialog(QDialog):
             self,
             "确认永久删除",
             (
-                "确定永久删除这条人工管理范围吗？\n\n"
-                "正式主数据范围不能执行此操作。"
+                "确定永久删除这条自行新增的分管范围吗？\n\n"
+                "系统预置的正式分管范围不能执行此操作。"
             ),
             (
                 QMessageBox.StandardButton.Yes

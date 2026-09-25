@@ -8,6 +8,7 @@ from PySide6.QtCore import (
     QTranslator,
     Qt,
 )
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -22,9 +23,12 @@ from PySide6.QtWidgets import (
 from pages.basic_data_page import BasicDataPage
 from pages.data_query_page import DataQueryPage
 from pages.result_export_page import ResultExportPage
+from pages.result_receive_page import ResultReceivePage
 from pages.survey_page import SurveyPage
 from pages.survey_task_page import SurveyTaskPage
+from pages.survey_task_receive_page import SurveyTaskReceivePage
 from pages.engineering_asset_page import EngineeringAssetPage
+from pages.home_page import HomePage
 from pages.project_batch_page import ProjectBatchPage
 from services.application_bootstrap import (
     initialize_application_database,
@@ -32,8 +36,11 @@ from services.application_bootstrap import (
 from services.database_backup import (
     create_database_backup,
 )
+from services.runtime_paths import (
+    get_resource_path,
+)
+from styles.app_theme import APP_QSS
 from version import (
-    APP_AUTHOR,
     APP_NAME,
     APP_STAGE,
     APP_VERSION_LABEL,
@@ -81,27 +88,113 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addSpacing(20)
 
-        nav_items = [
-            "首页",
-            "调查录入",
+        self.nav_group_controls = {}
 
-            "调查任务",
-            "工程台账",
-            "数据查询",
-            "成果导出",
-            "基础资料",
-            "项目与批次",
-            "设置",
-        ]
-
-        for item in nav_items:
-            button = QPushButton(item)
+        def add_nav_button(
+            name,
+            *,
+            parent_layout=sidebar_layout,
+            child=False,
+        ):
+            button = QPushButton(name)
             button.setObjectName("navButton")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(
-                lambda checked=False, name=item: self.change_page(name)
+            button.setProperty(
+                "navLevel",
+                "child" if child else "top",
             )
-            sidebar_layout.addWidget(button)
+            button.setCursor(
+                Qt.CursorShape.PointingHandCursor
+            )
+            button.clicked.connect(
+                lambda checked=False, page=name:
+                self.change_page(page)
+            )
+            parent_layout.addWidget(button)
+            return button
+
+        def add_nav_group(
+            title,
+            child_pages,
+        ):
+            group_button = QPushButton(
+                f"▸ {title}"
+            )
+            group_button.setObjectName(
+                "navGroupButton"
+            )
+            group_button.setCheckable(True)
+            group_button.setCursor(
+                Qt.CursorShape.PointingHandCursor
+            )
+            sidebar_layout.addWidget(
+                group_button
+            )
+
+            child_container = QWidget()
+            child_container.setObjectName(
+                "navChildContainer"
+            )
+            child_layout = QVBoxLayout(
+                child_container
+            )
+            child_layout.setContentsMargins(
+                12,
+                0,
+                0,
+                0,
+            )
+            child_layout.setSpacing(4)
+
+            for child_page in child_pages:
+                add_nav_button(
+                    child_page,
+                    parent_layout=child_layout,
+                    child=True,
+                )
+
+            child_container.setVisible(False)
+            sidebar_layout.addWidget(
+                child_container
+            )
+
+            self.nav_group_controls[
+                title
+            ] = (
+                group_button,
+                child_container,
+            )
+
+            group_button.toggled.connect(
+                lambda expanded, group=title:
+                self._set_nav_group_expanded(
+                    group,
+                    expanded,
+                )
+            )
+
+        add_nav_button("首页")
+        add_nav_button("调查录入")
+        add_nav_button("工程台账")
+        add_nav_button("数据查询")
+
+        add_nav_group(
+            "任务管理",
+            (
+                "任务分发",
+                "任务接收",
+            ),
+        )
+
+        add_nav_group(
+            "成果管理",
+            (
+                "成果提交",
+                "成果接收",
+            ),
+        )
+
+        add_nav_button("基础资料")
+        add_nav_button("项目/批次")
 
         sidebar_layout.addStretch()
 
@@ -156,126 +249,76 @@ class MainWindow(QMainWindow):
         self.content_layout = QVBoxLayout(content)
         self.content_layout.setContentsMargins(30, 30, 30, 30)
 
-        self.content_label = QLabel(
-            f"{APP_NAME}\n\n"
-            f"{APP_VERSION_LABEL} {APP_STAGE}\n\n"
-            "当前已完成附表2.1～2.14工程现状调查"
-            "完整业务闭环。\n\n"
-            f"开发者：{APP_AUTHOR}"
+        self.home_page = HomePage()
+        self.home_page.navigate_requested.connect(
+            self.change_page
         )
-        self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.content_label.setWordWrap(True)
-        self.content_label.setObjectName("contentLabel")
 
-        self.content_layout.addWidget(self.content_label)
+        self.content_layout.addWidget(
+            self.home_page
+        )
 
         workspace_layout.addWidget(content, 1)
 
         root_layout.addWidget(workspace, 1)
 
-        # =========================
-        # 简单样式
-        # =========================
-        self.setStyleSheet("""
-            QWidget {
-                font-size: 15px;
-            }
 
-            QLineEdit,
-            QComboBox {
-                min-height: 30px;
-                padding: 3px 6px;
-            }
+    def _set_nav_group_expanded(
+        self,
+        group_name,
+        expanded,
+    ):
+        """
+        左侧二级导航采用手风琴式展开。
+        同一时间最多展开一个业务分组。
+        """
 
-            QPlainTextEdit {
-                padding: 6px;
-            }
+        current = self.nav_group_controls.get(
+            group_name
+        )
 
-            QPushButton {
-                min-height: 32px;
-                padding: 5px 12px;
-            }
+        if current is None:
+            return
 
-            QGroupBox {
-                font-size: 15px;
-                font-weight: 600;
-            }
+        button, container = current
 
-            QRadioButton {
-                spacing: 8px;
-            }
+        container.setVisible(
+            bool(expanded)
+        )
+        button.setText(
+            (
+                "▾ "
+                if expanded
+                else "▸ "
+            )
+            + str(group_name)
+        )
 
-            QTableView,
-            QTableWidget {
-                font-size: 15px;
-            }
+        if not expanded:
+            return
 
-            QHeaderView::section {
-                font-size: 14px;
-                padding: 6px 8px;
-            }
+        for (
+            other_name,
+            (
+                other_button,
+                other_container,
+            ),
+        ) in self.nav_group_controls.items():
+            if other_name == group_name:
+                continue
 
-            QMainWindow {
-                background: #f5f6f8;
-            }
+            other_container.setVisible(
+                False
+            )
 
-            #sidebar {
-                background: #243447;
-            }
+            if other_button.isChecked():
+                other_button.blockSignals(True)
+                other_button.setChecked(False)
+                other_button.blockSignals(False)
 
-            #appTitle {
-                color: white;
-                font-size: 22px;
-                font-weight: bold;
-            }
-
-            #appSubtitle {
-                color: #c7d0da;
-                font-size: 14px;
-            }
-
-            #navButton {
-                background: transparent;
-                color: #e7edf3;
-                border: none;
-                text-align: left;
-                padding: 11px 12px;
-                border-radius: 6px;
-                font-size: 15px;
-            }
-
-            #navButton:hover {
-                background: #34495e;
-            }
-
-            #versionLabel {
-                color: #9caaba;
-                font-size: 13px;
-            }
-
-            #topBar {
-                background: white;
-                border: 1px solid #e2e5e9;
-                border-radius: 8px;
-            }
-
-            #pageTitle {
-                font-size: 24px;
-                font-weight: bold;
-                color: #263238;
-            }
-
-            #contentCard {
-                background: white;
-                border: 1px solid #e2e5e9;
-                border-radius: 10px;
-            }
-
-            #contentLabel {
-                color: #52606d;
-                font-size: 16px;
-            }
-            """)
+            other_button.setText(
+                f"▸ {other_name}"
+            )
 
     def refresh_current_context(self):
         """
@@ -332,7 +375,7 @@ class MainWindow(QMainWindow):
                 "开始调查前还需要完成"
                 "以下基础配置：\n\n"
                 f"{missing_items}\n\n"
-                "请进入“项目与批次”或"
+                "请进入“项目/批次”或"
                 "“基础资料”完成配置后，"
                 "再进入调查录入。"
             ),
@@ -358,7 +401,8 @@ class MainWindow(QMainWindow):
         if page_name in (
             "调查录入",
             "工程台账",
-            "成果导出",
+            "任务分发",
+            "成果提交",
         ):
             if not self.has_active_survey_context():
                 QMessageBox.information(
@@ -397,13 +441,23 @@ class MainWindow(QMainWindow):
 
         self.clear_content()
 
-        if page_name == "调查录入":
+        if page_name == "首页":
+            self.home_page = HomePage()
+            self.home_page.navigate_requested.connect(
+                self.change_page
+            )
+
+            self.content_layout.addWidget(
+                self.home_page
+            )
+
+        elif page_name == "调查录入":
             self.survey_page = SurveyPage()
 
             self.content_layout.addWidget(self.survey_page)
 
 
-        elif page_name == "调查任务":
+        elif page_name == "任务分发":
 
 
             self.survey_task_page = SurveyTaskPage()
@@ -423,21 +477,51 @@ class MainWindow(QMainWindow):
             )
 
 
+        elif page_name == "任务接收":
+            self.survey_task_receive_page = (
+                SurveyTaskReceivePage()
+            )
+
+            self.survey_task_receive_page.context_changed.connect(
+                self.refresh_current_context
+            )
+
+            self.content_layout.addWidget(
+                self.survey_task_receive_page
+            )
+
         elif page_name == "工程台账":
             self.engineering_asset_page = EngineeringAssetPage()
+
+            self.engineering_asset_page.open_survey_record_requested.connect(
+                self.open_survey_record
+            )
 
             self.content_layout.addWidget(self.engineering_asset_page)
 
         elif page_name == "数据查询":
             self.data_query_page = DataQueryPage()
 
+            self.data_query_page.open_survey_record_requested.connect(
+                self.open_survey_record
+            )
+
             self.content_layout.addWidget(self.data_query_page)
 
-        elif page_name == "成果导出":
+        elif page_name == "成果提交":
             self.result_export_page = ResultExportPage()
 
             self.content_layout.addWidget(
                 self.result_export_page
+            )
+
+        elif page_name == "成果接收":
+            self.result_receive_page = (
+                ResultReceivePage()
+            )
+
+            self.content_layout.addWidget(
+                self.result_receive_page
             )
 
         elif page_name == "基础资料":
@@ -445,7 +529,7 @@ class MainWindow(QMainWindow):
 
             self.content_layout.addWidget(self.basic_data_page)
 
-        elif page_name == "项目与批次":
+        elif page_name == "项目/批次":
             self.project_batch_page = ProjectBatchPage()
 
             self.project_batch_page.context_changed.connect(
@@ -456,7 +540,7 @@ class MainWindow(QMainWindow):
 
         else:
             self.content_label = QLabel(
-                f"{page_name}\n\n" "该模块将在后续开发步骤中逐步实现。"
+                f"{page_name}\n\n" "当前页面不可用，请从左侧导航重新选择功能。"
             )
 
             self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -467,6 +551,72 @@ class MainWindow(QMainWindow):
             self.content_layout.addWidget(self.content_label)
 
         self.current_page_name = page_name
+
+    def open_survey_record(
+        self,
+        form_code,
+        survey_record_id,
+    ):
+        """
+        从工程台账、工程详情或数据查询
+        直接打开完整工程调查表。
+        """
+
+        return_page_name = (
+            self.current_page_name
+            if self.current_page_name
+            in (
+                "工程台账",
+                "数据查询",
+            )
+            else None
+        )
+
+        if self.current_page_name == "调查录入":
+            survey_page = getattr(
+                self,
+                "survey_page",
+                None,
+            )
+
+            if (
+                survey_page is not None
+                and not survey_page.can_leave_page()
+            ):
+                return
+
+        self.refresh_current_context()
+
+        self.page_title.setText("调查录入")
+        self.clear_content()
+
+        self.survey_page = SurveyPage()
+        self.survey_page.return_to_module_requested.connect(
+            self.change_page
+        )
+        self.content_layout.addWidget(
+            self.survey_page
+        )
+
+        if (
+            form_code
+            not in self.survey_page.engineering_pages
+        ):
+            QMessageBox.warning(
+                self,
+                "无法打开调查表",
+                "当前记录对应的调查表尚未接入本版本。",
+            )
+            self.current_page_name = "调查录入"
+            return
+
+        self.survey_page.open_engineering_edit(
+            str(form_code),
+            int(survey_record_id),
+            return_page_name=return_page_name,
+        )
+
+        self.current_page_name = "调查录入"
 
     def closeEvent(self, event):
         # =========================
@@ -571,6 +721,18 @@ def main():
         )
 
     app = QApplication(sys.argv)
+
+    app.setStyleSheet(APP_QSS)
+
+    icon_path = get_resource_path(
+        "assets",
+        "app_icon.ico",
+    )
+
+    if icon_path.exists():
+        app.setWindowIcon(
+            QIcon(str(icon_path))
+        )
 
     # =========================
     # Qt 标准界面中文化

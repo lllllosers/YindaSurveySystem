@@ -34,19 +34,19 @@ class BatchBFormDefinitionTestCase(
             (
                 FORM_2_10,
                 "10",
-                16,
+                17,
                 12,
             ),
             (
                 FORM_2_11,
                 "11",
-                11,
+                12,
                 11,
             ),
             (
                 FORM_2_14,
                 "14",
-                8,
+                9,
                 6,
             ),
         )
@@ -62,7 +62,7 @@ class BatchBFormDefinitionTestCase(
             ):
                 self.assertEqual(
                     definition.position.kind,
-                    "point",
+                    "range",
                 )
                 self.assertEqual(
                     definition.business_type_code,

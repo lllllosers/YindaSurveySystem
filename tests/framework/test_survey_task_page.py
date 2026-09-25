@@ -24,6 +24,10 @@ class SurveyTaskPageTestCase(unittest.TestCase):
     @patch("pages.survey_task_page.get_management_scopes_for_organization")
     @patch("pages.survey_task_page.get_water_offices")
     @patch("pages.survey_task_page.get_departments")
+    @patch(
+        "pages.survey_task_page.get_current_task_workspace",
+        new=lambda: None,
+    )
     @patch("pages.survey_task_page.get_current_context")
     def test_loads_context_and_shows_management_scopes(
         self,
@@ -119,6 +123,10 @@ class SurveyTaskPageTestCase(unittest.TestCase):
     )
     @patch("pages.survey_task_page.get_water_offices", return_value=[])
     @patch("pages.survey_task_page.get_departments", return_value=[])
+    @patch(
+        "pages.survey_task_page.get_current_task_workspace",
+        new=lambda: None,
+    )
     @patch("pages.survey_task_page.get_current_context", return_value=None)
     def test_no_context_disables_export(self, *mocks):
         page = SurveyTaskPage()
@@ -132,6 +140,10 @@ class SurveyTaskPageTestCase(unittest.TestCase):
     @patch("pages.survey_task_page.get_management_scopes_for_organization")
     @patch("pages.survey_task_page.get_water_offices")
     @patch("pages.survey_task_page.get_departments")
+    @patch(
+        "pages.survey_task_page.get_current_task_workspace",
+        new=lambda: None,
+    )
     @patch("pages.survey_task_page.get_current_context")
     def test_clear_all_updates_selected_scope(
         self,

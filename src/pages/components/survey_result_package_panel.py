@@ -34,6 +34,9 @@ from services.survey_result_package import (
 from services.survey_result_package_reader import (
     inspect_survey_result_package,
 )
+from services.survey_department_aggregate import (
+    preview_current_department_aggregate,
+)
 
 
 _INVALID_FILENAME_CHARS = re.compile(
@@ -76,7 +79,7 @@ class SurveyResultPackageWorker(QObject):
             if not inspection.valid:
                 raise ValueError(
                     "成果包已生成，但导出后完整性检查未通过。\n\n"
-                    + inspection.format_text()
+                    + inspection.format_user_text()
                 )
 
         except Exception as error:
@@ -104,6 +107,7 @@ class SurveyResultPackagePanel(QWidget):
         context_provider,
         scope_provider,
         output_parent_provider=None,
+        workspace_provider=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -116,6 +120,9 @@ class SurveyResultPackagePanel(QWidget):
         )
         self.output_parent_provider = (
             output_parent_provider
+        )
+        self.workspace_provider = (
+            workspace_provider
         )
 
         self._export_thread = None
@@ -134,10 +141,11 @@ class SurveyResultPackagePanel(QWidget):
         root.setSpacing(10)
 
         description = QLabel(
-            "数据交换成果包（.ydresult）用于把当前范围中的已完成工程调查记录、"
-            "工程对象、分项评价和托管影像打包移交。"
-            "任务来源由调查记录自动追踪，无需手动关联 .ydtask。"
+            "调查成果包（.ydresult）用于把当前范围中的录入完成工程调查记录、"
+            "工程、分项评价和影像资料打包移交。"
+            "系统会自动识别调查记录对应的任务，不需要手工选择原任务包。"
         )
+        description.setObjectName("workflowLead")
         description.setWordWrap(True)
         description.setStyleSheet(
             "color: #607080;"
@@ -145,20 +153,25 @@ class SurveyResultPackagePanel(QWidget):
         root.addWidget(description)
 
         form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
 
         self.result_name_edit = (
             QLineEdit()
         )
+        self.result_name_edit.setProperty("uiWidthRole", "form")
         self.result_name_edit.setPlaceholderText(
             "例如：通远水管所2026调查成果"
         )
 
         self.creator_edit = QLineEdit()
+        self.creator_edit.setProperty("uiWidthRole", "form")
         self.creator_edit.setPlaceholderText(
             "可选"
         )
 
         self.notes_edit = QLineEdit()
+        self.notes_edit.setProperty("uiWidthRole", "form")
         self.notes_edit.setPlaceholderText(
             "可选：交接说明"
         )
@@ -181,6 +194,7 @@ class SurveyResultPackagePanel(QWidget):
         self.scope_summary_label = QLabel(
             "当前范围尚未检查。"
         )
+        self.scope_summary_label.setObjectName("workflowSummary")
         self.scope_summary_label.setWordWrap(
             True
         )
@@ -191,11 +205,13 @@ class SurveyResultPackagePanel(QWidget):
         action_row = QHBoxLayout()
 
         self.inspect_button = QPushButton(
-            "检查已有 .ydresult"
+            "检查已有成果包"
         )
+        self.inspect_button.setProperty("uiRole", "secondary")
         self.export_button = QPushButton(
-            "导出当前范围 .ydresult"
+            "生成调查成果包"
         )
+        self.export_button.setProperty("uiRole", "primary")
 
         self.inspect_button.clicked.connect(
             self.inspect_existing_package
@@ -221,6 +237,7 @@ class SurveyResultPackagePanel(QWidget):
         self.status_label = QLabel(
             "等待操作。"
         )
+        self.status_label.setObjectName("workflowStatus")
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet(
             "color: #52606d;"
@@ -246,6 +263,12 @@ class SurveyResultPackagePanel(QWidget):
             )
 
         return context
+
+    def _workspace(self):
+        if not self.workspace_provider:
+            return None
+
+        return self.workspace_provider()
 
     @staticmethod
     def _context_value(
@@ -370,6 +393,62 @@ class SurveyResultPackagePanel(QWidget):
             identity = (
                 self._current_local_identity()
             )
+
+            workspace = (
+                self._workspace()
+            )
+
+            if (
+                workspace is not None
+                and str(
+                    workspace.get(
+                        "target_unit_type"
+                    )
+                    or ""
+                ).strip()
+                == "department"
+            ):
+                preview = (
+                    preview_current_department_aggregate()
+                )
+
+                if (
+                    not self.result_name_edit
+                    .text()
+                    .strip()
+                ):
+                    self.result_name_edit.setText(
+                        (
+                            f"{identity['batch_name']}"
+                            "处级汇总成果"
+                        )
+                    )
+
+                self.export_button.setText(
+                    "生成处级汇总成果包"
+                )
+
+                self.scope_summary_label.setText(
+                    (
+                        "当前为处级父任务汇总模式："
+                        f"可汇总 {preview.record_count} 条记录，"
+                        f"来源子任务 {preview.source_task_count} 个，"
+                        f"涉及水管所 {preview.source_office_count} 个，"
+                        f"分管范围 {preview.management_scope_count} 项。"
+                        "处级汇总始终按当前处级任务的完整调查范围生成，不受上方普通筛选条件影响。"
+                    )
+                )
+
+                self.export_button.setEnabled(
+                    bool(
+                        preview.survey_record_ids
+                    )
+                )
+
+                return tuple(
+                    preview.survey_record_ids
+                )
+
             _, records = (
                 self._scope_records()
             )
@@ -392,10 +471,14 @@ class SurveyResultPackagePanel(QWidget):
                     )
                 )
 
+            self.export_button.setText(
+                "生成调查成果包"
+            )
+
             self.scope_summary_label.setText(
                 (
                     "当前筛选范围可打包 "
-                    f"{len(record_ids)} 条已完成工程调查记录。"
+                    f"{len(record_ids)} 条录入完成工程调查记录。"
                 )
             )
 
@@ -413,10 +496,6 @@ class SurveyResultPackagePanel(QWidget):
                 False
             )
             return ()
-
-    # =========================================================
-    # export / inspect
-    # =========================================================
 
     def _default_output_path(
         self,
@@ -456,30 +535,91 @@ class SurveyResultPackagePanel(QWidget):
                 self._current_local_identity()
             )
 
-            _, records = (
-                self._scope_records()
+            workspace = (
+                self._workspace()
             )
 
-            record_ids = (
-                self._record_ids(
-                    records
-                )
-            )
+            submission_task_uid = ""
 
-            if not record_ids:
-                raise ValueError(
-                    "当前成果范围没有已完成工程调查记录。"
+            if (
+                workspace is not None
+                and str(
+                    workspace.get(
+                        "target_unit_type"
+                    )
+                    or ""
+                ).strip()
+                == "department"
+            ):
+                preview = (
+                    preview_current_department_aggregate()
                 )
 
-            result_name = (
-                self.result_name_edit
-                .text()
-                .strip()
-                or (
-                    f"{identity['batch_name']}"
-                    "调查成果"
+                record_ids = tuple(
+                    preview.survey_record_ids
                 )
-            )
+
+                submission_task_uid = (
+                    preview.parent_task_uid
+                )
+
+                if not record_ids:
+                    raise ValueError(
+                        "当前处级父任务下没有可汇总的已完成调查记录。"
+                    )
+
+                result_name = (
+                    self.result_name_edit
+                    .text()
+                    .strip()
+                    or (
+                        f"{identity['batch_name']}"
+                        "处级汇总成果"
+                    )
+                )
+
+            else:
+                _, records = (
+                    self._scope_records()
+                )
+
+                record_ids = (
+                    self._record_ids(
+                        records
+                    )
+                )
+
+                if not record_ids:
+                    raise ValueError(
+                        "当前成果范围没有录入完成的工程调查记录。"
+                    )
+
+                result_name = (
+                    self.result_name_edit
+                    .text()
+                    .strip()
+                    or (
+                        f"{identity['batch_name']}"
+                        "调查成果"
+                    )
+                )
+
+                if (
+                    workspace is not None
+                    and str(
+                        workspace.get(
+                            "target_unit_type"
+                        )
+                        or ""
+                    ).strip()
+                    == "water_office"
+                ):
+                    submission_task_uid = str(
+                        workspace.get(
+                            "task_uid"
+                        )
+                        or ""
+                    ).strip()
 
             default_path = (
                 self._default_output_path(
@@ -533,6 +673,9 @@ class SurveyResultPackagePanel(QWidget):
                         .text()
                         .strip()
                     ),
+                    submission_task_uid=(
+                        submission_task_uid
+                    ),
                 )
             )
 
@@ -560,8 +703,8 @@ class SurveyResultPackagePanel(QWidget):
         )
         self.status_label.setText(
             (
-                "正在生成 .ydresult，"
-                "并校验调查数据和托管影像..."
+                "正在生成调查成果包，"
+                "并检查调查数据和影像文件..."
             )
         )
 
@@ -599,7 +742,6 @@ class SurveyResultPackagePanel(QWidget):
 
         return request
 
-    @Slot(object)
     def _export_finished(
         self,
         result,
@@ -620,7 +762,7 @@ class SurveyResultPackagePanel(QWidget):
             (
                 "调查成果包已生成并通过完整性检查。\n\n"
                 f"调查记录：{result.survey_record_count} 条\n"
-                f"工程对象：{result.engineering_asset_count} 个\n"
+                f"工程：{result.engineering_asset_count} 个\n"
                 f"分项评价：{result.inspection_result_count} 项\n"
                 f"影像：{result.media_count} 个\n\n"
                 f"文件：{result.output_path}"
@@ -688,13 +830,13 @@ class SurveyResultPackagePanel(QWidget):
             QMessageBox.information(
                 self,
                 "成果包检查通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
         else:
             QMessageBox.warning(
                 self,
                 "成果包检查未通过",
-                inspection.format_text(),
+                inspection.format_user_text(),
             )
 
         return inspection

@@ -11,6 +11,7 @@ from PySide6.QtGui import (
 )
 
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -196,6 +197,7 @@ class GenericEngineeringSurveyPage(QWidget):
         # =====================================================
 
         self.title_label = QLabel(self.definition.display_name)
+        self.title_label.setObjectName("sectionPageTitle")
 
         self.title_label.setStyleSheet("font-size: 20px; " "font-weight: bold;")
 
@@ -213,6 +215,7 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         self.description_label.setWordWrap(True)
+        self.description_label.setObjectName("pageDescription")
 
         self.description_label.setStyleSheet("color: #607080; " "font-size: 15px;")
 
@@ -226,7 +229,21 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.scroll_area.setWidgetResizable(True)
 
+        # 不允许表单内容的 sizeHint 反向把主窗口撑宽。
+        # 宽度不足时由滚动区域自身处理，而不是改变顶层窗口尺寸。
+        self.scroll_area.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.scroll_area.setMinimumWidth(0)
+
         self.form_container = QWidget()
+        self.form_container.setMinimumWidth(0)
 
         self.form_layout = QVBoxLayout(self.form_container)
 
@@ -308,13 +325,17 @@ class GenericEngineeringSurveyPage(QWidget):
         )
 
         self.department_combo = QComboBox()
+        self.department_combo.setProperty("uiWidthRole", "form")
         self.office_combo = QComboBox()
+        self.office_combo.setProperty("uiWidthRole", "form")
         self.canal_combo = QComboBox()
+        self.canal_combo.setProperty("uiWidthRole", "form")
 
         self.task_scope_label = QLabel(
             "任务分管范围："
         )
         self.task_scope_combo = QComboBox()
+        self.task_scope_combo.setProperty("uiWidthRole", "form")
         self.task_scope_combo.setPlaceholderText(
             "请选择任务分管范围"
         )
@@ -324,6 +345,7 @@ class GenericEngineeringSurveyPage(QWidget):
         self.business_code_edit = (
             QLineEdit()
         )
+        self.business_code_edit.setProperty("uiWidthRole", "form")
         self.business_code_edit.setReadOnly(
             True
         )
@@ -468,13 +490,60 @@ class GenericEngineeringSurveyPage(QWidget):
             self._entry_task_workspace
         )
 
+        target_unit_type = (
+            str(
+                task_workspace.get(
+                    "target_unit_type"
+                )
+                or "water_office"
+            ).strip()
+            if task_workspace
+            else ""
+        )
+
+        # A water-office task remains restricted to its one target office.
         allowed_office_id = (
             int(
                 task_workspace[
                     "organization_unit_id"
                 ]
             )
-            if task_workspace
+            if (
+                task_workspace
+                and target_unit_type
+                == "water_office"
+            )
+            else None
+        )
+
+        # A department parent task may choose only offices that actually
+        # own one or more frozen scopes in the received parent task.
+        allowed_office_uids = (
+            {
+                str(
+                    scope.get(
+                        "organization_unit_uid"
+                    )
+                    or ""
+                ).strip()
+                for scope in (
+                    task_workspace.get(
+                        "management_scopes"
+                    )
+                    or ()
+                )
+                if str(
+                    scope.get(
+                        "organization_unit_uid"
+                    )
+                    or ""
+                ).strip()
+            }
+            if (
+                task_workspace
+                and target_unit_type
+                == "department"
+            )
             else None
         )
 
@@ -482,9 +551,18 @@ class GenericEngineeringSurveyPage(QWidget):
             department_data["id"]
         )
 
-        for office in offices:
+        for raw_office in offices:
+            office = dict(raw_office)
+
             if office["status"] != "active":
                 continue
+
+            office_uid = str(
+                office.get(
+                    "organization_unit_uid"
+                )
+                or ""
+            ).strip()
 
             if (
                 allowed_office_id
@@ -493,6 +571,17 @@ class GenericEngineeringSurveyPage(QWidget):
                     office["id"]
                 )
                 != allowed_office_id
+            ):
+                continue
+
+            if (
+                allowed_office_uids
+                is not None
+                and (
+                    not office_uid
+                    or office_uid
+                    not in allowed_office_uids
+                )
             ):
                 continue
 
@@ -505,12 +594,70 @@ class GenericEngineeringSurveyPage(QWidget):
                             "business_code"
                         ]
                     ),
+                    "organization_unit_uid": (
+                        office_uid
+                    ),
                 },
             )
 
         self.office_combo.blockSignals(False)
 
         self.office_changed()
+
+
+    def _task_scope_matches_selected_office(
+        self,
+        scope,
+    ):
+        """
+        Check whether a frozen task scope belongs to the currently
+        selected water office.
+
+        Department parent tasks fail closed when owner UID is missing.
+        Legacy/direct water-office tasks keep the previous single-office
+        compatibility behavior.
+        """
+        task_workspace = self._entry_task_workspace
+
+        if not task_workspace:
+            return True
+
+        office_data = self.office_combo.currentData()
+
+        if not isinstance(office_data, dict):
+            return False
+
+        selected_office_uid = str(
+            office_data.get(
+                "organization_unit_uid"
+            )
+            or ""
+        ).strip()
+
+        scope_office_uid = str(
+            scope.get(
+                "organization_unit_uid"
+            )
+            or ""
+        ).strip()
+
+        target_unit_type = str(
+            task_workspace.get(
+                "target_unit_type"
+            )
+            or "water_office"
+        ).strip()
+
+        if selected_office_uid and scope_office_uid:
+            return (
+                selected_office_uid
+                == scope_office_uid
+            )
+
+        if target_unit_type == "department":
+            return False
+
+        return True
 
 
     def office_changed(
@@ -549,6 +696,13 @@ class GenericEngineeringSurveyPage(QWidget):
                 )
                 or ()
             ):
+                if not (
+                    self._task_scope_matches_selected_office(
+                        scope
+                    )
+                ):
+                    continue
+
                 canal_id = int(
                     scope[
                         "canal_unit_id"
@@ -711,6 +865,13 @@ class GenericEngineeringSurveyPage(QWidget):
                 )
                 or ()
             ):
+                if not (
+                    self._task_scope_matches_selected_office(
+                        scope
+                    )
+                ):
+                    continue
+
                 if (
                     int(
                         scope[
@@ -959,7 +1120,8 @@ class GenericEngineeringSurveyPage(QWidget):
                 raise ValueError("当前水管所没有业务代码。")
 
             existing_codes = get_engineering_business_codes(
-                self.current_context["project_id"]
+                self.current_context["project_id"],
+                canal_unit_id=int(canal_data["id"]),
             )
 
             sequence = suggest_next_sequence(
@@ -1091,7 +1253,7 @@ class GenericEngineeringSurveyPage(QWidget):
 
             if not management_scope_uid:
                 raise ValueError(
-                    "任务分管范围缺少稳定 UID。"
+                    "当前任务的分管范围信息不完整，请重新接收任务包后再试。"
                 )
 
         business_code = (
@@ -1427,7 +1589,7 @@ class GenericEngineeringSurveyPage(QWidget):
                     raise ValueError("当前页面保存失败，" "因此没有执行完成调查。")
 
             if self.editing_record_id is None:
-                raise ValueError("没有有效的调查记录ID。")
+                raise ValueError("当前调查记录信息无效，请返回列表后重新打开。")
 
             # _save_current_record() 对新记录
             # 建立draft后，页面内容没有变化；
@@ -1613,6 +1775,10 @@ class GenericEngineeringSurveyPage(QWidget):
             survey_date=(record.get("survey_date")),
             overall_grade=(record.get("overall_grade")),
             survey_comment=(record.get("survey_comment")),
+            surveyor_signatures=(record.get("surveyor_signatures")),
+            water_office_manager_signature=(record.get("water_office_manager_signature")),
+            engineering_section_chief_signature=(record.get("engineering_section_chief_signature")),
+            department_head_signature=(record.get("department_head_signature")),
         )
 
         # =====================================================
@@ -1733,6 +1899,10 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_date_edit.textEdited.connect(self._mark_dirty)
 
         self.survey_comment_edit.textChanged.connect(self._mark_dirty)
+        self.surveyor_signatures_edit.textEdited.connect(self._mark_dirty)
+        self.water_office_manager_signature_edit.textEdited.connect(self._mark_dirty)
+        self.engineering_section_chief_signature_edit.textEdited.connect(self._mark_dirty)
+        self.department_head_signature_edit.textEdited.connect(self._mark_dirty)
 
         for grade, button in self.overall_grade_buttons.items():
             button.clicked.connect(
@@ -1883,8 +2053,6 @@ class GenericEngineeringSurveyPage(QWidget):
         success_box.setText(
             (
                 "当前工程调查已标记为已完成。\n\n"
-                f"调查记录ID："
-                f"{result['survey_record_id']}\n"
                 f"已填写分项评价："
                 f"{result['inspection_count']} 项\n\n"
                 "请选择下一步操作。"
@@ -2021,7 +2189,16 @@ class GenericEngineeringSurveyPage(QWidget):
 
             runtime = self.field_runtimes[field_key]
 
+            # 组合字段（如附表2.3“宽 × 高”）使用紧凑宽度。
+            # 单字段继续保持统一 280px，不互相影响。
+            runtime.widget.setProperty(
+                "uiWidthRole",
+                "formPair",
+            )
+
             row_layout.addWidget(runtime.widget)
+
+        row_layout.addStretch()
 
         label_text = row.label or " / ".join(
             self.field_runtimes[field_key].definition.label
@@ -2144,6 +2321,7 @@ class GenericEngineeringSurveyPage(QWidget):
         # -------------------------
 
         self.survey_date_edit = create_date_edit()
+        self.survey_date_edit.setProperty("uiWidthRole", "form")
 
         # -------------------------
         # 调查意见
@@ -2156,6 +2334,18 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_comment_edit.setMinimumHeight(100)
 
         self.survey_comment_edit.setTabChangesFocus(True)
+
+        self.surveyor_signatures_edit = QLineEdit()
+        self.surveyor_signatures_edit.setProperty("uiWidthRole", "form")
+        self.surveyor_signatures_edit.setPlaceholderText(
+            "可填写多人姓名，用顿号、逗号或空格分隔"
+        )
+        self.water_office_manager_signature_edit = QLineEdit()
+        self.water_office_manager_signature_edit.setProperty("uiWidthRole", "form")
+        self.engineering_section_chief_signature_edit = QLineEdit()
+        self.engineering_section_chief_signature_edit.setProperty("uiWidthRole", "form")
+        self.department_head_signature_edit = QLineEdit()
+        self.department_head_signature_edit.setProperty("uiWidthRole", "form")
 
         layout.addRow(
             "判定方式：",
@@ -2177,6 +2367,11 @@ class GenericEngineeringSurveyPage(QWidget):
             self.survey_comment_edit,
         )
 
+        layout.addRow("调查人签字：", self.surveyor_signatures_edit)
+        layout.addRow("水管所负责人：", self.water_office_manager_signature_edit)
+        layout.addRow("工程科科长：", self.engineering_section_chief_signature_edit)
+        layout.addRow("基层处负责人：", self.department_head_signature_edit)
+
         self.form_layout.addWidget(group)
 
         self.conclusion_group = group
@@ -2190,28 +2385,34 @@ class GenericEngineeringSurveyPage(QWidget):
         root_layout,
     ):
         footer_layout = QHBoxLayout()
+        footer_layout.setSpacing(10)
 
         self.back_button = QPushButton("返回")
+        self.back_button.setProperty("uiRole", "secondary")
 
         self.back_button.clicked.connect(self.request_back)
 
         self.runtime_status_label = QLabel(
-            "当前已接入草稿保存与重新打开；" "完成调查将在下一阶段接入。"
+            "支持草稿保存、继续编辑、" "完成调查及已完成记录修改。"
         )
 
         self.runtime_status_label.setStyleSheet("color: #607080;")
+        self.runtime_status_label.setObjectName("statusHint")
 
         self.shortcut_hint_label = QLabel(
             "快捷键：Ctrl+S 保存　|　" "Ctrl+Enter 完成调查"
         )
 
         self.shortcut_hint_label.setStyleSheet("color: #607080;")
+        self.shortcut_hint_label.setObjectName("shortcutHint")
 
         self.save_button = QPushButton("保存草稿")
+        self.save_button.setProperty("uiRole", "secondary")
 
         self.save_button.setMinimumWidth(120)
 
         self.complete_button = QPushButton("完成调查")
+        self.complete_button.setProperty("uiRole", "primary")
 
         self.complete_button.setMinimumWidth(120)
 
@@ -2543,6 +2744,10 @@ class GenericEngineeringSurveyPage(QWidget):
             ),
             "overall_grade": (self.get_overall_grade()),
             "survey_comment": (self.survey_comment_edit.toPlainText().strip() or None),
+            "surveyor_signatures": (self.surveyor_signatures_edit.text().strip() or None),
+            "water_office_manager_signature": (self.water_office_manager_signature_edit.text().strip() or None),
+            "engineering_section_chief_signature": (self.engineering_section_chief_signature_edit.text().strip() or None),
+            "department_head_signature": (self.department_head_signature_edit.text().strip() or None),
         }
 
     def load_conclusion_data(
@@ -2551,6 +2756,10 @@ class GenericEngineeringSurveyPage(QWidget):
         survey_date=None,
         overall_grade=None,
         survey_comment=None,
+        surveyor_signatures=None,
+        water_office_manager_signature=None,
+        engineering_section_chief_signature=None,
+        department_head_signature=None,
     ):
         self.survey_date_edit.setText(
             survey_date or ""
@@ -2580,6 +2789,18 @@ class GenericEngineeringSurveyPage(QWidget):
 
         self.survey_comment_edit.setPlainText(
             survey_comment or ""
+        )
+        self.surveyor_signatures_edit.setText(
+            surveyor_signatures or ""
+        )
+        self.water_office_manager_signature_edit.setText(
+            water_office_manager_signature or ""
+        )
+        self.engineering_section_chief_signature_edit.setText(
+            engineering_section_chief_signature or ""
+        )
+        self.department_head_signature_edit.setText(
+            department_head_signature or ""
         )
 
     # =========================================================
@@ -2664,6 +2885,10 @@ class GenericEngineeringSurveyPage(QWidget):
         self.survey_date_edit.clear()
 
         self.survey_comment_edit.clear()
+        self.surveyor_signatures_edit.clear()
+        self.water_office_manager_signature_edit.clear()
+        self.engineering_section_chief_signature_edit.clear()
+        self.department_head_signature_edit.clear()
 
         self.business_code_edit.clear()
 
@@ -2760,6 +2985,10 @@ class GenericEngineeringSurveyPage(QWidget):
         survey_date=None,
         overall_grade=None,
         survey_comment=None,
+        surveyor_signatures=None,
+        water_office_manager_signature=None,
+        engineering_section_chief_signature=None,
+        department_head_signature=None,
     ):
         self.load_record_data(record_data)
 
@@ -2769,6 +2998,10 @@ class GenericEngineeringSurveyPage(QWidget):
             survey_date=survey_date,
             overall_grade=overall_grade,
             survey_comment=survey_comment,
+            surveyor_signatures=surveyor_signatures,
+            water_office_manager_signature=water_office_manager_signature,
+            engineering_section_chief_signature=engineering_section_chief_signature,
+            department_head_signature=department_head_signature,
         )
 
     # =========================================================

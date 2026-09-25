@@ -326,6 +326,25 @@ class SurveyTaskWorkspaceTestCase(
                 "export_result"
             ].task_uid,
         )
+        self.assertIsNone(
+            current[
+                "parent_task_uid"
+            ]
+        )
+        self.assertEqual(
+            current[
+                "root_task_uid"
+            ],
+            source[
+                "export_result"
+            ].task_uid,
+        )
+        self.assertEqual(
+            current[
+                "task_depth"
+            ],
+            0,
+        )
         self.assertNotIn(
             "canals",
             current,

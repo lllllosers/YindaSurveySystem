@@ -191,6 +191,10 @@ class SluiceGateWorkflowTestCase(
             "asset_name": asset_name,
             "stake": stake,
             "stake_value": stake_value,
+            "start_stake": stake,
+            "start_stake_value": stake_value,
+            "end_stake": stake,
+            "end_stake_value": stake_value,
             "design_flow": design_flow,
             "structure_grade": "3级",
             "build_date": "2010-06",
@@ -610,7 +614,7 @@ class SluiceGateWorkflowTestCase(
         )
         self.assertEqual(
             worksheet["H5"].value,
-            "K6+500",
+            "K6+500～K6+500",
         )
         self.assertEqual(
             worksheet["J5"].value,
