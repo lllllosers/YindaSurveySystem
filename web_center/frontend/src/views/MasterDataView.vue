@@ -56,7 +56,7 @@ async function loadData() {
   try {
     snapshot.value = await getMasterDataSnapshot();
   } catch {
-    ElMessage.error("正式主数据加载失败，请检查后端服务状态");
+    ElMessage.error("基础资料加载失败，请确认系统服务运行正常");
   } finally {
     loading.value = false;
   }
@@ -68,9 +68,9 @@ onMounted(loadData);
 <template>
   <div class="module-header master-header">
     <div>
-      <div class="eyebrow">OFFICIAL MASTER DATA</div>
+      <div class="eyebrow">统一调查依据</div>
       <h1>正式主数据</h1>
-      <p>Web 与桌面端共同使用的 V1.2 组织、渠系及管理范围只读基线。</p>
+      <p>中心端与桌面端共同使用的管理处、管理所、渠道和分管范围，确保各单位口径一致。</p>
     </div>
     <div class="header-actions">
       <el-input
@@ -105,18 +105,14 @@ onMounted(loadData);
     <el-card shadow="never" class="business-card master-card">
       <div class="contract-strip">
         <div>
-          <span class="contract-label">主数据版本</span>
+          <span class="contract-label">基础资料批次</span>
           <strong>{{ snapshot.summary.master_data_version }}</strong>
         </div>
         <div>
-          <span class="contract-label">管理范围版本</span>
+          <span class="contract-label">分管范围批次</span>
           <strong>{{ snapshot.summary.management_scope_version }}</strong>
         </div>
-        <div class="contract-hash">
-          <span class="contract-label">契约校验值</span>
-          <code>{{ snapshot.summary.contract_sha256.slice(0, 16) }}…</code>
-        </div>
-        <el-tag type="success" effect="light">只读 · 已校验</el-tag>
+        <el-tag type="success" effect="light">中心与桌面端已统一</el-tag>
       </div>
 
       <el-tabs v-model="activeTab" class="master-tabs">
@@ -124,7 +120,6 @@ onMounted(loadData);
           <el-table :data="departments" stripe height="520">
             <el-table-column prop="name" label="管理处名称" min-width="180" />
             <el-table-column prop="business_code" label="业务编码" width="140" />
-            <el-table-column prop="master_key" label="主数据标识" min-width="220" />
             <el-table-column prop="sort_order" label="顺序" width="80" align="center" />
           </el-table>
         </el-tab-pane>
@@ -134,7 +129,6 @@ onMounted(loadData);
             <el-table-column prop="name" label="管理所名称" min-width="180" />
             <el-table-column prop="parent_name" label="所属管理处" min-width="170" />
             <el-table-column prop="business_code" label="业务编码" width="140" />
-            <el-table-column prop="master_key" label="主数据标识" min-width="220" />
           </el-table>
         </el-tab-pane>
 
@@ -149,7 +143,6 @@ onMounted(loadData);
             <el-table-column prop="parent_name" label="上级渠道" min-width="160">
               <template #default="scope">{{ scope.row.parent_name ?? "—" }}</template>
             </el-table-column>
-            <el-table-column prop="master_key" label="主数据标识" min-width="220" />
           </el-table>
         </el-tab-pane>
 

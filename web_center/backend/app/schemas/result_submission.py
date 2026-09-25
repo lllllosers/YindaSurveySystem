@@ -38,7 +38,9 @@ class ResultSubmissionRead(BaseModel):
     package_uid: str | None
     result_uid: str | None
     project_uid: str | None
+    project_name: str | None
     survey_batch_uid: str | None
+    survey_batch_name: str | None
     original_filename: str
     file_sha256: str
     file_size: int
@@ -48,6 +50,8 @@ class ResultSubmissionRead(BaseModel):
     result_name: str | None
     source_task_uids: list[str]
     submission_task_uid: str | None
+    submission_task_name: str | None
+    submission_unit_name: str | None
     counts: dict
     status: str
     inspection_error_count: int

@@ -123,7 +123,7 @@ onMounted(async () => {
   <div class="module-header">
     <div>
       <h1>数据成果库</h1>
-      <p>查询已经审核并正式入库的调查记录，保留桌面端真实来源任务、分管范围和版本信息。</p>
+      <p>集中查询已经审核入库的调查成果，按工程、单位、渠道和调查表快速筛选汇总。</p>
     </div>
     <el-button :icon="Download" @click="exportCsv">导出当前筛选 CSV</el-button>
   </div>
@@ -138,7 +138,7 @@ onMounted(async () => {
   <el-card shadow="never" class="business-card records-filter-card">
     <el-form inline @submit.prevent="applyFilters">
       <el-form-item label="关键词">
-        <el-input v-model="search" clearable placeholder="工程名称 / 编号 / 记录 UID" :prefix-icon="Search" />
+        <el-input v-model="search" clearable placeholder="工程名称或业务编号" :prefix-icon="Search" />
       </el-form-item>
       <el-form-item label="表单">
         <el-select v-model="formCode" clearable placeholder="全部表单" style="width: 180px">
@@ -220,9 +220,7 @@ onMounted(async () => {
           <el-descriptions-item label="业务编号">{{ detail.business_code || "—" }}</el-descriptions-item>
           <el-descriptions-item label="管理单位">{{ detail.organization_name }}</el-descriptions-item>
           <el-descriptions-item label="渠道">{{ detail.canal_name }}</el-descriptions-item>
-          <el-descriptions-item label="来源任务 UID" :span="2"><span class="mono">{{ detail.source_task_uid || "—" }}</span></el-descriptions-item>
-          <el-descriptions-item label="来源分管范围 UID" :span="2"><span class="mono">{{ detail.source_management_scope_uid || "—" }}</span></el-descriptions-item>
-          <el-descriptions-item label="当前成果提交 UID" :span="2"><span class="mono">{{ detail.current_submission_uid }}</span></el-descriptions-item>
+          <el-descriptions-item label="调查来源" :span="2">由桌面端调查任务采集并经中心审核入库</el-descriptions-item>
         </el-descriptions>
         <h3 class="drawer-section-title">调查结论</h3>
         <el-descriptions :column="2" border>
@@ -249,8 +247,13 @@ onMounted(async () => {
           <el-table-column prop="notes" label="备注" min-width="150" />
         </el-table>
         <el-collapse class="protocol-collapse">
-          <el-collapse-item title="查看完整协议原始数据（技术追溯）" name="raw">
-            <pre class="json-panel">{{ JSON.stringify(detail.record_payload, null, 2) }}</pre>
+          <el-collapse-item title="查看技术追溯信息" name="raw">
+            <div class="tracking-grid">
+              <span>记录识别码</span><code>{{ detail.survey_record_uid }}</code>
+              <span>来源任务识别码</span><code>{{ detail.source_task_uid || "—" }}</code>
+              <span>分管范围识别码</span><code>{{ detail.source_management_scope_uid || "—" }}</code>
+              <span>成果提交识别码</span><code>{{ detail.current_submission_uid }}</code>
+            </div>
           </el-collapse-item>
         </el-collapse>
       </template>

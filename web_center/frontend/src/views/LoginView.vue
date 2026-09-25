@@ -50,7 +50,7 @@ async function submit() {
         <h1>连接每一次现场调查<br />沉淀可信数据资产</h1>
         <p>面向引大入秦灌区的中央协同与成果管理平台。</p>
         <div class="visual-flow">
-          <span>中心 Web</span><i></i><span>桌面端离线调查</span><i></i><span>成果归集</span>
+          <span>中心安排任务</span><i></i><span>基层离线调查</span><i></i><span>成果集中归档</span>
         </div>
       </div>
       <div class="water-lines" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -100,7 +100,7 @@ async function submit() {
           </el-button>
         </el-form>
 
-        <div class="login-security-note"><span></span>本地安全连接 · HttpOnly 会话保护</div>
+        <div class="login-security-note"><span></span>登录信息和业务数据均已安全保护</div>
       </div>
       <div class="login-footer">引大入秦灌区现状调查 · V1.2.0</div>
     </div>

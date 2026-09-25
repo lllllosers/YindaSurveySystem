@@ -149,7 +149,7 @@ async function submit() {
   try {
     const created = await createSurveyTask({ ...form, notes: form.notes || null });
     dialogVisible.value = false;
-    ElMessage.success("调查任务已生成，任务范围和主数据快照已冻结");
+    ElMessage.success("调查任务已生成并下载，请在桌面端的“任务接收”中导入");
     await loadAll();
     await doDownload(created);
   } catch (error: any) {
@@ -187,15 +187,23 @@ onMounted(loadAll);
 <template>
   <div class="module-header">
     <div>
-      <div class="eyebrow">SURVEY TASK DISPATCH</div>
+      <div class="eyebrow">调查工作安排</div>
       <h1>调查任务中心</h1>
-      <p>按正式分管范围冻结任务事实，生成桌面端可直接接收的 .ydtask V3。</p>
+      <p>在中心确定调查单位和范围，下载任务文件后交给基层人员在桌面端开展调查。</p>
     </div>
     <div class="header-actions">
       <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建并下发任务</el-button>
     </div>
   </div>
+
+  <el-alert
+    class="linkage-alert"
+    title="与桌面端联动：中心下发任务文件 → 基层桌面端“任务接收”导入 → 完成现场调查后由桌面端导出成果文件 → 回到成果中心上传。"
+    type="success"
+    :closable="false"
+    show-icon
+  />
 
   <div class="task-stat-row">
     <div><span>任务总数</span><strong>{{ tasks.length }}</strong></div>
@@ -215,7 +223,7 @@ onMounted(loadAll);
       <el-table-column label="目标单位" min-width="180">
         <template #default="scope">
           <div>{{ scope.row.organization_name }}</div>
-          <div class="result-secondary">{{ scope.row.target_unit_type === 'department' ? '管理处父任务' : '水管所直达任务' }}</div>
+          <div class="result-secondary">{{ scope.row.target_unit_type === 'department' ? '交由管理处分派到所属水管所' : '直接交由水管所调查' }}</div>
         </template>
       </el-table-column>
       <el-table-column prop="selected_scope_count" label="分管范围" width="100" align="center" />
@@ -237,7 +245,7 @@ onMounted(loadAll);
   </el-card>
 
   <el-dialog v-model="dialogVisible" title="新建调查任务" width="760px" destroy-on-close>
-    <el-alert title="任务生成后会冻结当时的组织、渠系、分管范围和附表版本；以后主数据变化不会反向改写历史任务。" type="info" :closable="false" show-icon />
+    <el-alert title="任务生成后，本次调查的单位、渠道和范围将固定保存，后续基础资料调整不会影响已经开展的调查。" type="info" :closable="false" show-icon />
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="task-create-form">
       <div class="two-column-form">
         <el-form-item label="项目" prop="project_uid">
@@ -253,7 +261,7 @@ onMounted(loadAll);
         <el-form-item label="任务名称" prop="task_name">
           <el-input v-model="form.task_name" placeholder="例如：2026年度总干渠处现状调查" maxlength="240" />
         </el-form-item>
-        <el-form-item label="任务层级" prop="target_unit_type">
+        <el-form-item label="下发方式" prop="target_unit_type">
           <el-segmented v-model="form.target_unit_type" :options="[{ label: '整个管理处', value: 'department' }, { label: '指定水管所', value: 'water_office' }]" />
         </el-form-item>
       </div>
@@ -262,7 +270,7 @@ onMounted(loadAll);
           <el-option v-for="item in targetOptions" :key="item.master_key" :label="item.name" :value="item.master_key" />
         </el-select>
       </el-form-item>
-      <el-form-item label="授权分管范围" prop="selected_management_scope_uids">
+      <el-form-item label="本次调查范围" prop="selected_management_scope_uids">
         <div class="scope-picker">
           <div class="scope-picker-toolbar">
             <span>已选择 {{ form.selected_management_scope_uids.length }} / {{ eligibleScopes.length }} 项</span>
@@ -299,21 +307,25 @@ onMounted(loadAll);
       </div>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="目标单位">{{ detail.organization_name }}</el-descriptions-item>
-        <el-descriptions-item label="任务类型">{{ detail.target_unit_type === 'department' ? '处级父任务' : '所级任务' }}</el-descriptions-item>
+        <el-descriptions-item label="下发方式">{{ detail.target_unit_type === 'department' ? '管理处统一接收并分派' : '水管所直接接收' }}</el-descriptions-item>
         <el-descriptions-item label="分管范围">{{ detail.selected_scope_count }} 项</el-descriptions-item>
         <el-descriptions-item label="调查表">{{ detail.form_count }} 张</el-descriptions-item>
         <el-descriptions-item label="下载次数">{{ detail.download_count }}</el-descriptions-item>
         <el-descriptions-item label="文件大小">{{ formatSize(detail.file_size) }}</el-descriptions-item>
-        <el-descriptions-item label="主数据版本" :span="2">{{ detail.master_data_version }}</el-descriptions-item>
+        <el-descriptions-item label="调查依据" :span="2">任务下发时的正式组织、渠道和分管范围</el-descriptions-item>
         <el-descriptions-item label="创建人员">{{ detail.created_by_username }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
       </el-descriptions>
-      <h3 class="drawer-section-title">冻结的授权范围</h3>
+      <h3 class="drawer-section-title">本次确定的调查范围</h3>
       <div v-for="item in detail.frozen_scopes" :key="item.management_scope_uid" class="frozen-scope-row">
         <div><strong>{{ item.canal_name }}</strong><span>{{ item.organization_name }}</span></div>
         <el-tag effect="plain">{{ rangeText(item) }}</el-tag>
       </div>
-      <div class="detail-hash task-hash"><span>任务 UID</span><code>{{ detail.task_uid }}</code><span>SHA-256</span><code>{{ detail.file_sha256 }}</code></div>
+      <el-collapse class="protocol-collapse">
+        <el-collapse-item title="查看技术追溯信息" name="tracking">
+          <div class="detail-hash task-hash"><span>任务识别码</span><code>{{ detail.task_uid }}</code><span>文件校验码</span><code>{{ detail.file_sha256 }}</code></div>
+        </el-collapse-item>
+      </el-collapse>
     </template>
   </el-drawer>
 </template>

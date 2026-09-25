@@ -276,13 +276,21 @@ onMounted(() => refreshProjects());
     <div>
       <h1>项目与调查批次</h1>
       <p>
-        Web 中心主数据入口。稳定 UID 用于后续 .ydtask / .ydresult 跨数据库交换。
+        先建立调查项目和批次，后续任务下发、成果回收和统计都将归入对应批次。
       </p>
     </div>
     <el-button v-if="auth.hasPermission('projects.write')" type="primary" @click="openCreateProject">
       新建项目
     </el-button>
   </div>
+
+  <el-alert
+    class="linkage-alert"
+    title="这是调查工作的第一步。批次设为“进行中”后，才能在任务中心向管理处或水管所安排调查；桌面端接收任务时会自动带入项目和批次，不需要基层重复填写。"
+    type="success"
+    :closable="false"
+    show-icon
+  />
 
   <el-card shadow="never" class="business-card">
     <template #header>
@@ -312,11 +320,6 @@ onMounted(() => refreshProjects());
           >
             {{ projectStatusLabel(row.status) }}
           </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="稳定 UID" min-width="285">
-        <template #default="{ row }">
-          <span class="mono">{{ row.project_uid }}</span>
         </template>
       </el-table-column>
       <el-table-column label="创建时间" width="185">
@@ -388,11 +391,6 @@ onMounted(() => refreshProjects());
           >
             {{ batchStatusLabel(row.status) }}
           </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="稳定 UID" min-width="285">
-        <template #default="{ row }">
-          <span class="mono">{{ row.survey_batch_uid }}</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">

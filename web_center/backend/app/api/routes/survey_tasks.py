@@ -102,7 +102,7 @@ def post_task(payload: SurveyTaskCreate, request: Request, creator: TaskWriter, 
     project = db.get(Project, row.project_id)
     batch = db.get(SurveyBatch, row.survey_batch_id)
     assert project is not None and batch is not None
-    request.state.audit_summary = "生成并登记调查任务包"
+    request.state.audit_summary = "新建并下发调查任务"
     request.state.audit_details = {
         "task_uid": row.task_uid,
         "package_uid": row.package_uid,
@@ -147,7 +147,7 @@ def download_task(task_uid: str, request: Request, _: TaskDownloader, db: DbSess
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     survey_task_service.register_download(db, row)
-    request.state.audit_summary = "下载调查任务包"
+    request.state.audit_summary = "下载调查任务文件"
     request.state.audit_details = {"task_uid": task_uid, "download_count": row.download_count}
     return FileResponse(
         path,

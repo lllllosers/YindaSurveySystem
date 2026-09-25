@@ -30,10 +30,10 @@ const canUpload = computed(
 
 const statusLabels: Record<string, string> = {
   uploaded: "已上传",
-  inspected: "结构检查通过",
-  invalid: "结构检查失败",
-  preflight_passed: "业务预检通过",
-  conflict: "存在冲突",
+  inspected: "文件检查通过",
+  invalid: "文件检查未通过",
+  preflight_passed: "业务核验通过",
+  conflict: "需要处理",
   reviewing: "审核中",
   accepted: "已接收",
   rejected: "已退回",
@@ -46,7 +46,7 @@ const storageLabels: Record<string, string> = {
   missing: "文件缺失",
   size_mismatch: "大小异常",
   hash_mismatch: "哈希异常",
-  package_invalid: "包结构异常",
+  package_invalid: "成果文件异常",
   error: "检查异常",
 };
 
@@ -189,11 +189,11 @@ async function upload() {
 
     if (row.status === "inspected") {
       ElMessage.success(
-        "成果包已上传，结构检查通过",
+        "成果文件已上传，基础检查通过，请继续进行业务核验",
       );
     } else {
       ElMessage.warning(
-        `成果包已保存，发现 ${row.inspection_error_count} 个结构问题`,
+        `成果文件已保存，发现 ${row.inspection_error_count} 个需要处理的问题`,
       );
     }
 
@@ -217,11 +217,18 @@ onMounted(refresh);
     <div>
       <h1>成果中心</h1>
       <p>
-        接收桌面端 .ydresult 成果包，按下发任务冻结范围预检，
-        完成审核后正式归集到中央成果库。
+        上传桌面端导出的调查成果，系统自动核对任务范围，审核通过后统一进入成果库。
       </p>
     </div>
   </div>
+
+  <el-alert
+    class="linkage-alert"
+    title="与桌面端联动：现场调查人员在桌面端完成记录并选择“成果提交”，将导出的成果文件交回中心，在本页上传、核验和审核。无需重复抄表或人工合并。"
+    type="success"
+    :closable="false"
+    show-icon
+  />
 
   <el-card
     v-if="canUpload"
@@ -230,7 +237,7 @@ onMounted(refresh);
   >
     <template #header>
       <div class="card-header">
-        <span>上传调查成果包</span>
+        <span>上传桌面端调查成果</span>
         <el-tag
           type="info"
           effect="plain"
@@ -257,7 +264,7 @@ onMounted(refresh);
         :disabled="!selectedFile"
         @click="upload"
       >
-        上传并检查
+        上传并核对文件
       </el-button>
     </div>
   </el-card>
@@ -279,15 +286,15 @@ onMounted(refresh);
             @change="refresh"
           >
             <el-option
-              label="结构检查通过"
+              label="文件检查通过"
               value="inspected"
             />
             <el-option
-              label="结构检查失败"
+              label="文件检查未通过"
               value="invalid"
             />
             <el-option
-              label="存在冲突"
+              label="需要处理"
               value="conflict"
             />
             <el-option
@@ -337,7 +344,7 @@ onMounted(refresh);
             {{ row.result_name || row.original_filename }}
           </div>
           <div class="result-secondary">
-            {{ row.original_filename }}
+            {{ row.project_name || "未匹配项目" }} · {{ row.survey_batch_name || "未匹配批次" }}
           </div>
         </template>
       </el-table-column>
@@ -408,7 +415,7 @@ onMounted(refresh);
           <span
             v-if="row.inspection_error_count === 0"
           >
-            未发现结构问题
+            文件内容完整
           </span>
 
           <el-popover

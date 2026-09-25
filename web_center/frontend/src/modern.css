@@ -123,6 +123,14 @@ body {
   color: #fff;
   box-shadow: 0 18px 45px rgba(19, 52, 103, 0.18);
 }
+.hero-aqueduct {
+  min-height: 260px;
+  background-position: center;
+  background-size: cover;
+}
+.hero-aqueduct::before,
+.hero-aqueduct::after { display: none; }
+.hero-aqueduct .hero-version { background: rgba(4, 20, 49, 0.52); }
 .hero-panel::before,
 .hero-panel::after {
   position: absolute;
@@ -167,6 +175,13 @@ body {
   gap: 16px;
   margin-bottom: 18px;
 }
+.collaboration-card { margin-bottom: 18px; }
+.collaboration-flow { display: flex; align-items: stretch; gap: 10px; }
+.collaboration-flow > div { flex: 1; min-width: 0; padding: 15px; border: 1px solid #e5eaf2; border-radius: 12px; background: linear-gradient(145deg, #fff, #f8faff); }
+.collaboration-flow b { display: grid; place-items: center; width: 25px; height: 25px; margin-bottom: 11px; border-radius: 8px; background: #e8f0ff; color: #2f6edb; font-size: 12px; }
+.collaboration-flow strong { display: block; color: #27364f; font-size: 13px; }
+.collaboration-flow span { display: block; margin-top: 7px; color: #7d899a; font-size: 11px; line-height: 1.55; }
+.collaboration-flow > i { align-self: center; color: #a9b5c6; font-size: 18px; font-style: normal; }
 .metric-card {
   display: flex;
   align-items: center;
@@ -337,4 +352,6 @@ body {
   .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
   .dashboard-lower { grid-template-columns: 1fr; }
   .hero-version { min-width: 220px; }
+  .collaboration-flow { display: grid; grid-template-columns: repeat(2, 1fr); }
+  .collaboration-flow > i { display: none; }
 }

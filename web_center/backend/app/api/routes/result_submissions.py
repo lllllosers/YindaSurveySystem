@@ -16,7 +16,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import require_permission
 from app.db.session import get_db
 from app.models.auth import User
+from app.models.project import Project, SurveyBatch
 from app.models.result_submission import ResultSubmission
+from app.models.survey_task import SurveyTask
 from app.schemas.result_submission import (
     PackageIssueRead,
     ResultImportRead,
@@ -62,7 +64,53 @@ ResultImporter = Annotated[
 ]
 
 
-def to_read(row: ResultSubmission) -> ResultSubmissionRead:
+DisplayNames = tuple[
+    dict[str, str],
+    dict[str, str],
+    dict[str, tuple[str, str]],
+]
+
+
+def load_display_names(
+    db: Session,
+    rows: list[ResultSubmission],
+) -> DisplayNames:
+    project_uids = {row.project_uid for row in rows if row.project_uid}
+    batch_uids = {row.survey_batch_uid for row in rows if row.survey_batch_uid}
+    task_uids = {row.submission_task_uid for row in rows if row.submission_task_uid}
+
+    projects = (
+        db.query(Project).filter(Project.project_uid.in_(project_uids)).all()
+        if project_uids
+        else []
+    )
+    batches = (
+        db.query(SurveyBatch)
+        .filter(SurveyBatch.survey_batch_uid.in_(batch_uids))
+        .all()
+        if batch_uids
+        else []
+    )
+    tasks = (
+        db.query(SurveyTask).filter(SurveyTask.task_uid.in_(task_uids)).all()
+        if task_uids
+        else []
+    )
+    return (
+        {row.project_uid: row.name for row in projects},
+        {row.survey_batch_uid: row.batch_name for row in batches},
+        {
+            row.task_uid: (row.task_name, row.organization_name)
+            for row in tasks
+        },
+    )
+
+
+def to_read(
+    row: ResultSubmission,
+    db: Session,
+    display_names: DisplayNames | None = None,
+) -> ResultSubmissionRead:
     issues = (
         row.inspection_issues_json
         if isinstance(row.inspection_issues_json, list)
@@ -88,13 +136,20 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
         if isinstance(row.preflight_summary_json, dict)
         else {}
     )
+    project_names, batch_names, task_names = display_names or load_display_names(
+        db,
+        [row],
+    )
+    task_name, unit_name = task_names.get(row.submission_task_uid or "", (None, None))
 
     return ResultSubmissionRead(
         submission_uid=row.submission_uid,
         package_uid=row.package_uid,
         result_uid=row.result_uid,
         project_uid=row.project_uid,
+        project_name=project_names.get(row.project_uid or ""),
         survey_batch_uid=row.survey_batch_uid,
+        survey_batch_name=batch_names.get(row.survey_batch_uid or ""),
         original_filename=row.original_filename,
         file_sha256=row.file_sha256,
         file_size=row.file_size,
@@ -104,6 +159,8 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
         result_name=row.result_name,
         source_task_uids=[str(v) for v in source_task_uids],
         submission_task_uid=row.submission_task_uid,
+        submission_task_name=task_name,
+        submission_unit_name=unit_name,
         counts=counts,
         status=row.status,
         inspection_error_count=row.inspection_error_count,
@@ -164,8 +221,9 @@ def get_submissions(
         limit=limit,
         offset=offset,
     )
+    display_names = load_display_names(db, rows)
     return ResultSubmissionPage(
-        items=[to_read(row) for row in rows],
+        items=[to_read(row, db, display_names) for row in rows],
         total=total,
         limit=limit,
         offset=offset,
@@ -203,9 +261,9 @@ async def upload_result(
         "重复成果包，返回既有提交"
         if reused
         else (
-            "成果包上传并完成结构检查"
+            "上传调查成果并完成文件检查"
             if row.status == "inspected"
-            else "成果包上传完成，但结构检查未通过"
+            else "上传调查成果，文件检查发现问题"
         )
     )
     request.state.audit_details = {
@@ -218,7 +276,7 @@ async def upload_result(
         "reused": reused,
     }
 
-    return to_read(row)
+    return to_read(row, db)
 
 
 @router.get(
@@ -239,7 +297,7 @@ def get_submission(
             status_code=404,
             detail="Submission not found.",
         )
-    return to_read(row)
+    return to_read(row, db)
 
 
 @router.post(
@@ -275,7 +333,7 @@ def verify_submission(
             detail=str(exc),
         ) from exc
 
-    request.state.audit_summary = "重新校验成果包服务器文件完整性"
+    request.state.audit_summary = "重新检查已上传的成果文件"
     request.state.audit_details = {
         "submission_uid": submission_uid,
         "storage_status": result["storage_status"],
@@ -336,7 +394,7 @@ def preflight_submission(
     except result_workflow_service.WorkflowStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    request.state.audit_summary = "执行成果业务预检"
+    request.state.audit_summary = "核对成果任务范围和业务内容"
     request.state.audit_details = {
         "submission_uid": row.submission_uid,
         "submission_task_uid": row.submission_task_uid,
@@ -344,7 +402,7 @@ def preflight_submission(
         "errors": row.preflight_error_count,
         "warnings": row.preflight_warning_count,
     }
-    return to_read(row)
+    return to_read(row, db)
 
 
 @router.post(
@@ -380,7 +438,7 @@ def review_submission(
         "decision": payload.decision,
         "reviewer": reviewer.username,
     }
-    return to_read(row)
+    return to_read(row, db)
 
 
 @router.post(

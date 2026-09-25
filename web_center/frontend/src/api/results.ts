@@ -18,7 +18,9 @@ export interface ResultSubmission {
   package_uid: string | null;
   result_uid: string | null;
   project_uid: string | null;
+  project_name: string | null;
   survey_batch_uid: string | null;
+  survey_batch_name: string | null;
   original_filename: string;
   file_sha256: string;
   file_size: number;
@@ -28,6 +30,8 @@ export interface ResultSubmission {
   result_name: string | null;
   source_task_uids: string[];
   submission_task_uid: string | null;
+  submission_task_name: string | null;
+  submission_unit_name: string | null;
   counts: Record<string, number>;
   status: string;
   inspection_error_count: number;

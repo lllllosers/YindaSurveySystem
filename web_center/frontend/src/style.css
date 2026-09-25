@@ -474,6 +474,13 @@ select {
 .distribution-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #3478ed, #28a7d7); }
 .json-panel { overflow: auto; max-height: 360px; margin: 0; padding: 16px; border: 1px solid #e4e9f0; border-radius: 10px; background: #f7f9fc; color: #42506a; font-family: Consolas, "SFMono-Regular", monospace; font-size: 11px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
 .protocol-collapse { margin-top: 22px; }
+.linkage-alert { margin-bottom: 18px; }
+.tracking-grid { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 9px 12px; padding: 10px 0; }
+.tracking-grid span { color: #7b8798; font-size: 12px; }
+.tracking-grid code { overflow-wrap: anywhere; color: #42516b; font-size: 11px; }
+.source-summary { display: flex; flex-direction: column; gap: 7px; padding: 18px; border: 1px solid #e6ebf2; border-radius: 12px; background: #f8faff; }
+.source-summary strong { color: #293850; }
+.source-summary span { color: #748197; font-size: 12px; line-height: 1.7; }
 
 @media (max-width: 1200px) {
   .records-layout { grid-template-columns: 1fr; }

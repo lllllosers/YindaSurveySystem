@@ -13,16 +13,17 @@ import {
   getOverview,
   type OverviewResponse,
 } from "../api/system";
+import aqueductHero from "../assets/zhuanglang-aqueduct-hero.png";
 
 type ServiceState = "checking" | "online" | "offline";
 
 const apiState = ref<ServiceState>("checking");
 const dbState = ref<ServiceState>("checking");
-const apiService = ref("-");
-const dbName = ref("-");
-const dbUser = ref("-");
 const overview = ref<OverviewResponse | null>(null);
 const checking = ref(false);
+const heroStyle = {
+  backgroundImage: `linear-gradient(90deg, rgba(5, 21, 49, .94) 0%, rgba(8, 39, 78, .80) 48%, rgba(7, 34, 67, .26) 100%), url(${aqueductHero})`,
+};
 
 const apiStatusType = computed(() =>
   apiState.value === "online"
@@ -49,22 +50,16 @@ async function checkServices() {
     getHealth()
       .then((data) => {
         apiState.value = data.status === "ok" ? "online" : "offline";
-        apiService.value = data.service;
       })
       .catch(() => {
         apiState.value = "offline";
-        apiService.value = "-";
       }),
     getDatabaseHealth()
       .then((data) => {
         dbState.value = data.status === "ok" ? "online" : "offline";
-        dbName.value = data.database;
-        dbUser.value = data.user;
       })
       .catch(() => {
         dbState.value = "offline";
-        dbName.value = "-";
-        dbUser.value = "-";
       }),
     getOverview()
       .then((data) => (overview.value = data))
@@ -79,25 +74,25 @@ onMounted(checkServices);
 <template>
   <div class="intro dashboard-intro">
     <div class="intro-copy">
-      <div class="eyebrow">OPERATIONS OVERVIEW</div>
+      <div class="eyebrow">调查工作总览</div>
       <h1>工作台</h1>
-      <p>集中查看项目、调查批次、成果回传与正式主数据状态。</p>
+      <p>从任务安排到成果入库，在这里掌握本轮调查工作的整体进展。</p>
     </div>
     <el-button :icon="Connection" :loading="checking" @click="checkServices">
       重新检测服务
     </el-button>
   </div>
 
-  <section class="hero-panel">
+  <section class="hero-panel hero-aqueduct" :style="heroStyle">
     <div>
-      <div class="hero-badge"><span></span> Web Center Preview 已就绪</div>
-      <h2>引大入秦灌区现状调查<br />中央管理入口</h2>
-      <p>桌面端负责离线调查，Web 中心负责主数据、任务协同与成果归集。</p>
+      <div class="hero-badge"><span></span> 中心管理平台运行正常</div>
+      <h2>让现场调查有任务、有依据<br />让每份成果可核验、可追溯</h2>
+      <p>庄浪河大渡槽 · 中心统一安排，基层桌面端离线调查，成果回传集中管理。</p>
     </div>
     <div class="hero-version">
-      <span>当前业务版本</span>
+      <span>当前调查标准</span>
       <strong>{{ overview?.product_version ?? "V1.2.0" }}</strong>
-      <small>{{ overview?.task_protocol ?? ".ydtask V3" }} · {{ overview?.result_protocol ?? ".ydresult 2.2" }}</small>
+      <small>桌面端与中心端数据标准一致</small>
     </div>
   </section>
 
@@ -116,23 +111,43 @@ onMounted(checkServices);
     </div>
     <div class="metric-card">
       <div class="metric-icon amber"><Document /></div>
-      <div><span>调查任务</span><strong>{{ overview?.survey_task_count ?? "—" }}</strong><small>Web 中心已下发任务</small></div>
+      <div><span>调查任务</span><strong>{{ overview?.survey_task_count ?? "—" }}</strong><small>中心已安排的调查工作</small></div>
     </div>
   </div>
+
+  <el-card shadow="never" class="business-card collaboration-card">
+    <template #header>
+      <div class="card-header">
+        <span>中心端与桌面端如何配合</span>
+        <small>一套数据标准贯穿全过程</small>
+      </div>
+    </template>
+    <div class="collaboration-flow">
+      <div><b>1</b><strong>建立项目批次</strong><span>中心明确本次调查范围和时间</span></div>
+      <i>→</i>
+      <div><b>2</b><strong>下发调查任务</strong><span>下载任务文件交给管理处或水管所</span></div>
+      <i>→</i>
+      <div><b>3</b><strong>桌面端现场调查</strong><span>无网络也能录入表格和照片</span></div>
+      <i>→</i>
+      <div><b>4</b><strong>回传调查成果</strong><span>桌面端导出成果文件并上传中心</span></div>
+      <i>→</i>
+      <div><b>5</b><strong>审核并形成成果库</strong><span>自动核对范围，减少人工汇总</span></div>
+    </div>
+  </el-card>
 
   <div class="dashboard-lower">
     <el-card shadow="never" class="business-card service-panel">
       <template #header>
-        <div class="card-header"><span>服务运行状态</span><small>本机开发环境</small></div>
+        <div class="card-header"><span>系统运行情况</span><small>出现异常时可重新检测</small></div>
       </template>
       <div class="service-row">
         <div class="service-status-dot" :class="apiState"></div>
-        <div class="service-detail"><strong>Web API</strong><span>{{ apiService }}</span></div>
+        <div class="service-detail"><strong>业务服务</strong><span>负责登录、任务和成果处理</span></div>
         <el-tag :type="apiStatusType" effect="light">{{ apiState === "online" ? "运行正常" : apiState === "checking" ? "检测中" : "连接失败" }}</el-tag>
       </div>
       <div class="service-row">
         <div class="service-status-dot" :class="dbState"></div>
-        <div class="service-detail"><strong>PostgreSQL</strong><span>{{ dbName }} · {{ dbUser }}</span></div>
+        <div class="service-detail"><strong>数据服务</strong><span>负责安全保存中心业务数据</span></div>
         <el-tag :type="dbStatusType" effect="light">{{ dbState === "online" ? "运行正常" : dbState === "checking" ? "检测中" : "连接失败" }}</el-tag>
       </div>
     </el-card>
@@ -150,7 +165,7 @@ onMounted(checkServices);
           <div><strong>{{ overview?.official_scope_count ?? "—" }}</strong><span>范围</span></div>
         </div>
       </div>
-      <div class="version-line">正式基线 {{ overview?.master_data_version ?? "—" }}</div>
+      <div class="version-line">组织、渠道和分管范围已统一校验</div>
     </el-card>
   </div>
 </template>

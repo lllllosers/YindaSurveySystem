@@ -105,7 +105,7 @@ async function logout() {
           <div class="page-title">引大入秦灌区现状调查数据中心</div>
           <div class="page-subtitle">
             <span class="live-dot"></span>
-            V1.2.0 · Web Center Preview 0.3
+            V1.2.0 · 中心管理平台
           </div>
         </div>
 

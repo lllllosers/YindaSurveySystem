@@ -51,10 +51,10 @@ const canImport = computed(
 
 const statusLabels: Record<string, string> = {
   uploaded: "已上传",
-  inspected: "结构检查通过",
-  invalid: "结构检查失败",
-  preflight_passed: "业务预检通过",
-  conflict: "存在冲突",
+  inspected: "文件检查通过",
+  invalid: "文件检查未通过",
+  preflight_passed: "业务核验通过",
+  conflict: "需要处理",
   reviewing: "审核中",
   accepted: "已接收",
   rejected: "已退回",
@@ -66,8 +66,8 @@ const storageLabels: Record<string, string> = {
   ok: "完整",
   missing: "文件缺失",
   size_mismatch: "大小不一致",
-  hash_mismatch: "SHA-256 不一致",
-  package_invalid: "包结构异常",
+  hash_mismatch: "文件内容发生变化",
+  package_invalid: "成果文件异常",
   error: "检查异常",
 };
 
@@ -98,6 +98,20 @@ function formatTime(value: string | null) {
 
 function errorMessage(error: any, fallback: string) {
   return error?.response?.data?.detail ?? fallback;
+}
+
+function workflowIssueText(issue: ResultSubmission["preflight_issues"][number]) {
+  if (issue.code.startsWith("PROTOCOL_")) {
+    return "成果文件与当前桌面端数据标准不一致，请由桌面端升级到最新版本后重新导出。";
+  }
+  return issue.message;
+}
+
+function fileIssueText(issue: ResultSubmission["inspection_issues"][number]) {
+  if (issue.code.includes("HASH")) return "成果文件内容与导出时不一致，请从桌面端重新导出后上传。";
+  if (issue.code.includes("ZIP") || issue.code.includes("ARCHIVE")) return "成果文件无法正常打开，请从桌面端重新导出。";
+  if (issue.code.includes("MANIFEST")) return "成果文件的清单信息不完整，请从桌面端重新导出。";
+  return issue.message;
 }
 
 async function refresh() {
@@ -155,12 +169,12 @@ async function runPreflight() {
   try {
     row.value = await preflightResultSubmission(submissionUid.value);
     if (row.value.preflight_error_count === 0) {
-      ElMessage.success("业务预检通过，可以进入审核");
+      ElMessage.success("业务核验通过，可以进入审核");
     } else {
-      ElMessage.warning(`业务预检发现 ${row.value.preflight_error_count} 个错误`);
+      ElMessage.warning(`业务核验发现 ${row.value.preflight_error_count} 个需要处理的问题`);
     }
   } catch (error: any) {
-    ElMessage.error(errorMessage(error, "业务预检失败"));
+    ElMessage.error(errorMessage(error, "业务核验失败"));
   } finally {
     workflowBusy.value = false;
   }
@@ -198,7 +212,7 @@ async function review(decision: "accepted" | "rejected") {
 async function importResult() {
   try {
     await ElMessageBox.confirm(
-      "入库前会再次核验任务范围和版本冲突。确认将该成果写入中央成果库？",
+      "入库前系统会再次核对调查范围和数据版本。确认将该成果纳入正式成果库？",
       "正式入库",
       { confirmButtonText: "确认入库", cancelButtonText: "取消", type: "warning" },
     );
@@ -236,7 +250,7 @@ onMounted(refresh);
     <div>
       <h1>成果提交详情</h1>
       <p>
-        查看成果包来源，执行业务预检、审核和中央成果库入库。
+        核对成果来源和调查范围，审核通过后纳入正式成果库。
       </p>
     </div>
 
@@ -255,7 +269,7 @@ onMounted(refresh);
         :loading="verifying"
         @click="verifyFile"
       >
-        重新校验文件
+        重新检查文件
       </el-button>
 
       <el-button
@@ -263,7 +277,7 @@ onMounted(refresh);
         :loading="workflowBusy"
         @click="runPreflight"
       >
-        业务预检
+        核对业务内容
       </el-button>
 
       <el-button
@@ -329,38 +343,20 @@ onMounted(refresh);
           :column="2"
           border
         >
-          <el-descriptions-item label="提交 UID">
-            <span class="mono">
-              {{ row.submission_uid }}
-            </span>
+          <el-descriptions-item label="所属项目">
+            {{ row.project_name || "未匹配到中心项目" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="Package UID">
-            <span class="mono">
-              {{ row.package_uid || "—" }}
-            </span>
+          <el-descriptions-item label="调查批次">
+            {{ row.survey_batch_name || "未匹配到中心批次" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="Result UID">
-            <span class="mono">
-              {{ row.result_uid || "—" }}
-            </span>
+          <el-descriptions-item label="提交单位">
+            {{ row.submission_unit_name || "未识别" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="项目 UID">
-            <span class="mono">
-              {{ row.project_uid || "—" }}
-            </span>
-          </el-descriptions-item>
-
-          <el-descriptions-item label="调查批次 UID">
-            <span class="mono">
-              {{ row.survey_batch_uid || "—" }}
-            </span>
-          </el-descriptions-item>
-
-          <el-descriptions-item label="提交任务 UID" :span="2">
-            <span class="mono">{{ row.submission_task_uid || "—" }}</span>
+          <el-descriptions-item label="对应任务">
+            {{ row.submission_task_name || "未识别中心下发任务" }}
           </el-descriptions-item>
 
           <el-descriptions-item label="上传人">
@@ -375,25 +371,12 @@ onMounted(refresh);
             {{ formatBytes(row.file_size) }}
           </el-descriptions-item>
 
-          <el-descriptions-item
-            label="SHA-256"
-            :span="2"
-          >
-            <span class="mono detail-hash">
-              {{ row.file_sha256 }}
-            </span>
-          </el-descriptions-item>
-
-          <el-descriptions-item label="桌面端版本">
+          <el-descriptions-item label="桌面端软件">
             {{
               row.desktop_app_version_label
                 || row.desktop_app_version
                 || "—"
             }}
-          </el-descriptions-item>
-
-          <el-descriptions-item label="包协议版本">
-            {{ row.package_format_version || "—" }}
           </el-descriptions-item>
 
           <el-descriptions-item label="调查记录数">
@@ -404,7 +387,7 @@ onMounted(refresh);
             {{ row.counts.survey_media ?? "—" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="最近文件复检">
+          <el-descriptions-item label="最近检查时间">
             {{ formatTime(row.storage_checked_at) }}
           </el-descriptions-item>
 
@@ -415,6 +398,17 @@ onMounted(refresh);
             }}
           </el-descriptions-item>
         </el-descriptions>
+
+        <el-collapse class="protocol-collapse">
+          <el-collapse-item title="查看技术追溯信息" name="tracking">
+            <div class="tracking-grid">
+              <span>本次提交识别码</span><code>{{ row.submission_uid }}</code>
+              <span>成果识别码</span><code>{{ row.result_uid || "—" }}</code>
+              <span>任务识别码</span><code>{{ row.submission_task_uid || "—" }}</code>
+              <span>文件校验码</span><code>{{ row.file_sha256 }}</code>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </el-card>
 
       <el-card
@@ -423,14 +417,14 @@ onMounted(refresh);
       >
         <template #header>
           <div class="card-header">
-            <span>业务预检与审核</span>
+            <span>业务核验与审核</span>
             <small>{{ formatTime(row.preflight_checked_at) }}</small>
           </div>
         </template>
 
         <el-empty
           v-if="!row.preflight_checked_at"
-          description="尚未执行业务预检"
+          description="尚未核对任务范围和调查内容"
         />
 
         <template v-else>
@@ -438,15 +432,15 @@ onMounted(refresh);
             <div><span>新增工程</span><strong>{{ row.preflight_summary.new_assets ?? 0 }}</strong></div>
             <div><span>新增记录</span><strong>{{ row.preflight_summary.new_records ?? 0 }}</strong></div>
             <div><span>更新记录</span><strong>{{ row.preflight_summary.updated_records ?? 0 }}</strong></div>
-            <div><span>错误</span><strong class="danger-text">{{ row.preflight_error_count }}</strong></div>
-            <div><span>警告</span><strong>{{ row.preflight_warning_count }}</strong></div>
+            <div><span>需处理</span><strong class="danger-text">{{ row.preflight_error_count }}</strong></div>
+            <div><span>需关注</span><strong>{{ row.preflight_warning_count }}</strong></div>
           </div>
 
           <el-alert
             v-if="row.preflight_error_count === 0"
             type="success"
             :closable="false"
-            title="任务权限、主数据、记录来源与版本冲突检查均已通过"
+            title="调查单位、任务范围、渠道归属和数据版本均已核对通过"
           />
 
           <div
@@ -457,8 +451,7 @@ onMounted(refresh);
             <el-tag :type="issue.severity === 'error' ? 'danger' : 'warning'" size="small">
               {{ issue.severity === "error" ? "错误" : "警告" }}
             </el-tag>
-            <b>{{ issue.code }}</b>：{{ issue.message }}
-            <span v-if="issue.entity_uid" class="mono">[{{ issue.entity_uid }}]</span>
+            {{ workflowIssueText(issue) }}
           </div>
 
           <el-descriptions v-if="row.reviewed_at" :column="2" border class="review-description">
@@ -477,20 +470,17 @@ onMounted(refresh);
         class="business-card detail-card"
       >
         <template #header>
-          来源任务
+          调查来源
         </template>
 
         <el-empty
           v-if="row.source_task_uids.length === 0"
-          description="成果包未声明来源任务"
+          description="未找到桌面端调查任务来源，业务核验时会提醒处理"
         />
 
-        <div
-          v-for="uid in row.source_task_uids"
-          :key="uid"
-          class="detail-uid-row mono"
-        >
-          {{ uid }}
+        <div v-else class="source-summary">
+          <strong>{{ row.source_task_uids.length }} 个基层调查任务</strong>
+          <span>桌面端保留每条记录的真实调查来源，中心汇总时不会改写原始责任单位。</span>
         </div>
       </el-card>
 
@@ -499,14 +489,14 @@ onMounted(refresh);
         class="business-card detail-card"
       >
         <template #header>
-          上传时结构检查
+          上传时文件检查
         </template>
 
         <el-result
           v-if="row.inspection_error_count === 0"
           icon="success"
-          title="结构检查通过"
-          sub-title="上传时未发现成果包结构、清单或哈希问题。"
+          title="文件检查通过"
+          sub-title="成果文件完整，可以继续核对调查范围和业务内容。"
         />
 
         <div v-else>
@@ -521,11 +511,7 @@ onMounted(refresh);
             :key="`${issue.code}-${issue.path}`"
             class="detail-issue"
           >
-            <b>{{ issue.code }}</b>：
-            {{ issue.message }}
-            <span v-if="issue.path">
-              [{{ issue.path }}]
-            </span>
+            {{ fileIssueText(issue) }}
           </div>
         </div>
       </el-card>
@@ -536,7 +522,7 @@ onMounted(refresh);
         class="business-card detail-card"
       >
         <template #header>
-          本次文件完整性复检
+          本次文件保管检查
         </template>
 
         <el-descriptions
@@ -551,11 +537,11 @@ onMounted(refresh);
             {{ verification.size_match ? "是" : "否" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="SHA-256 一致">
+          <el-descriptions-item label="文件内容未变化">
             {{ verification.sha256_match ? "是" : "否" }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="包结构有效">
+          <el-descriptions-item label="成果内容可读取">
             {{
               verification.package_structure_valid === null
                 ? "未执行"

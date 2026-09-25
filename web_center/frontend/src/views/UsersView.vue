@@ -168,7 +168,7 @@ onMounted(refresh);
   <div class="module-header">
     <div>
       <h1>用户与权限</h1>
-      <p>用户名唯一且不可修改；停用账户不删除历史身份。权限由角色统一控制。</p>
+      <p>为中心管理、任务安排、成果审核和只读查询人员分配合适权限。</p>
     </div>
     <el-button type="primary" @click="openCreate">新建用户</el-button>
   </div>
@@ -193,9 +193,6 @@ onMounted(refresh);
       </el-table-column>
       <el-table-column label="最近登录" width="190">
         <template #default="{ row }">{{ formatTime(row.last_login_at) }}</template>
-      </el-table-column>
-      <el-table-column label="稳定 UID" min-width="285">
-        <template #default="{ row }"><span class="mono">{{ row.user_uid }}</span></template>
       </el-table-column>
       <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
