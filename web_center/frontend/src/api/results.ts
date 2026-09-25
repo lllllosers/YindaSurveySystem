@@ -6,6 +6,13 @@ export interface PackageIssue {
   path: string | null;
 }
 
+export interface WorkflowIssue {
+  severity: string;
+  code: string;
+  message: string;
+  entity_uid: string;
+}
+
 export interface ResultSubmission {
   submission_uid: string;
   package_uid: string | null;
@@ -20,15 +27,35 @@ export interface ResultSubmission {
   desktop_app_version_label: string | null;
   result_name: string | null;
   source_task_uids: string[];
+  submission_task_uid: string | null;
   counts: Record<string, number>;
   status: string;
   inspection_error_count: number;
   inspection_issues: PackageIssue[];
+  preflight_error_count: number;
+  preflight_warning_count: number;
+  preflight_issues: WorkflowIssue[];
+  preflight_summary: Record<string, number>;
+  preflight_checked_at: string | null;
+  review_notes: string | null;
+  reviewed_by_username: string | null;
+  reviewed_at: string | null;
+  imported_at: string | null;
   storage_status: string;
   storage_checked_at: string | null;
   uploader_user_uid: string;
   uploader_username: string;
   uploaded_at: string;
+}
+
+export interface ResultImportResult {
+  submission_uid: string;
+  status: string;
+  assets: number;
+  records: number;
+  inspections: number;
+  media: number;
+  changed_records: number;
 }
 
 export interface ResultFileVerification {
@@ -91,6 +118,36 @@ export async function verifyResultSubmission(
 ): Promise<ResultFileVerification> {
   const response = await api.post<ResultFileVerification>(
     `/result-submissions/${submissionUid}/verify`,
+  );
+  return response.data;
+}
+
+export async function preflightResultSubmission(
+  submissionUid: string,
+): Promise<ResultSubmission> {
+  const response = await api.post<ResultSubmission>(
+    `/result-submissions/${submissionUid}/preflight`,
+  );
+  return response.data;
+}
+
+export async function reviewResultSubmission(
+  submissionUid: string,
+  decision: "accepted" | "rejected",
+  notes: string | null,
+): Promise<ResultSubmission> {
+  const response = await api.post<ResultSubmission>(
+    `/result-submissions/${submissionUid}/review`,
+    { decision, notes },
+  );
+  return response.data;
+}
+
+export async function importResultSubmission(
+  submissionUid: string,
+): Promise<ResultImportResult> {
+  const response = await api.post<ResultImportResult>(
+    `/result-submissions/${submissionUid}/import`,
   );
   return response.data;
 }

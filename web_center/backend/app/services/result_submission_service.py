@@ -213,6 +213,17 @@ async def receive_submission(
                 else None
             ),
             source_task_uids=source_task_uids,
+            submission_task_uid=(
+                str(
+                    result.get("submission_task_uid")
+                    or manifest.get("submission_task_uid")
+                )
+                if (
+                    result.get("submission_task_uid")
+                    or manifest.get("submission_task_uid")
+                )
+                else None
+            ),
             counts_json=counts,
             status="inspected" if inspection.valid else "invalid",
             inspection_error_count=inspection.error_count,

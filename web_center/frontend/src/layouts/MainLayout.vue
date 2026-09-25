@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   DataAnalysis,
+  Coin,
   Document,
   Files,
   Management,
@@ -76,6 +77,10 @@ async function logout() {
           <el-icon><Files /></el-icon>
           <span>成果中心</span>
         </el-menu-item>
+        <el-menu-item v-if="auth.hasPermission('central_records.read')" index="/central-records">
+          <el-icon><Coin /></el-icon>
+          <span>数据成果库</span>
+        </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/users">
           <el-icon><UserFilled /></el-icon>
           <span>用户与权限</span>
@@ -100,7 +105,7 @@ async function logout() {
           <div class="page-title">引大入秦灌区现状调查数据中心</div>
           <div class="page-subtitle">
             <span class="live-dot"></span>
-            V1.2.0 · Web Center Preview
+            V1.2.0 · Web Center Preview 0.3
           </div>
         </div>
 

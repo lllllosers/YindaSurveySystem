@@ -8,6 +8,7 @@ from app.api.dependencies.auth import require_permission
 from app.db.session import get_db
 from app.db.session import engine
 from app.models.auth import User
+from app.models.central_record import CentralSurveyRecord
 from app.models.project import Project, SurveyBatch
 from app.models.result_submission import ResultSubmission
 from app.models.survey_task import SurveyTask
@@ -57,7 +58,7 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
 
     return {
         "product_version": "V1.2.0",
-        "web_stage": "Web Center Preview 0.2",
+        "web_stage": "Web Center Preview 0.3",
         "task_protocol": ".ydtask V3",
         "result_protocol": ".ydresult 2.2",
         "project_count": int(
@@ -76,6 +77,17 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
         ),
         "survey_task_count": int(
             db.scalar(select(func.count()).select_from(SurveyTask)) or 0
+        ),
+        "central_record_count": int(
+            db.scalar(select(func.count()).select_from(CentralSurveyRecord)) or 0
+        ),
+        "pending_review_count": int(
+            db.scalar(
+                select(func.count())
+                .select_from(ResultSubmission)
+                .where(ResultSubmission.status == "preflight_passed")
+            )
+            or 0
         ),
         "active_user_count": int(
             db.scalar(

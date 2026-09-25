@@ -19,12 +19,16 @@ from app.models.auth import User
 from app.models.result_submission import ResultSubmission
 from app.schemas.result_submission import (
     PackageIssueRead,
+    ResultImportRead,
+    ResultReviewRequest,
     ResultSubmissionPage,
     ResultSubmissionRead,
+    WorkflowIssueRead,
 )
 from app.schemas.result_verification import ResultFileVerificationRead
 from app.services import result_submission_service
 from app.services import result_verification_service
+from app.services import result_workflow_service
 
 
 router = APIRouter(
@@ -44,6 +48,18 @@ ResultVerifier = Annotated[
     User,
     Depends(require_permission("results.verify")),
 ]
+ResultPreflightOperator = Annotated[
+    User,
+    Depends(require_permission("results.preflight")),
+]
+ResultReviewer = Annotated[
+    User,
+    Depends(require_permission("results.review")),
+]
+ResultImporter = Annotated[
+    User,
+    Depends(require_permission("results.import")),
+]
 
 
 def to_read(row: ResultSubmission) -> ResultSubmissionRead:
@@ -62,6 +78,16 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
         if isinstance(row.source_task_uids, list)
         else []
     )
+    preflight_issues = (
+        row.preflight_issues_json
+        if isinstance(row.preflight_issues_json, list)
+        else []
+    )
+    preflight_summary = (
+        row.preflight_summary_json
+        if isinstance(row.preflight_summary_json, dict)
+        else {}
+    )
 
     return ResultSubmissionRead(
         submission_uid=row.submission_uid,
@@ -77,6 +103,7 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
         desktop_app_version_label=row.desktop_app_version_label,
         result_name=row.result_name,
         source_task_uids=[str(v) for v in source_task_uids],
+        submission_task_uid=row.submission_task_uid,
         counts=counts,
         status=row.status,
         inspection_error_count=row.inspection_error_count,
@@ -93,6 +120,28 @@ def to_read(row: ResultSubmission) -> ResultSubmissionRead:
             for item in issues
             if isinstance(item, dict)
         ],
+        preflight_error_count=row.preflight_error_count,
+        preflight_warning_count=row.preflight_warning_count,
+        preflight_issues=[
+            WorkflowIssueRead(
+                severity=str(item.get("severity", "error")),
+                code=str(item.get("code", "")),
+                message=str(item.get("message", "")),
+                entity_uid=str(item.get("entity_uid", "")),
+            )
+            for item in preflight_issues
+            if isinstance(item, dict)
+        ],
+        preflight_summary={
+            str(key): int(value)
+            for key, value in preflight_summary.items()
+            if isinstance(value, int)
+        },
+        preflight_checked_at=row.preflight_checked_at,
+        review_notes=row.review_notes,
+        reviewed_by_username=row.reviewed_by_username,
+        reviewed_at=row.reviewed_at,
+        imported_at=row.imported_at,
         storage_status=row.storage_status,
         storage_checked_at=row.storage_checked_at,
         uploader_user_uid=row.uploader_user_uid,
@@ -263,4 +312,109 @@ def download_submission(
         path,
         media_type="application/octet-stream",
         filename=row.original_filename,
+    )
+
+
+@router.post(
+    "/{submission_uid}/preflight",
+    response_model=ResultSubmissionRead,
+)
+def preflight_submission(
+    submission_uid: str,
+    request: Request,
+    _: ResultPreflightOperator,
+    db: DbSession,
+):
+    row = result_submission_service.get_submission(db, submission_uid)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    try:
+        path = result_submission_service.submission_file_path(row)
+        result_workflow_service.run_preflight(db, row, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except result_workflow_service.WorkflowStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    request.state.audit_summary = "执行成果业务预检"
+    request.state.audit_details = {
+        "submission_uid": row.submission_uid,
+        "submission_task_uid": row.submission_task_uid,
+        "status": row.status,
+        "errors": row.preflight_error_count,
+        "warnings": row.preflight_warning_count,
+    }
+    return to_read(row)
+
+
+@router.post(
+    "/{submission_uid}/review",
+    response_model=ResultSubmissionRead,
+)
+def review_submission(
+    submission_uid: str,
+    payload: ResultReviewRequest,
+    request: Request,
+    reviewer: ResultReviewer,
+    db: DbSession,
+):
+    row = result_submission_service.get_submission(db, submission_uid)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    try:
+        result_workflow_service.review_submission(
+            db,
+            row,
+            decision=payload.decision,
+            notes=payload.notes,
+            reviewer=reviewer,
+        )
+    except (ValueError, result_workflow_service.WorkflowStateError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    request.state.audit_summary = (
+        "审核接收调查成果" if payload.decision == "accepted" else "审核退回调查成果"
+    )
+    request.state.audit_details = {
+        "submission_uid": row.submission_uid,
+        "decision": payload.decision,
+        "reviewer": reviewer.username,
+    }
+    return to_read(row)
+
+
+@router.post(
+    "/{submission_uid}/import",
+    response_model=ResultImportRead,
+)
+def import_submission(
+    submission_uid: str,
+    request: Request,
+    _: ResultImporter,
+    db: DbSession,
+):
+    row = result_submission_service.get_submission(db, submission_uid)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    try:
+        path = result_submission_service.submission_file_path(row)
+        counts = result_workflow_service.import_submission(db, row, path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    except result_workflow_service.WorkflowStateError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    request.state.audit_summary = "调查成果正式入库"
+    request.state.audit_details = {
+        "submission_uid": row.submission_uid,
+        **counts,
+    }
+    return ResultImportRead(
+        submission_uid=row.submission_uid,
+        status=row.status,
+        **counts,
     )

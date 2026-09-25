@@ -417,3 +417,65 @@ select {
   font-size: 13px;
   line-height: 1.6;
 }
+
+.workflow-metrics,
+.records-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.workflow-metrics > div,
+.records-metric-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px 18px;
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff, #f8faff);
+}
+
+.workflow-metrics span,
+.records-metric-grid span {
+  color: #7b8798;
+  font-size: 12px;
+}
+
+.workflow-metrics strong,
+.records-metric-grid strong {
+  color: #1c2a43;
+  font-size: 24px;
+}
+
+.records-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.records-metric-grid > div {
+  min-height: 78px;
+  box-shadow: 0 5px 18px rgba(25, 44, 78, 0.04);
+}
+
+.danger-text { color: #e44b4b !important; }
+.review-description { margin-top: 18px; }
+.records-filter-card { margin-bottom: 18px; }
+.records-filter-card .el-form-item { margin-bottom: 0; }
+.records-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 18px; }
+.records-table-card { min-height: 540px; }
+.records-table-card .el-card__body { padding: 0 18px 18px; }
+.records-pagination { display: flex; justify-content: flex-end; margin-top: 18px; }
+.records-distribution-card { align-self: start; }
+.distribution-row + .distribution-row { margin-top: 15px; }
+.distribution-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: #536178; font-size: 12px; }
+.distribution-row b { color: #273650; }
+.distribution-track { overflow: hidden; height: 7px; border-radius: 99px; background: #edf1f6; }
+.distribution-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #3478ed, #28a7d7); }
+.json-panel { overflow: auto; max-height: 360px; margin: 0; padding: 16px; border: 1px solid #e4e9f0; border-radius: 10px; background: #f7f9fc; color: #42506a; font-family: Consolas, "SFMono-Regular", monospace; font-size: 11px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.protocol-collapse { margin-top: 22px; }
+
+@media (max-width: 1200px) {
+  .records-layout { grid-template-columns: 1fr; }
+  .workflow-metrics { grid-template-columns: repeat(3, 1fr); }
+}

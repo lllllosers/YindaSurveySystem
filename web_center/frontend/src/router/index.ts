@@ -51,6 +51,12 @@ export const router = createRouter({
           meta: { permission: "results.read" },
         },
         {
+          path: "central-records",
+          name: "central-records",
+          component: () => import("../views/CentralRecordsView.vue"),
+          meta: { permission: "central_records.read" },
+        },
+        {
           path: "users",
           name: "users",
           component: () => import("../views/UsersView.vue"),

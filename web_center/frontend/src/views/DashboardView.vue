@@ -112,7 +112,7 @@ onMounted(checkServices);
     </div>
     <div class="metric-card">
       <div class="metric-icon green"><Files /></div>
-      <div><span>成果提交</span><strong>{{ overview?.result_submission_count ?? "—" }}</strong><small>已接收成果包</small></div>
+      <div><span>正式成果</span><strong>{{ overview?.central_record_count ?? "—" }}</strong><small>{{ overview?.pending_review_count ?? 0 }} 个成果待审核</small></div>
     </div>
     <div class="metric-card">
       <div class="metric-icon amber"><Document /></div>

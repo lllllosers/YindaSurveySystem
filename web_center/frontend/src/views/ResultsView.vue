@@ -37,6 +37,7 @@ const statusLabels: Record<string, string> = {
   reviewing: "审核中",
   accepted: "已接收",
   rejected: "已退回",
+  imported: "已入库",
 };
 
 const storageLabels: Record<string, string> = {
@@ -51,7 +52,7 @@ const storageLabels: Record<string, string> = {
 
 function statusType(status: string) {
   if (
-    ["inspected", "preflight_passed", "accepted"]
+    ["inspected", "preflight_passed", "accepted", "imported"]
       .includes(status)
   ) {
     return "success";
@@ -216,8 +217,8 @@ onMounted(refresh);
     <div>
       <h1>成果中心</h1>
       <p>
-        当前只做 .ydresult 安全接收、归档和结构检查；
-        暂不执行渠系主数据预检和正式业务入库。
+        接收桌面端 .ydresult 成果包，按下发任务冻结范围预检，
+        完成审核后正式归集到中央成果库。
       </p>
     </div>
   </div>
@@ -300,6 +301,10 @@ onMounted(refresh);
             <el-option
               label="已退回"
               value="rejected"
+            />
+            <el-option
+              label="已入库"
+              value="imported"
             />
           </el-select>
 

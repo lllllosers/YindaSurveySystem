@@ -77,7 +77,18 @@ class ResultSubmission(Base):
     desktop_app_version_label: Mapped[str | None] = mapped_column(String(100))
     result_name: Mapped[str | None] = mapped_column(String(255))
     source_task_uids: Mapped[list | None] = mapped_column(JSON)
+    submission_task_uid: Mapped[str | None] = mapped_column(String(32), index=True)
     counts_json: Mapped[dict | None] = mapped_column(JSON)
+
+    preflight_error_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    preflight_warning_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    preflight_issues_json: Mapped[list | None] = mapped_column(JSON)
+    preflight_summary_json: Mapped[dict | None] = mapped_column(JSON)
+    preflight_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     status: Mapped[str] = mapped_column(
         String(30),
@@ -107,6 +118,11 @@ class ResultSubmission(Base):
     storage_check_json: Mapped[dict | None] = mapped_column(JSON)
 
     notes: Mapped[str | None] = mapped_column(Text)
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    reviewed_by_user_uid: Mapped[str | None] = mapped_column(String(32), index=True)
+    reviewed_by_username: Mapped[str | None] = mapped_column(String(80))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     uploader_user_uid: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -140,9 +156,13 @@ class ResultSubmission(Base):
             name="ck_result_submissions_error_count",
         ),
         CheckConstraint(
+            "preflight_error_count >= 0 AND preflight_warning_count >= 0",
+            name="ck_result_submissions_preflight_counts",
+        ),
+        CheckConstraint(
             "status IN ("
             "'uploaded','inspected','invalid','preflight_passed',"
-            "'conflict','reviewing','accepted','rejected'"
+            "'conflict','reviewing','accepted','rejected','imported'"
             ")",
             name="ck_result_submissions_status",
         ),

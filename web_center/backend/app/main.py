@@ -9,7 +9,7 @@ from app.core.config import settings
 app = FastAPI(
     title=settings.app_name,
     description="引大调查数据采集系统 Web 中心 API",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(AuditMiddleware)

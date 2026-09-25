@@ -8,11 +8,14 @@ import {
   useRoute,
   useRouter,
 } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import {
   getResultSubmission,
+  importResultSubmission,
+  preflightResultSubmission,
   resultDownloadUrl,
+  reviewResultSubmission,
   verifyResultSubmission,
   type ResultFileVerification,
   type ResultSubmission,
@@ -25,6 +28,7 @@ const auth = useAuthStore();
 
 const loading = ref(false);
 const verifying = ref(false);
+const workflowBusy = ref(false);
 const row = ref<ResultSubmission | null>(null);
 const verification = ref<ResultFileVerification | null>(null);
 
@@ -34,6 +38,15 @@ const submissionUid = computed(
 
 const canVerify = computed(
   () => auth.hasPermission("results.verify"),
+);
+const canPreflight = computed(
+  () => auth.hasPermission("results.preflight"),
+);
+const canReview = computed(
+  () => auth.hasPermission("results.review"),
+);
+const canImport = computed(
+  () => auth.hasPermission("results.import"),
 );
 
 const statusLabels: Record<string, string> = {
@@ -45,6 +58,7 @@ const statusLabels: Record<string, string> = {
   reviewing: "审核中",
   accepted: "已接收",
   rejected: "已退回",
+  imported: "已入库",
 };
 
 const storageLabels: Record<string, string> = {
@@ -80,6 +94,10 @@ function formatTime(value: string | null) {
     "zh-CN",
     { hour12: false },
   );
+}
+
+function errorMessage(error: any, fallback: string) {
+  return error?.response?.data?.detail ?? fallback;
 }
 
 async function refresh() {
@@ -132,6 +150,73 @@ async function verifyFile() {
   }
 }
 
+async function runPreflight() {
+  workflowBusy.value = true;
+  try {
+    row.value = await preflightResultSubmission(submissionUid.value);
+    if (row.value.preflight_error_count === 0) {
+      ElMessage.success("业务预检通过，可以进入审核");
+    } else {
+      ElMessage.warning(`业务预检发现 ${row.value.preflight_error_count} 个错误`);
+    }
+  } catch (error: any) {
+    ElMessage.error(errorMessage(error, "业务预检失败"));
+  } finally {
+    workflowBusy.value = false;
+  }
+}
+
+async function review(decision: "accepted" | "rejected") {
+  let notes: string | null = null;
+  try {
+    const action = decision === "accepted" ? "接收" : "退回";
+    const result = await ElMessageBox.prompt(
+      `请填写${action}意见（可以留空）`,
+      `审核${action}`,
+      {
+        confirmButtonText: `确认${action}`,
+        cancelButtonText: "取消",
+        inputType: "textarea",
+        inputPlaceholder: "审核意见",
+      },
+    );
+    notes = result.value?.trim() || null;
+  } catch {
+    return;
+  }
+  workflowBusy.value = true;
+  try {
+    row.value = await reviewResultSubmission(submissionUid.value, decision, notes);
+    ElMessage.success(decision === "accepted" ? "成果已审核接收" : "成果已退回");
+  } catch (error: any) {
+    ElMessage.error(errorMessage(error, "成果审核失败"));
+  } finally {
+    workflowBusy.value = false;
+  }
+}
+
+async function importResult() {
+  try {
+    await ElMessageBox.confirm(
+      "入库前会再次核验任务范围和版本冲突。确认将该成果写入中央成果库？",
+      "正式入库",
+      { confirmButtonText: "确认入库", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+  workflowBusy.value = true;
+  try {
+    const result = await importResultSubmission(submissionUid.value);
+    await refresh();
+    ElMessage.success(`入库完成：${result.records} 条调查记录`);
+  } catch (error: any) {
+    ElMessage.error(errorMessage(error, "成果入库失败"));
+  } finally {
+    workflowBusy.value = false;
+  }
+}
+
 function download() {
   window.open(
     resultDownloadUrl(submissionUid.value),
@@ -151,7 +236,7 @@ onMounted(refresh);
     <div>
       <h1>成果提交详情</h1>
       <p>
-        查看成果包标识、来源、结构检查结果和服务器文件完整性状态。
+        查看成果包来源，执行业务预检、审核和中央成果库入库。
       </p>
     </div>
 
@@ -171,6 +256,42 @@ onMounted(refresh);
         @click="verifyFile"
       >
         重新校验文件
+      </el-button>
+
+      <el-button
+        v-if="canPreflight && row?.status !== 'imported'"
+        :loading="workflowBusy"
+        @click="runPreflight"
+      >
+        业务预检
+      </el-button>
+
+      <el-button
+        v-if="canReview && row?.status === 'preflight_passed'"
+        type="success"
+        :loading="workflowBusy"
+        @click="review('accepted')"
+      >
+        审核接收
+      </el-button>
+
+      <el-button
+        v-if="canReview && row && !['imported', 'rejected'].includes(row.status)"
+        type="danger"
+        plain
+        :loading="workflowBusy"
+        @click="review('rejected')"
+      >
+        退回
+      </el-button>
+
+      <el-button
+        v-if="canImport && row?.status === 'accepted'"
+        type="primary"
+        :loading="workflowBusy"
+        @click="importResult"
+      >
+        正式入库
       </el-button>
     </div>
   </div>
@@ -238,6 +359,10 @@ onMounted(refresh);
             </span>
           </el-descriptions-item>
 
+          <el-descriptions-item label="提交任务 UID" :span="2">
+            <span class="mono">{{ row.submission_task_uid || "—" }}</span>
+          </el-descriptions-item>
+
           <el-descriptions-item label="上传人">
             {{ row.uploader_username }}
           </el-descriptions-item>
@@ -290,6 +415,61 @@ onMounted(refresh);
             }}
           </el-descriptions-item>
         </el-descriptions>
+      </el-card>
+
+      <el-card
+        shadow="never"
+        class="business-card detail-card"
+      >
+        <template #header>
+          <div class="card-header">
+            <span>业务预检与审核</span>
+            <small>{{ formatTime(row.preflight_checked_at) }}</small>
+          </div>
+        </template>
+
+        <el-empty
+          v-if="!row.preflight_checked_at"
+          description="尚未执行业务预检"
+        />
+
+        <template v-else>
+          <div class="workflow-metrics">
+            <div><span>新增工程</span><strong>{{ row.preflight_summary.new_assets ?? 0 }}</strong></div>
+            <div><span>新增记录</span><strong>{{ row.preflight_summary.new_records ?? 0 }}</strong></div>
+            <div><span>更新记录</span><strong>{{ row.preflight_summary.updated_records ?? 0 }}</strong></div>
+            <div><span>错误</span><strong class="danger-text">{{ row.preflight_error_count }}</strong></div>
+            <div><span>警告</span><strong>{{ row.preflight_warning_count }}</strong></div>
+          </div>
+
+          <el-alert
+            v-if="row.preflight_error_count === 0"
+            type="success"
+            :closable="false"
+            title="任务权限、主数据、记录来源与版本冲突检查均已通过"
+          />
+
+          <div
+            v-for="issue in row.preflight_issues"
+            :key="`${issue.code}-${issue.entity_uid}`"
+            class="detail-issue"
+          >
+            <el-tag :type="issue.severity === 'error' ? 'danger' : 'warning'" size="small">
+              {{ issue.severity === "error" ? "错误" : "警告" }}
+            </el-tag>
+            <b>{{ issue.code }}</b>：{{ issue.message }}
+            <span v-if="issue.entity_uid" class="mono">[{{ issue.entity_uid }}]</span>
+          </div>
+
+          <el-descriptions v-if="row.reviewed_at" :column="2" border class="review-description">
+            <el-descriptions-item label="审核人">{{ row.reviewed_by_username || "—" }}</el-descriptions-item>
+            <el-descriptions-item label="审核时间">{{ formatTime(row.reviewed_at) }}</el-descriptions-item>
+            <el-descriptions-item label="审核意见" :span="2">{{ row.review_notes || "无" }}</el-descriptions-item>
+            <el-descriptions-item v-if="row.imported_at" label="正式入库时间" :span="2">
+              {{ formatTime(row.imported_at) }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </template>
       </el-card>
 
       <el-card

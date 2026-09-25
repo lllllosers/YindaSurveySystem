@@ -24,6 +24,10 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "results.read",
         "results.upload",
         "results.verify",
+        "results.preflight",
+        "results.review",
+        "results.import",
+        "central_records.read",
         "audit.read",
     },
     "reviewer": {
@@ -33,6 +37,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "tasks.read",
         "tasks.download",
         "results.read",
+        "results.preflight",
+        "results.review",
+        "central_records.read",
     },
     "viewer": {
         "projects.read",
@@ -40,6 +47,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "master_data.read",
         "tasks.read",
         "results.read",
+        "central_records.read",
     },
 }
 
