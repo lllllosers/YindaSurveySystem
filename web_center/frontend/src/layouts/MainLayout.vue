@@ -6,7 +6,7 @@ import {
   Document,
   Files,
   Management,
-  Operation,
+  OfficeBuilding,
   Setting,
   Tickets,
   UserFilled,
@@ -38,10 +38,10 @@ async function logout() {
   <el-container class="app-shell">
     <el-aside width="232px" class="sidebar">
       <div class="brand">
-        <div class="brand-mark">引</div>
+        <div class="brand-mark"><span>引</span></div>
         <div>
-          <div class="brand-title">引大调查中心</div>
-          <div class="brand-subtitle">Yinda Survey Center</div>
+          <div class="brand-title">引大调查数据中心</div>
+          <div class="brand-subtitle">YINDA · WEB CENTER</div>
         </div>
       </div>
 
@@ -61,9 +61,12 @@ async function logout() {
           <el-icon><Management /></el-icon>
           <span>项目与批次</span>
         </el-menu-item>
-        <el-menu-item index="/canals" disabled>
-          <el-icon><Operation /></el-icon>
-          <span>组织与渠系</span>
+        <el-menu-item
+          v-if="auth.hasPermission('master_data.read')"
+          index="/master-data"
+        >
+          <el-icon><OfficeBuilding /></el-icon>
+          <span>正式主数据</span>
         </el-menu-item>
         <el-menu-item index="/tasks" disabled>
           <el-icon><Document /></el-icon>
@@ -95,7 +98,10 @@ async function logout() {
       <el-header class="topbar">
         <div>
           <div class="page-title">引大入秦灌区现状调查数据中心</div>
-          <div class="page-subtitle">experiment/web-hybrid</div>
+          <div class="page-subtitle">
+            <span class="live-dot"></span>
+            V1.2.0 · Web Center Preview
+          </div>
         </div>
 
         <el-dropdown>

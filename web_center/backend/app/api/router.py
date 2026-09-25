@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes.audit import router as audit_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.master_data import router as master_data_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.result_submissions import (
     router as result_submissions_router,
@@ -20,5 +21,6 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(survey_batches_router)
+api_router.include_router(master_data_router)
 api_router.include_router(result_submissions_router)
 api_router.include_router(audit_router)

@@ -1,13 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import MainLayout from "../layouts/MainLayout.vue";
-import DashboardView from "../views/DashboardView.vue";
-import LoginView from "../views/LoginView.vue";
-import ProjectsView from "../views/ProjectsView.vue";
-import UsersView from "../views/UsersView.vue";
-import AuditView from "../views/AuditView.vue";
-import ResultsView from "../views/ResultsView.vue";
-import ResultDetailView from "../views/ResultDetailView.vue";
 import { useAuthStore } from "../stores/auth";
 
 export const router = createRouter({
@@ -16,37 +9,51 @@ export const router = createRouter({
     {
       path: "/login",
       name: "login",
-      component: LoginView,
+      component: () => import("../views/LoginView.vue"),
       meta: { public: true },
     },
     {
       path: "/",
       component: MainLayout,
       children: [
-        { path: "", name: "dashboard", component: DashboardView },
-        { path: "projects", name: "projects", component: ProjectsView },
+        {
+          path: "",
+          name: "dashboard",
+          component: () => import("../views/DashboardView.vue"),
+        },
+        {
+          path: "projects",
+          name: "projects",
+          component: () => import("../views/ProjectsView.vue"),
+        },
+        {
+          path: "master-data",
+          name: "master-data",
+          component: () => import("../views/MasterDataView.vue"),
+          meta: { permission: "master_data.read" },
+        },
         {
           path: "results",
           name: "results",
-          component: ResultsView,
+          component: () => import("../views/ResultsView.vue"),
           meta: { permission: "results.read" },
         },
         {
           path: "results/:submissionUid",
           name: "result-detail",
-          component: ResultDetailView,
+          component: () => import("../views/ResultDetailView.vue"),
           meta: { permission: "results.read" },
         },
         {
           path: "users",
           name: "users",
-          component: UsersView,
+          component: () => import("../views/UsersView.vue"),
           meta: { adminOnly: true },
         },
         {
           path: "audit",
           name: "audit",
-          component: AuditView,
+          component: () => import("../views/AuditView.vue"),
           meta: { permission: "audit.read" },
         },
       ],
