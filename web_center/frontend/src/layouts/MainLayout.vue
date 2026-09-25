@@ -8,7 +8,6 @@ import {
   Files,
   Management,
   OfficeBuilding,
-  Setting,
   Tickets,
   UserFilled,
 } from "@element-plus/icons-vue";
@@ -24,7 +23,7 @@ const roleLabel = computed(() => {
     admin: "系统管理员",
     manager: "管理人员",
     reviewer: "审核人员",
-    viewer: "只读人员",
+    viewer: "查询人员",
   } as const;
   return auth.user ? labels[auth.user.role] : "";
 });
@@ -42,7 +41,7 @@ async function logout() {
         <div class="brand-mark"><span>引</span></div>
         <div>
           <div class="brand-title">引大调查数据中心</div>
-          <div class="brand-subtitle">YINDA · WEB CENTER</div>
+          <div class="brand-subtitle">中心业务管理平台</div>
         </div>
       </div>
 
@@ -67,19 +66,19 @@ async function logout() {
           index="/master-data"
         >
           <el-icon><OfficeBuilding /></el-icon>
-          <span>正式主数据</span>
+          <span>基础资料</span>
         </el-menu-item>
         <el-menu-item v-if="auth.hasPermission('tasks.read')" index="/tasks">
           <el-icon><Document /></el-icon>
-          <span>任务中心</span>
+          <span>调查任务</span>
         </el-menu-item>
         <el-menu-item v-if="auth.hasPermission('results.read')" index="/results">
           <el-icon><Files /></el-icon>
-          <span>成果中心</span>
+          <span>成果接收与审核</span>
         </el-menu-item>
         <el-menu-item v-if="auth.hasPermission('central_records.read')" index="/central-records">
           <el-icon><Coin /></el-icon>
-          <span>数据成果库</span>
+          <span>正式成果库</span>
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/users">
           <el-icon><UserFilled /></el-icon>
@@ -90,11 +89,7 @@ async function logout() {
           index="/audit"
         >
           <el-icon><Tickets /></el-icon>
-          <span>审计日志</span>
-        </el-menu-item>
-        <el-menu-item index="/settings" disabled>
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
+          <span>操作记录</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -105,7 +100,7 @@ async function logout() {
           <div class="page-title">引大入秦灌区现状调查数据中心</div>
           <div class="page-subtitle">
             <span class="live-dot"></span>
-            V1.2.0 · 中心管理平台
+            中心端 · 与桌面端协同工作
           </div>
         </div>
 

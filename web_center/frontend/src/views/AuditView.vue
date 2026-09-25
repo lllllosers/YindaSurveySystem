@@ -23,7 +23,7 @@ const roleLabels: Record<string, string> = {
   admin: "系统管理员",
   manager: "管理人员",
   reviewer: "审核人员",
-  viewer: "只读人员",
+  viewer: "查询人员",
 };
 
 function formatTime(value: string) {
@@ -96,7 +96,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
-      <h1>审计日志</h1>
+      <h1>操作记录</h1>
       <p>
         自动记录重要业务操作，便于了解谁在什么时间进行了哪些处理，历史记录不可修改。
       </p>
@@ -139,7 +139,7 @@ onMounted(refresh);
       </el-table-column>
       <el-table-column label="用户" width="165">
         <template #default="{ row }">
-          <div>{{ row.actor_username || "未认证" }}</div>
+          <div>{{ row.actor_username || "未登录用户" }}</div>
           <div class="audit-secondary">
             {{ roleLabels[row.actor_role] || row.actor_role || "—" }}
           </div>
@@ -158,7 +158,7 @@ onMounted(refresh);
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="client_ip" label="操作设备" width="145">
+      <el-table-column prop="client_ip" label="来源地址" width="145">
         <template #default="{ row }">
           {{ row.client_ip || "—" }}
         </template>

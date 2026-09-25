@@ -4,12 +4,16 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 
 import { useAuthStore } from "../stores/auth";
+import aqueductHero from "../assets/zhuanglang-aqueduct-hero.png";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const formRef = ref<FormInstance>();
 const submitting = ref(false);
+const loginVisualStyle = {
+  backgroundImage: `linear-gradient(90deg, rgba(4, 18, 43, .88) 0%, rgba(6, 33, 67, .66) 48%, rgba(4, 25, 53, .32) 100%), url(${aqueductHero})`,
+};
 
 const form = reactive({
   username: "",
@@ -44,11 +48,11 @@ async function submit() {
 
 <template>
   <div class="login-page">
-    <div class="login-visual">
+    <div class="login-visual" :style="loginVisualStyle">
       <div class="login-visual-content">
-        <div class="visual-kicker">YINDA SURVEY SYSTEM</div>
-        <h1>连接每一次现场调查<br />沉淀可信数据资产</h1>
-        <p>面向引大入秦灌区的中央协同与成果管理平台。</p>
+        <div class="visual-kicker">引大入秦 · 调查成果协同管理</div>
+        <h1>统一安排每一次调查<br />完整沉淀每一份成果</h1>
+        <p>中心统一安排，基层离线调查，成果集中审核归档。</p>
         <div class="visual-flow">
           <span>中心安排任务</span><i></i><span>基层离线调查</span><i></i><span>成果集中归档</span>
         </div>
@@ -62,7 +66,7 @@ async function submit() {
           <div class="brand-mark login-mark"><span>引</span></div>
           <div>
             <div class="login-title">引大调查数据中心</div>
-            <div class="login-subtitle">YINDA · WEB CENTER</div>
+            <div class="login-subtitle">中心业务管理平台</div>
           </div>
         </div>
 

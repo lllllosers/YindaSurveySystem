@@ -54,7 +54,7 @@ const roleLabels: Record<UserRole, string> = {
   admin: "系统管理员",
   manager: "管理人员",
   reviewer: "审核人员",
-  viewer: "只读人员",
+  viewer: "查询人员",
 };
 
 async function refresh() {
@@ -108,15 +108,15 @@ async function saveEdit() {
     editDialog.value = false;
     ElMessage.success("用户已更新");
     await refresh();
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail ?? "用户更新失败");
+  } catch {
+    ElMessage.error("用户信息保存失败，请稍后重试");
   }
 }
 
 async function resetPassword(user: UserRecord) {
   try {
     const result = await ElMessageBox.prompt(
-      `为“${user.display_name}”设置新密码（至少 6 个字符）。重置后该用户所有会话都会失效。`,
+      `为“${user.display_name}”设置新密码（至少 6 个字符）。重置后该用户需要在所有设备上重新登录。`,
       "重置密码",
       {
         confirmButtonText: "重置",
@@ -127,7 +127,7 @@ async function resetPassword(user: UserRecord) {
       },
     );
     await resetUserPassword(user.user_uid, result.value);
-    ElMessage.success("密码已重置，原有会话已撤销");
+    ElMessage.success("密码已重置，该用户需要重新登录");
   } catch (error) {
     if (error === "cancel" || error === "close") return;
     ElMessage.error("密码重置失败");
@@ -137,22 +137,22 @@ async function resetPassword(user: UserRecord) {
 async function revokeSessions(user: UserRecord) {
   try {
     await ElMessageBox.confirm(
-      `确认撤销“${user.display_name}”的全部登录会话？`,
-      "撤销登录会话",
+      `确认让“${user.display_name}”在所有设备上退出登录？`,
+      "强制退出登录",
       {
-        confirmButtonText: "撤销",
+        confirmButtonText: "确认退出",
         cancelButtonText: "取消",
         type: "warning",
       },
     );
     await revokeUserSessions(user.user_uid);
-    ElMessage.success("该用户的全部登录会话已撤销");
+    ElMessage.success("该用户已在所有设备上退出登录");
     if (user.user_uid === auth.user?.user_uid) {
       window.location.assign("/login");
     }
   } catch (error) {
     if (error === "cancel" || error === "close") return;
-    ElMessage.error("会话撤销失败");
+    ElMessage.error("强制退出失败，请稍后重试");
   }
 }
 
@@ -168,7 +168,7 @@ onMounted(refresh);
   <div class="module-header">
     <div>
       <h1>用户与权限</h1>
-      <p>为中心管理、任务安排、成果审核和只读查询人员分配合适权限。</p>
+      <p>为中心管理、任务安排、成果审核和成果查询人员分配合适权限。</p>
     </div>
     <el-button type="primary" @click="openCreate">新建用户</el-button>
   </div>
@@ -198,7 +198,7 @@ onMounted(refresh);
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link @click="resetPassword(row)">重置密码</el-button>
-          <el-button link type="warning" @click="revokeSessions(row)">撤销会话</el-button>
+          <el-button link type="warning" @click="revokeSessions(row)">强制退出</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -220,7 +220,7 @@ onMounted(refresh);
           <el-option label="系统管理员" value="admin" />
           <el-option label="管理人员" value="manager" />
           <el-option label="审核人员" value="reviewer" />
-          <el-option label="只读人员" value="viewer" />
+          <el-option label="查询人员" value="viewer" />
         </el-select>
       </el-form-item>
       <el-form-item label="状态">
@@ -246,7 +246,7 @@ onMounted(refresh);
           <el-option label="系统管理员" value="admin" />
           <el-option label="管理人员" value="manager" />
           <el-option label="审核人员" value="reviewer" />
-          <el-option label="只读人员" value="viewer" />
+          <el-option label="查询人员" value="viewer" />
         </el-select>
       </el-form-item>
       <el-form-item label="状态">

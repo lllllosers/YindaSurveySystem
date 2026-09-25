@@ -51,12 +51,18 @@ function scopeRange(item: NonNullable<MasterDataSnapshot>["management_scopes"][n
   return `${item.start_stake_text ?? "-"} — ${item.end_stake_text ?? "-"}`;
 }
 
+function versionLabel(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})/);
+  if (!match) return "当前正式版";
+  return `${match[1]}年${Number(match[2])}月正式版`;
+}
+
 async function loadData() {
   loading.value = true;
   try {
     snapshot.value = await getMasterDataSnapshot();
   } catch {
-    ElMessage.error("基础资料加载失败，请确认系统服务运行正常");
+    ElMessage.error("基础资料加载失败，请稍后重试；如问题持续，请联系系统管理员");
   } finally {
     loading.value = false;
   }
@@ -69,7 +75,7 @@ onMounted(loadData);
   <div class="module-header master-header">
     <div>
       <div class="eyebrow">统一调查依据</div>
-      <h1>正式主数据</h1>
+      <h1>基础资料</h1>
       <p>中心端与桌面端共同使用的管理处、管理所、渠道和分管范围，确保各单位口径一致。</p>
     </div>
     <div class="header-actions">
@@ -77,7 +83,7 @@ onMounted(loadData);
         v-model="keyword"
         :prefix-icon="Search"
         clearable
-        placeholder="搜索名称、编码或标识"
+        placeholder="搜索名称或业务编码"
         class="master-search"
       />
       <el-button :icon="Refresh" :loading="loading" @click="loadData">刷新</el-button>
@@ -105,12 +111,12 @@ onMounted(loadData);
     <el-card shadow="never" class="business-card master-card">
       <div class="contract-strip">
         <div>
-          <span class="contract-label">基础资料批次</span>
-          <strong>{{ snapshot.summary.master_data_version }}</strong>
+          <span class="contract-label">基础资料版本</span>
+          <strong>{{ versionLabel(snapshot.summary.master_data_version) }}</strong>
         </div>
         <div>
-          <span class="contract-label">分管范围批次</span>
-          <strong>{{ snapshot.summary.management_scope_version }}</strong>
+          <span class="contract-label">分管范围版本</span>
+          <strong>{{ versionLabel(snapshot.summary.management_scope_version) }}</strong>
         </div>
         <el-tag type="success" effect="light">中心与桌面端已统一</el-tag>
       </div>

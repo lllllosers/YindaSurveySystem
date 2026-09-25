@@ -41,11 +41,11 @@ const statusLabels: Record<string, string> = {
 };
 
 const storageLabels: Record<string, string> = {
-  unchecked: "未复检",
+  unchecked: "尚未复查",
   ok: "完整",
   missing: "文件缺失",
   size_mismatch: "大小异常",
-  hash_mismatch: "哈希异常",
+  hash_mismatch: "文件内容异常",
   package_invalid: "成果文件异常",
   error: "检查异常",
 };
@@ -77,12 +77,12 @@ function storageType(status: string) {
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 ** 2) {
-    return `${(value / 1024).toFixed(1)} KiB`;
+    return `${(value / 1024).toFixed(1)} KB`;
   }
   if (value < 1024 ** 3) {
-    return `${(value / 1024 ** 2).toFixed(1)} MiB`;
+    return `${(value / 1024 ** 2).toFixed(1)} MB`;
   }
-  return `${(value / 1024 ** 3).toFixed(2)} GiB`;
+  return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function formatTime(value: string) {
@@ -92,44 +92,12 @@ function formatTime(value: string) {
   );
 }
 
-function apiErrorMessage(error: any): string {
-  const detail = error?.response?.data?.detail;
-
-  if (
-    typeof detail === "string"
-    && detail.trim()
-  ) {
-    return detail;
-  }
-
-  if (Array.isArray(detail)) {
-    const messages = detail
-      .map((item) => {
-        if (!item || typeof item !== "object") {
-          return "";
-        }
-
-        const location = Array.isArray(item.loc)
-          ? item.loc.join(".")
-          : "";
-        const message = (
-          typeof item.msg === "string"
-            ? item.msg
-            : "请求参数无效"
-        );
-
-        return location
-          ? `${location}: ${message}`
-          : message;
-      })
-      .filter(Boolean);
-
-    if (messages.length > 0) {
-      return messages.join("；");
-    }
-  }
-
-  return "成果包上传失败";
+function uploadErrorMessage(error: any): string {
+  const status = error?.response?.status;
+  if (status === 413) return "成果文件过大，请检查后重新选择";
+  if (status === 409) return "这份成果已经上传，或与现有成果重复，请核对后再试";
+  if (status === 400 || status === 422) return "成果文件无法识别，请从桌面端重新导出后上传";
+  return "成果上传失败，请稍后重试；如问题持续，请联系系统管理员";
 }
 
 async function refresh() {
@@ -152,7 +120,7 @@ function fileChanged(uploadFile: UploadFile) {
     && !raw.name.toLowerCase().endsWith(".ydresult")
   ) {
     ElMessage.error(
-      "请选择 .ydresult 调查成果包",
+      "请选择由桌面端导出的成果文件",
     );
     selectedFile.value = null;
     uploadFiles.value = [];
@@ -202,7 +170,7 @@ async function upload() {
     await refresh();
   } catch (error: any) {
     ElMessage.error(
-      apiErrorMessage(error),
+      uploadErrorMessage(error),
     );
   } finally {
     uploading.value = false;
@@ -215,7 +183,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
-      <h1>成果中心</h1>
+      <h1>成果接收与审核</h1>
       <p>
         上传桌面端导出的调查成果，系统自动核对任务范围，审核通过后统一进入成果库。
       </p>
@@ -242,7 +210,7 @@ onMounted(refresh);
           type="info"
           effect="plain"
         >
-          .ydresult
+          桌面端成果文件
         </el-tag>
       </div>
     </template>
@@ -255,7 +223,7 @@ onMounted(refresh);
         accept=".ydresult"
         @change="fileChanged"
       >
-        <el-button>选择成果包</el-button>
+        <el-button>选择成果文件</el-button>
       </el-upload>
 
       <el-button
@@ -355,20 +323,20 @@ onMounted(refresh);
       >
         <template #default="{ row }">
           <el-tag :type="statusType(row.status)">
-            {{ statusLabels[row.status] || row.status }}
+            {{ statusLabels[row.status] || "状态待确认" }}
           </el-tag>
         </template>
       </el-table-column>
 
       <el-table-column
-        label="存储状态"
+        label="文件状态"
         width="125"
       >
         <template #default="{ row }">
           <el-tag :type="storageType(row.storage_status)">
             {{
               storageLabels[row.storage_status]
-                || row.storage_status
+                || "状态待确认"
             }}
           </el-tag>
         </template>
@@ -430,16 +398,8 @@ onMounted(refresh);
               </el-text>
             </template>
 
-            <div
-              v-for="issue in row.inspection_issues"
-              :key="`${issue.code}-${issue.path}`"
-              class="result-issue"
-            >
-              <b>{{ issue.code }}</b>：
-              {{ issue.message }}
-              <span v-if="issue.path">
-                [{{ issue.path }}]
-              </span>
+            <div class="result-issue">
+              成果文件存在无法读取的内容，请从桌面端重新导出后上传。
             </div>
           </el-popover>
         </template>

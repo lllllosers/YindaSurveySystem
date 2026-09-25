@@ -62,7 +62,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const storageLabels: Record<string, string> = {
-  unchecked: "未复检",
+  unchecked: "尚未复查",
   ok: "完整",
   missing: "文件缺失",
   size_mismatch: "大小不一致",
@@ -80,12 +80,12 @@ function storageTagType(status: string) {
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 ** 2) {
-    return `${(value / 1024).toFixed(1)} KiB`;
+    return `${(value / 1024).toFixed(1)} KB`;
   }
   if (value < 1024 ** 3) {
-    return `${(value / 1024 ** 2).toFixed(1)} MiB`;
+    return `${(value / 1024 ** 2).toFixed(1)} MB`;
   }
-  return `${(value / 1024 ** 3).toFixed(2)} GiB`;
+  return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function formatTime(value: string | null) {
@@ -96,22 +96,37 @@ function formatTime(value: string | null) {
   );
 }
 
-function errorMessage(error: any, fallback: string) {
-  return error?.response?.data?.detail ?? fallback;
+function actionErrorMessage(error: any, fallback: string) {
+  const status = error?.response?.status;
+  if (status === 403) return "当前账户没有执行这项操作的权限";
+  if (status === 404) return "没有找到这份成果，可能已被移交或状态已更新";
+  if (status === 409) return `${fallback}，请刷新页面并确认当前处理状态`;
+  return `${fallback}，请稍后重试`;
 }
 
 function workflowIssueText(issue: ResultSubmission["preflight_issues"][number]) {
-  if (issue.code.startsWith("PROTOCOL_")) {
+  const code = issue.code;
+  if (code.startsWith("PROTOCOL_")) {
     return "成果文件与当前桌面端数据标准不一致，请由桌面端升级到最新版本后重新导出。";
   }
-  return issue.message;
+  if (code === "STRUCTURE_CHECK_REQUIRED") return "成果文件检查未通过，请先处理文件问题。";
+  if (code.startsWith("SUBMISSION_TASK_")) return "没有找到本次成果对应的有效调查任务，请核对任务后重新提交。";
+  if (code.includes("PROJECT") || code.includes("BATCH")) return "成果所属项目或调查批次与中心安排不一致，请核对后重新提交。";
+  if (code.includes("SCOPE")) return "部分调查记录超出本次安排的调查范围，请在桌面端核对后重新导出。";
+  if (code.includes("SOURCE_TASK")) return "部分调查记录缺少正确的任务来源，请在桌面端核对后重新导出。";
+  if (code.includes("FORM")) return "成果中包含本次任务未安排的调查表，请核对后重新提交。";
+  if (code.includes("NOT_COMPLETED")) return "成果中包含尚未完成的调查记录，请在桌面端完成后重新导出。";
+  if (code.includes("STALE") || code.includes("REVISION_CONFLICT")) return "中心已有更新的调查内容，请核对最新成果后再提交。";
+  return issue.severity === "error"
+    ? "发现需要处理的调查内容，请回到桌面端核对后重新提交。"
+    : "发现需要关注的调查内容，请审核人员核实。";
 }
 
 function fileIssueText(issue: ResultSubmission["inspection_issues"][number]) {
   if (issue.code.includes("HASH")) return "成果文件内容与导出时不一致，请从桌面端重新导出后上传。";
   if (issue.code.includes("ZIP") || issue.code.includes("ARCHIVE")) return "成果文件无法正常打开，请从桌面端重新导出。";
   if (issue.code.includes("MANIFEST")) return "成果文件的清单信息不完整，请从桌面端重新导出。";
-  return issue.message;
+  return "成果文件存在无法读取的内容，请从桌面端重新导出后上传。";
 }
 
 async function refresh() {
@@ -122,10 +137,7 @@ async function refresh() {
       submissionUid.value,
     );
   } catch (error: any) {
-    ElMessage.error(
-      error?.response?.data?.detail
-        ?? "成果提交读取失败",
-    );
+    ElMessage.error(actionErrorMessage(error, "成果详情读取失败"));
   } finally {
     loading.value = false;
   }
@@ -147,18 +159,15 @@ async function verifyFile() {
       verification.value.storage_status === "ok"
     ) {
       ElMessage.success(
-        "服务器文件完整性复检通过",
+        "成果文件保管检查通过",
       );
     } else {
       ElMessage.warning(
-        "复检发现服务器文件完整性问题",
+        "成果文件可能缺失或发生变化，请重新取得桌面端原文件",
       );
     }
   } catch (error: any) {
-    ElMessage.error(
-      error?.response?.data?.detail
-        ?? "完整性复检失败",
-    );
+    ElMessage.error(actionErrorMessage(error, "成果文件检查失败"));
   } finally {
     verifying.value = false;
   }
@@ -174,7 +183,7 @@ async function runPreflight() {
       ElMessage.warning(`业务核验发现 ${row.value.preflight_error_count} 个需要处理的问题`);
     }
   } catch (error: any) {
-    ElMessage.error(errorMessage(error, "业务核验失败"));
+    ElMessage.error(actionErrorMessage(error, "业务核验失败"));
   } finally {
     workflowBusy.value = false;
   }
@@ -203,7 +212,7 @@ async function review(decision: "accepted" | "rejected") {
     row.value = await reviewResultSubmission(submissionUid.value, decision, notes);
     ElMessage.success(decision === "accepted" ? "成果已审核接收" : "成果已退回");
   } catch (error: any) {
-    ElMessage.error(errorMessage(error, "成果审核失败"));
+    ElMessage.error(actionErrorMessage(error, "成果审核失败"));
   } finally {
     workflowBusy.value = false;
   }
@@ -225,7 +234,7 @@ async function importResult() {
     await refresh();
     ElMessage.success(`入库完成：${result.records} 条调查记录`);
   } catch (error: any) {
-    ElMessage.error(errorMessage(error, "成果入库失败"));
+    ElMessage.error(actionErrorMessage(error, "成果入库失败"));
   } finally {
     workflowBusy.value = false;
   }
@@ -248,7 +257,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
-      <h1>成果提交详情</h1>
+      <h1>成果审核详情</h1>
       <p>
         核对成果来源和调查范围，审核通过后纳入正式成果库。
       </p>
@@ -256,11 +265,11 @@ onMounted(refresh);
 
     <div class="detail-actions">
       <el-button @click="back">
-        返回成果中心
+        返回成果列表
       </el-button>
 
       <el-button @click="download">
-        下载原包
+        下载成果文件
       </el-button>
 
       <el-button
@@ -324,7 +333,7 @@ onMounted(refresh);
 
             <div class="detail-tags">
               <el-tag>
-                {{ statusLabels[row.status] || row.status }}
+                {{ statusLabels[row.status] || "状态待确认" }}
               </el-tag>
 
               <el-tag
@@ -332,7 +341,7 @@ onMounted(refresh);
               >
                 {{
                   storageLabels[row.storage_status]
-                    || row.storage_status
+                  || "状态待确认"
                 }}
               </el-tag>
             </div>
@@ -391,24 +400,14 @@ onMounted(refresh);
             {{ formatTime(row.storage_checked_at) }}
           </el-descriptions-item>
 
-          <el-descriptions-item label="存储状态">
+          <el-descriptions-item label="文件状态">
             {{
               storageLabels[row.storage_status]
-                || row.storage_status
+                || "状态待确认"
             }}
           </el-descriptions-item>
         </el-descriptions>
 
-        <el-collapse class="protocol-collapse">
-          <el-collapse-item title="查看技术追溯信息" name="tracking">
-            <div class="tracking-grid">
-              <span>本次提交识别码</span><code>{{ row.submission_uid }}</code>
-              <span>成果识别码</span><code>{{ row.result_uid || "—" }}</code>
-              <span>任务识别码</span><code>{{ row.submission_task_uid || "—" }}</code>
-              <span>文件校验码</span><code>{{ row.file_sha256 }}</code>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
       </el-card>
 
       <el-card
@@ -449,7 +448,7 @@ onMounted(refresh);
             class="detail-issue"
           >
             <el-tag :type="issue.severity === 'error' ? 'danger' : 'warning'" size="small">
-              {{ issue.severity === "error" ? "错误" : "警告" }}
+              {{ issue.severity === "error" ? "需处理" : "需关注" }}
             </el-tag>
             {{ workflowIssueText(issue) }}
           </div>

@@ -152,8 +152,8 @@ async function submit() {
     ElMessage.success("调查任务已生成并下载，请在桌面端的“任务接收”中导入");
     await loadAll();
     await doDownload(created);
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail ?? "任务生成失败");
+  } catch {
+    ElMessage.error("任务生成失败，请检查项目、批次和调查范围后重试");
   } finally {
     submitting.value = false;
   }
@@ -162,23 +162,32 @@ async function submit() {
 async function doDownload(task: SurveyTask) {
   try {
     await downloadSurveyTask(task);
-    ElMessage.success("任务包已下载，可在桌面端“任务接收”中导入");
+    ElMessage.success("任务文件已下载，可在桌面端“任务接收”中导入");
     await loadAll();
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail ?? "任务包下载失败");
+  } catch {
+    ElMessage.error("任务文件下载失败，请稍后重试");
   }
 }
 
 async function showDetail(task: SurveyTask) {
-  detail.value = await getSurveyTask(task.task_uid);
-  detailVisible.value = true;
+  try {
+    detail.value = await getSurveyTask(task.task_uid);
+    detailVisible.value = true;
+  } catch {
+    ElMessage.error("任务详情读取失败，请稍后重试");
+  }
 }
 
 async function cancel(task: SurveyTask) {
-  await ElMessageBox.confirm(`确认取消任务“${task.task_name}”吗？已下载的文件不会被远程收回。`, "取消任务", { type: "warning" });
-  await cancelSurveyTask(task.task_uid);
-  ElMessage.success("任务已取消");
-  await loadAll();
+  try {
+    await ElMessageBox.confirm(`确认取消任务“${task.task_name}”吗？已经交给基层的任务文件仍需另行通知停止使用。`, "取消任务", { type: "warning" });
+    await cancelSurveyTask(task.task_uid);
+    ElMessage.success("任务已取消");
+    await loadAll();
+  } catch (error) {
+    if (error === "cancel" || error === "close") return;
+    ElMessage.error("任务取消失败，请稍后重试");
+  }
 }
 
 onMounted(loadAll);
@@ -229,7 +238,7 @@ onMounted(loadAll);
       <el-table-column prop="selected_scope_count" label="分管范围" width="100" align="center" />
       <el-table-column prop="form_count" label="调查表" width="85" align="center" />
       <el-table-column label="状态" width="120">
-        <template #default="scope"><el-tag :type="statusTypes[scope.row.status]" effect="light">{{ statusLabels[scope.row.status] }}</el-tag></template>
+        <template #default="scope"><el-tag :type="statusTypes[scope.row.status]" effect="light">{{ statusLabels[scope.row.status] || "状态待确认" }}</el-tag></template>
       </el-table-column>
       <el-table-column label="创建时间" width="170">
         <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
@@ -301,7 +310,7 @@ onMounted(loadAll);
   <el-drawer v-model="detailVisible" title="调查任务详情" size="620px">
     <template v-if="detail">
       <div class="task-detail-hero">
-        <el-tag :type="statusTypes[detail.status]">{{ statusLabels[detail.status] }}</el-tag>
+        <el-tag :type="statusTypes[detail.status]">{{ statusLabels[detail.status] || "状态待确认" }}</el-tag>
         <h2>{{ detail.task_name }}</h2>
         <p>{{ detail.project_name }} · {{ detail.batch_name }}</p>
       </div>
@@ -321,11 +330,6 @@ onMounted(loadAll);
         <div><strong>{{ item.canal_name }}</strong><span>{{ item.organization_name }}</span></div>
         <el-tag effect="plain">{{ rangeText(item) }}</el-tag>
       </div>
-      <el-collapse class="protocol-collapse">
-        <el-collapse-item title="查看技术追溯信息" name="tracking">
-          <div class="detail-hash task-hash"><span>任务识别码</span><code>{{ detail.task_uid }}</code><span>文件校验码</span><code>{{ detail.file_sha256 }}</code></div>
-        </el-collapse-item>
-      </el-collapse>
     </template>
   </el-drawer>
 </template>

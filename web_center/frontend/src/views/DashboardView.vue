@@ -79,7 +79,7 @@ onMounted(checkServices);
       <p>从任务安排到成果入库，在这里掌握本轮调查工作的整体进展。</p>
     </div>
     <el-button :icon="Connection" :loading="checking" @click="checkServices">
-      重新检测服务
+      刷新运行状态
     </el-button>
   </div>
 
@@ -90,7 +90,7 @@ onMounted(checkServices);
       <p>庄浪河大渡槽 · 中心统一安排，基层桌面端离线调查，成果回传集中管理。</p>
     </div>
     <div class="hero-version">
-      <span>当前调查标准</span>
+      <span>当前调查版本</span>
       <strong>{{ overview?.product_version ?? "V1.2.0" }}</strong>
       <small>桌面端与中心端数据标准一致</small>
     </div>
@@ -99,7 +99,7 @@ onMounted(checkServices);
   <div class="dashboard-grid">
     <div class="metric-card">
       <div class="metric-icon indigo"><DataBoard /></div>
-      <div><span>项目总数</span><strong>{{ overview?.project_count ?? "—" }}</strong><small>中央项目档案</small></div>
+      <div><span>项目总数</span><strong>{{ overview?.project_count ?? "—" }}</strong><small>已建立的调查项目</small></div>
     </div>
     <div class="metric-card">
       <div class="metric-icon cyan"><Connection /></div>
@@ -133,28 +133,34 @@ onMounted(checkServices);
       <i>→</i>
       <div><b>5</b><strong>审核并形成成果库</strong><span>自动核对范围，减少人工汇总</span></div>
     </div>
+    <div class="collaboration-benefits">
+      <span>基础资料只维护一次</span>
+      <span>项目批次不重复填写</span>
+      <span>现场无网络照常调查</span>
+      <span>多单位成果集中汇总</span>
+    </div>
   </el-card>
 
   <div class="dashboard-lower">
     <el-card shadow="never" class="business-card service-panel">
       <template #header>
-        <div class="card-header"><span>系统运行情况</span><small>出现异常时可重新检测</small></div>
+        <div class="card-header"><span>系统运行情况</span><small>出现异常时可刷新检查</small></div>
       </template>
       <div class="service-row">
         <div class="service-status-dot" :class="apiState"></div>
-        <div class="service-detail"><strong>业务服务</strong><span>负责登录、任务和成果处理</span></div>
+        <div class="service-detail"><strong>业务功能</strong><span>登录、任务和成果处理</span></div>
         <el-tag :type="apiStatusType" effect="light">{{ apiState === "online" ? "运行正常" : apiState === "checking" ? "检测中" : "连接失败" }}</el-tag>
       </div>
       <div class="service-row">
         <div class="service-status-dot" :class="dbState"></div>
-        <div class="service-detail"><strong>数据服务</strong><span>负责安全保存中心业务数据</span></div>
+        <div class="service-detail"><strong>资料保存</strong><span>中心业务资料安全保存</span></div>
         <el-tag :type="dbStatusType" effect="light">{{ dbState === "online" ? "运行正常" : dbState === "checking" ? "检测中" : "连接失败" }}</el-tag>
       </div>
     </el-card>
 
     <el-card shadow="never" class="business-card master-panel">
       <template #header>
-        <div class="card-header"><span>正式主数据</span><router-link to="/master-data">查看详情</router-link></div>
+        <div class="card-header"><span>基础资料</span><router-link to="/master-data">查看详情</router-link></div>
       </template>
       <div class="master-overview">
         <div class="master-orb"><el-icon><OfficeBuilding /></el-icon></div>

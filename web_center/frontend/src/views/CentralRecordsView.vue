@@ -43,15 +43,15 @@ function formatTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
 
-function apiError(error: any, fallback: string) {
-  ElMessage.error(error?.response?.data?.detail ?? fallback);
+function showReadError(message: string) {
+  ElMessage.error(`${message}，请稍后重试；如问题持续，请联系系统管理员`);
 }
 
 async function refreshSummary() {
   try {
     summary.value = await getCentralRecordSummary();
-  } catch (error: any) {
-    apiError(error, "成果汇总读取失败");
+  } catch {
+    showReadError("成果汇总读取失败");
   }
 }
 
@@ -65,8 +65,8 @@ async function refresh() {
     });
     rows.value = data.items;
     total.value = data.total;
-  } catch (error: any) {
-    apiError(error, "中央成果记录读取失败");
+  } catch {
+    showReadError("正式成果读取失败");
   } finally {
     loading.value = false;
   }
@@ -91,8 +91,8 @@ async function openDetail(row: CentralRecord) {
   detail.value = null;
   try {
     detail.value = await getCentralRecord(row.survey_record_uid);
-  } catch (error: any) {
-    apiError(error, "记录详情读取失败");
+  } catch {
+    showReadError("调查记录详情读取失败");
   } finally {
     detailLoading.value = false;
   }
@@ -110,7 +110,13 @@ function payloadText(key: string) {
   const value = detail.value?.record_payload?.[key];
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) return value.join("、") || "—";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "object") {
+    const text = Object.values(value as Record<string, unknown>)
+      .filter((item) => item !== null && item !== undefined && item !== "")
+      .map((item) => String(item))
+      .join("、");
+    return text || "—";
+  }
   return String(value);
 }
 
@@ -122,10 +128,10 @@ onMounted(async () => {
 <template>
   <div class="module-header">
     <div>
-      <h1>数据成果库</h1>
+      <h1>正式成果库</h1>
       <p>集中查询已经审核入库的调查成果，按工程、单位、渠道和调查表快速筛选汇总。</p>
     </div>
-    <el-button :icon="Download" @click="exportCsv">导出当前筛选 CSV</el-button>
+    <el-button :icon="Download" @click="exportCsv">导出查询结果</el-button>
   </div>
 
   <div class="records-metric-grid">
@@ -171,7 +177,7 @@ onMounted(async () => {
         <el-table-column label="工程" min-width="220">
           <template #default="{ row }">
             <div>{{ row.asset_name || "未命名工程" }}</div>
-            <div class="result-secondary">{{ row.business_code || row.engineering_asset_uid }}</div>
+            <div class="result-secondary">{{ row.business_code || "暂无业务编号" }}</div>
           </template>
         </el-table-column>
         <el-table-column prop="form_code" label="调查表" width="130" />
@@ -238,7 +244,7 @@ onMounted(async () => {
           <el-table-column prop="description" label="说明" min-width="180" />
           <el-table-column prop="remark" label="备注" min-width="140" />
         </el-table>
-        <h3 class="drawer-section-title">影像元数据（{{ detail.media.length }}）</h3>
+        <h3 class="drawer-section-title">调查影像（{{ detail.media.length }}）</h3>
         <el-table :data="detail.media" border>
           <el-table-column prop="original_filename" label="文件名" min-width="180" />
           <el-table-column prop="media_kind" label="类型" width="100" />
@@ -246,16 +252,6 @@ onMounted(async () => {
           <el-table-column prop="part_name" label="部位" min-width="130" />
           <el-table-column prop="notes" label="备注" min-width="150" />
         </el-table>
-        <el-collapse class="protocol-collapse">
-          <el-collapse-item title="查看技术追溯信息" name="raw">
-            <div class="tracking-grid">
-              <span>记录识别码</span><code>{{ detail.survey_record_uid }}</code>
-              <span>来源任务识别码</span><code>{{ detail.source_task_uid || "—" }}</code>
-              <span>分管范围识别码</span><code>{{ detail.source_management_scope_uid || "—" }}</code>
-              <span>成果提交识别码</span><code>{{ detail.current_submission_uid }}</code>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
       </template>
     </div>
   </el-drawer>
