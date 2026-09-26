@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import sys
 from uuid import uuid4
 import zipfile
@@ -33,6 +34,7 @@ PACKAGE_KIND = "survey_task"
 APP_VERSION = "1.2.0"
 APP_VERSION_LABEL = "V1.2.0"
 MAX_TASK_UPLOAD_BYTES = 512 * 1024 * 1024
+MAX_DESKTOP_DATABASE_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -412,6 +414,22 @@ async def _save_task_upload(upload: UploadFile, target: Path) -> tuple[str, int]
     return digest.hexdigest(), size
 
 
+async def _save_desktop_database_upload(upload: UploadFile, target: Path) -> tuple[str, int]:
+    digest = sha256()
+    size = 0
+    with target.open("wb") as output:
+        while True:
+            chunk = await upload.read(UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_DESKTOP_DATABASE_UPLOAD_BYTES:
+                raise TaskUploadTooLargeError("数据库备份超过当前 4 GiB 安全上限。")
+            digest.update(chunk)
+            output.write(chunk)
+    return digest.hexdigest(), size
+
+
 def _task_package_reader(path: Path):
     desktop_src = REPOSITORY_ROOT / "src"
     desktop_src_text = str(desktop_src)
@@ -588,6 +606,523 @@ async def import_existing_task_package(
             shutil.rmtree(final_dir, ignore_errors=True)
             raise
         return row, False
+    finally:
+        temp_path.unlink(missing_ok=True)
+        await upload.close()
+
+
+_HEX_UID = re.compile(r"^[0-9a-f]{32}$")
+_DESKTOP_DATABASE_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+_DESKTOP_HISTORY_REQUIRED_COLUMNS = {
+    "id",
+    "task_uid",
+    "source_package_uid",
+    "project_uid",
+    "project_name_snapshot",
+    "survey_batch_uid",
+    "batch_name_snapshot",
+    "batch_code_snapshot",
+    "department_uid",
+    "department_name_snapshot",
+    "organization_unit_uid",
+    "organization_name_snapshot",
+    "task_name",
+    "selected_scope_count",
+    "task_created_at",
+}
+_DESKTOP_SCOPE_REQUIRED_COLUMNS = {
+    "task_issue_id",
+    "management_scope_uid",
+    "canal_unit_uid",
+    "organization_unit_uid",
+    "canal_name_snapshot",
+    "canal_level_snapshot",
+    "range_mode",
+    "sort_order",
+    "source_scope_status",
+}
+
+
+def _desktop_table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def _desktop_table_rows(connection: sqlite3.Connection, table_name: str) -> list[dict]:
+    if not _desktop_table_columns(connection, table_name):
+        return []
+    return [dict(row) for row in connection.execute(f"SELECT * FROM {table_name}").fetchall()]
+
+
+def _require_desktop_uid(value: object, field_name: str) -> str:
+    uid = str(value or "").strip()
+    if not _HEX_UID.fullmatch(uid):
+        raise ValueError(f"{field_name} 不是有效的 32 位任务身份。")
+    return uid
+
+
+def _desktop_organization_reference(issue: dict, scopes: list[dict], source_rows: list[dict]) -> list[dict]:
+    source_by_uid = {
+        str(row.get("organization_unit_uid") or ""): row
+        for row in source_rows
+        if row.get("organization_unit_uid")
+    }
+    department_uid = _require_desktop_uid(issue.get("department_uid"), "department_uid")
+    target_uid = _require_desktop_uid(issue.get("organization_unit_uid"), "organization_unit_uid")
+    target_type = str(issue.get("target_unit_type") or "water_office").strip()
+    if target_type not in {"department", "water_office"}:
+        raise ValueError("任务目标单位类型不受支持。")
+    if target_type == "department" and target_uid != department_uid:
+        raise ValueError("处级任务的目标单位身份与所属管理处不一致。")
+
+    owner_uids = {
+        _require_desktop_uid(row.get("organization_unit_uid"), "scope.organization_unit_uid")
+        for row in scopes
+    }
+    if target_type == "water_office" and owner_uids != {target_uid}:
+        raise ValueError("水管所任务包含了其他单位的分管范围。")
+
+    department_source = source_by_uid.get(department_uid, {})
+    result = [
+        {
+            "organization_uid": department_uid,
+            "parent_organization_uid": None,
+            "name": str(issue.get("department_name_snapshot") or "历史管理处"),
+            "unit_type": "department",
+            "business_code": department_source.get("business_code"),
+            "status": "active",
+            "description": department_source.get("description"),
+            "sort_order": int(department_source.get("sort_order") or 0),
+        }
+    ]
+    office_uids = owner_uids | ({target_uid} if target_type == "water_office" else set())
+    for index, uid in enumerate(sorted(office_uids), start=1):
+        source = source_by_uid.get(uid, {})
+        name = (
+            str(issue.get("organization_name_snapshot") or "")
+            if uid == target_uid
+            else str(source.get("name") or "")
+        )
+        result.append(
+            {
+                "organization_uid": uid,
+                "parent_organization_uid": department_uid,
+                "name": name or f"历史分管单位（{uid[:8]}）",
+                "unit_type": "water_office",
+                "business_code": source.get("business_code"),
+                "status": "active",
+                "description": source.get("description"),
+                "sort_order": int(source.get("sort_order") or index),
+            }
+        )
+    return result
+
+
+def _desktop_canal_reference(scopes: list[dict], source_rows: list[dict]) -> list[dict]:
+    source_by_uid = {
+        str(row.get("canal_unit_uid") or ""): row
+        for row in source_rows
+        if row.get("canal_unit_uid")
+    }
+    uid_by_id = {
+        row.get("id"): str(row.get("canal_unit_uid"))
+        for row in source_rows
+        if row.get("id") is not None and row.get("canal_unit_uid")
+    }
+    snapshots: dict[str, dict] = {}
+    for scope in scopes:
+        uid = _require_desktop_uid(scope.get("canal_unit_uid"), "scope.canal_unit_uid")
+        snapshot = {
+            "name": str(scope.get("canal_name_snapshot") or "").strip(),
+            "canal_level": str(scope.get("canal_level_snapshot") or "").strip(),
+        }
+        if not snapshot["name"] or snapshot["canal_level"] not in {"01", "02", "03", "04"}:
+            raise ValueError("下发历史中的渠道快照不完整。")
+        if uid in snapshots and snapshots[uid] != snapshot:
+            raise ValueError("同一渠道在下发历史中存在互相冲突的冻结名称或级别。")
+        snapshots[uid] = snapshot
+
+    included = set(snapshots)
+    pending = list(included)
+    while pending:
+        row = source_by_uid.get(pending.pop())
+        parent_uid = uid_by_id.get(row.get("parent_id")) if row else None
+        if parent_uid and parent_uid not in included:
+            included.add(parent_uid)
+            pending.append(parent_uid)
+
+    result = []
+    for uid in included:
+        source = source_by_uid.get(uid, {})
+        parent_uid = uid_by_id.get(source.get("parent_id"))
+        frozen = snapshots.get(uid, {})
+        level = str(frozen.get("canal_level") or source.get("canal_level") or "04")
+        if level not in {"01", "02", "03", "04"}:
+            level = "04"
+        result.append(
+            {
+                "canal_uid": uid,
+                "parent_canal_uid": parent_uid if parent_uid in included else None,
+                "name": str(frozen.get("name") or source.get("name") or f"历史渠道（{uid[:8]}）"),
+                "canal_level": level,
+                "status": "active",
+                "description": source.get("description"),
+                "sort_order": int(source.get("sort_order") or 0),
+            }
+        )
+    return sorted(result, key=lambda item: (item["sort_order"], item["name"], item["canal_uid"]))
+
+
+def _build_desktop_history_documents(
+    issue: dict,
+    scopes: list[dict],
+    *,
+    organization_rows: list[dict],
+    canal_rows: list[dict],
+    source_filename: str,
+    database_sha256: str,
+) -> tuple[str, str, dict, dict[str, bytes], dict]:
+    task_uid = _require_desktop_uid(issue.get("task_uid"), "task_uid")
+    package_uid = _require_desktop_uid(issue.get("source_package_uid"), "source_package_uid")
+    project_uid = _require_desktop_uid(issue.get("project_uid"), "project_uid")
+    batch_uid = _require_desktop_uid(issue.get("survey_batch_uid"), "survey_batch_uid")
+    if not scopes or int(issue.get("selected_scope_count") or 0) != len(scopes):
+        raise ValueError("任务下发历史中的分管范围数量不一致。")
+    if any(str(item.get("source_scope_status") or "") != "active" for item in scopes):
+        raise ValueError("任务下发历史包含非启用范围，无法重建原始正式任务。")
+
+    target_type = str(issue.get("target_unit_type") or "water_office").strip()
+    organizations = _desktop_organization_reference(issue, scopes, organization_rows)
+    canals = _desktop_canal_reference(scopes, canal_rows)
+    organization_names = {item["organization_uid"]: item["name"] for item in organizations}
+    management_scopes = []
+    for item in scopes:
+        range_mode = str(item.get("range_mode") or "")
+        if range_mode not in {"whole", "segment_known", "segment_unknown"}:
+            raise ValueError("任务下发历史包含无效的分段方式。")
+        management_scopes.append(
+            {
+                "management_scope_uid": _require_desktop_uid(
+                    item.get("management_scope_uid"), "management_scope_uid"
+                ),
+                "canal_uid": _require_desktop_uid(item.get("canal_unit_uid"), "canal_unit_uid"),
+                "organization_unit_uid": _require_desktop_uid(
+                    item.get("organization_unit_uid"), "organization_unit_uid"
+                ),
+                "range_mode": range_mode,
+                "start_stake_text": item.get("start_stake_text"),
+                "start_stake_value": item.get("start_stake_value"),
+                "end_stake_text": item.get("end_stake_text"),
+                "end_stake_value": item.get("end_stake_value"),
+                "sort_order": int(item.get("sort_order") or 0),
+                "status": "active",
+                "description": item.get("description"),
+            }
+        )
+    selected_uids = [item["management_scope_uid"] for item in management_scopes]
+    if len(selected_uids) != len(set(selected_uids)):
+        raise ValueError("任务下发历史包含重复的分管范围身份。")
+
+    parent_task_uid = str(issue.get("parent_task_uid") or "").strip() or None
+    root_task_uid = str(issue.get("root_task_uid") or "").strip() or task_uid
+    if parent_task_uid:
+        _require_desktop_uid(parent_task_uid, "parent_task_uid")
+    _require_desktop_uid(root_task_uid, "root_task_uid")
+    task_depth = int(issue.get("task_depth") or 0)
+    if task_depth < 0:
+        raise ValueError("任务层级不能小于零。")
+
+    created_at = str(issue.get("task_created_at") or issue.get("issued_at") or "").strip()
+    if not created_at:
+        created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    task_document = {
+        "task_schema_version": TASK_SCHEMA_VERSION,
+        "task_uid": task_uid,
+        "lineage": {
+            "parent_task_uid": parent_task_uid,
+            "root_task_uid": root_task_uid,
+            "depth": task_depth,
+        },
+        "task_name": str(issue.get("task_name") or "桌面端历史调查任务"),
+        "notes": str(issue.get("notes") or "").strip() or None,
+        "project": {
+            "project_uid": project_uid,
+            "name": str(issue.get("project_name_snapshot") or "桌面端历史调查项目"),
+            "short_name": str(issue.get("project_short_name_snapshot") or "").strip() or None,
+        },
+        "survey_batch": {
+            "survey_batch_uid": batch_uid,
+            "batch_name": str(issue.get("batch_name_snapshot") or "桌面端历史调查批次"),
+            "batch_code": str(issue.get("batch_code_snapshot") or f"HISTORY-{batch_uid[:8]}"),
+            "start_date": issue.get("batch_start_date_snapshot"),
+            "end_date": issue.get("batch_end_date_snapshot"),
+        },
+        "assignment": {
+            "target_unit_type": target_type,
+            "department_uid": str(issue.get("department_uid")),
+            "department_name": str(issue.get("department_name_snapshot") or "历史管理处"),
+            "organization_unit_uid": str(issue.get("organization_unit_uid")),
+            "organization_name": str(issue.get("organization_name_snapshot") or "历史任务单位"),
+        },
+        "scope": {
+            "selected_management_scope_uids": selected_uids,
+            "selected_management_scope_count": len(selected_uids),
+        },
+        "created_at": created_at,
+    }
+    form_items, form_version, form_hash = load_form_contract()
+    payload_files = {
+        "task.json": _encode_json(task_document),
+        "reference/organization_units.json": _encode_json({"items": organizations}),
+        "reference/canal_units.json": _encode_json({"items": canals}),
+        "reference/canal_management_scopes.json": _encode_json({"items": management_scopes}),
+        "reference/forms.json": _encode_json({"items": form_items}),
+    }
+    manifest = {
+        "package_kind": PACKAGE_KIND,
+        "task_schema_version": TASK_SCHEMA_VERSION,
+        "created_at": created_at,
+        "app_version": str(issue.get("app_version") or APP_VERSION),
+        "app_version_label": f"V{str(issue.get('app_version') or APP_VERSION).lstrip('Vv')}",
+        "task_uid": task_uid,
+        "parent_task_uid": parent_task_uid,
+        "root_task_uid": root_task_uid,
+        "task_depth": task_depth,
+        "project_uid": project_uid,
+        "survey_batch_uid": batch_uid,
+    }
+    canal_names = {item["canal_uid"]: item["name"] for item in canals}
+    frozen_scopes = [
+        {
+            **item,
+            "canal_name": canal_names.get(item["canal_uid"], ""),
+            "organization_name": organization_names.get(item["organization_unit_uid"], ""),
+        }
+        for item in management_scopes
+    ]
+    frozen = {
+        "task": task_document,
+        "organizations": organizations,
+        "canals": canals,
+        "management_scopes": frozen_scopes,
+        "forms": form_items,
+        "master_data_version": "桌面端正式下发历史快照",
+        "master_contract_sha256": "",
+        "form_contract_version": form_version,
+        "form_contract_sha256": form_hash,
+        "handover": {
+            "source": "desktop_database_handover",
+            "original_filename": source_filename,
+            "database_sha256": database_sha256,
+            "registered_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+    }
+    return task_uid, package_uid, manifest, payload_files, frozen
+
+
+def _ensure_handover_project_batch(db: Session, issue: dict) -> tuple[Project, SurveyBatch, bool, bool]:
+    project_uid = _require_desktop_uid(issue.get("project_uid"), "project_uid")
+    batch_uid = _require_desktop_uid(issue.get("survey_batch_uid"), "survey_batch_uid")
+    project = db.scalar(select(Project).where(Project.project_uid == project_uid))
+    created_project = project is None
+    if project is None:
+        project = Project(
+            project_uid=project_uid,
+            name=str(issue.get("project_name_snapshot") or "桌面端历史调查项目")[:200],
+            short_name=(str(issue.get("project_short_name_snapshot") or "").strip()[:100] or None),
+            status="active",
+        )
+        db.add(project)
+        db.flush()
+
+    batch = db.scalar(select(SurveyBatch).where(SurveyBatch.survey_batch_uid == batch_uid))
+    created_batch = batch is None
+    if batch is None:
+        batch_code = str(issue.get("batch_code_snapshot") or f"HISTORY-{batch_uid[:8]}")[:50]
+        code_owner = db.scalar(
+            select(SurveyBatch).where(
+                SurveyBatch.project_id == project.id,
+                SurveyBatch.batch_code == batch_code,
+            )
+        )
+        if code_owner is not None:
+            raise TaskPackageConflictError(
+                f"批次编号“{batch_code}”已由另一批次使用，请先核对项目批次。"
+            )
+        batch = SurveyBatch(
+            survey_batch_uid=batch_uid,
+            project_id=project.id,
+            batch_name=str(issue.get("batch_name_snapshot") or "桌面端历史调查批次")[:200],
+            batch_code=batch_code,
+            start_date=_parse_package_date(issue.get("batch_start_date_snapshot")),
+            end_date=_parse_package_date(issue.get("batch_end_date_snapshot")),
+            status="active",
+        )
+        db.add(batch)
+        db.flush()
+    elif batch.project_id != project.id:
+        raise TaskPackageConflictError("桌面下发历史中的项目与调查批次归属不一致。")
+    return project, batch, created_project, created_batch
+
+
+async def import_desktop_task_history_database(
+    db: Session,
+    *,
+    upload: UploadFile,
+    importer: User,
+) -> dict:
+    """Read immutable issued-task history from a desktop SQLite backup.
+
+    The source is opened read-only and is never migrated or modified. Drafts,
+    current survey records and media are intentionally outside this handover.
+    """
+    filename = Path(upload.filename or "desktop-backup.db").name.strip()
+    if Path(filename).suffix.lower() not in _DESKTOP_DATABASE_SUFFIXES:
+        raise ValueError("请选择桌面端数据库备份文件（.db、.sqlite 或 .sqlite3）。")
+    TASK_INCOMING_ROOT.mkdir(parents=True, exist_ok=True)
+    temp_path = TASK_INCOMING_ROOT / f"{uuid4().hex}.sqlite.part"
+    try:
+        database_sha256, _ = await _save_desktop_database_upload(upload, temp_path)
+        with temp_path.open("rb") as source:
+            header = source.read(16)
+        if header != b"SQLite format 3\x00":
+            raise ValueError("所选文件不是有效的 SQLite 数据库备份。")
+        try:
+            connection = sqlite3.connect(
+                f"{temp_path.resolve().as_uri()}?mode=ro&immutable=1",
+                uri=True,
+            )
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
+        except sqlite3.Error as exc:
+            raise ValueError("数据库备份无法以只读方式打开，请重新制作完整备份。") from exc
+
+        try:
+            issue_columns = _desktop_table_columns(connection, "survey_task_issues")
+            scope_columns = _desktop_table_columns(connection, "survey_task_issue_scopes")
+            if not issue_columns or not scope_columns:
+                raise ValueError("该数据库没有正式任务下发历史，请改用原始 .ydtask 文件接续。")
+            missing_issue = _DESKTOP_HISTORY_REQUIRED_COLUMNS - issue_columns
+            missing_scope = _DESKTOP_SCOPE_REQUIRED_COLUMNS - scope_columns
+            if missing_issue or missing_scope:
+                raise ValueError("任务下发历史结构不完整，请先使用当前桌面端完成数据库升级。")
+
+            issues = [dict(row) for row in connection.execute("SELECT * FROM survey_task_issues ORDER BY id")]
+            scope_rows = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM survey_task_issue_scopes ORDER BY task_issue_id, sort_order, id"
+                )
+            ]
+            scopes_by_issue: dict[int, list[dict]] = {}
+            for row in scope_rows:
+                scopes_by_issue.setdefault(int(row["task_issue_id"]), []).append(row)
+            organization_rows = _desktop_table_rows(connection, "organization_units")
+            canal_rows = _desktop_table_rows(connection, "canal_units")
+        finally:
+            connection.close()
+
+        report = {
+            "source_filename": filename,
+            "database_sha256": database_sha256,
+            "discovered_tasks": len(issues),
+            "imported_tasks": 0,
+            "existing_tasks": 0,
+            "conflict_tasks": 0,
+            "created_projects": 0,
+            "created_batches": 0,
+            "imported_task_uids": [],
+            "issues": [],
+        }
+        created_project_uids: set[str] = set()
+        created_batch_uids: set[str] = set()
+        for issue in issues:
+            label = str(issue.get("task_name") or issue.get("task_uid") or "未命名任务")
+            final_dir: Path | None = None
+            try:
+                task_uid = _require_desktop_uid(issue.get("task_uid"), "task_uid")
+                package_uid = _require_desktop_uid(issue.get("source_package_uid"), "source_package_uid")
+                existing = db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid))
+                if existing is not None:
+                    if existing.package_uid == package_uid:
+                        report["existing_tasks"] += 1
+                        continue
+                    raise TaskPackageConflictError("相同任务身份已登记，但任务文件身份不同。")
+                package_owner = db.scalar(select(SurveyTask).where(SurveyTask.package_uid == package_uid))
+                if package_owner is not None:
+                    raise TaskPackageConflictError("任务文件身份已由另一个任务占用。")
+
+                task_uid, package_uid, manifest, payload_files, frozen = _build_desktop_history_documents(
+                    issue,
+                    scopes_by_issue.get(int(issue["id"]), []),
+                    organization_rows=organization_rows,
+                    canal_rows=canal_rows,
+                    source_filename=filename,
+                    database_sha256=database_sha256,
+                )
+                project, batch, created_project, created_batch = _ensure_handover_project_batch(db, issue)
+                final_dir = TASK_STORAGE_ROOT / "handover-db" / task_uid
+                final_path = final_dir / "package.ydtask"
+                _write_package(final_path, package_uid, manifest, payload_files)
+                _task_package_reader(final_path)
+                file_bytes = final_path.read_bytes()
+                task = frozen["task"]
+                assignment = task["assignment"]
+                lineage = task["lineage"]
+                now = datetime.now().astimezone()
+                row = SurveyTask(
+                    task_uid=task_uid,
+                    package_uid=package_uid,
+                    project_id=project.id,
+                    survey_batch_id=batch.id,
+                    task_name=str(task["task_name"])[:240],
+                    notes=(str(task.get("notes") or "").strip()[:2000] or None),
+                    target_unit_type=str(assignment["target_unit_type"]),
+                    department_uid=str(assignment["department_uid"]),
+                    department_name=str(assignment["department_name"]),
+                    organization_unit_uid=str(assignment["organization_unit_uid"]),
+                    organization_name=str(assignment["organization_name"]),
+                    parent_task_uid=lineage["parent_task_uid"],
+                    root_task_uid=str(lineage["root_task_uid"]),
+                    task_depth=int(lineage["depth"]),
+                    selected_scope_uids=list(task["scope"]["selected_management_scope_uids"]),
+                    frozen_snapshot_json=frozen,
+                    selected_scope_count=len(frozen["management_scopes"]),
+                    reference_canal_count=len(frozen["canals"]),
+                    reference_organization_count=len(frozen["organizations"]),
+                    form_count=len(frozen["forms"]),
+                    stored_relative_path=final_path.relative_to(BACKEND_ROOT).as_posix(),
+                    file_sha256=sha256(file_bytes).hexdigest(),
+                    file_size=len(file_bytes),
+                    status="downloaded",
+                    download_count=1,
+                    first_downloaded_at=now,
+                    last_downloaded_at=now,
+                    created_by_user_uid=importer.user_uid,
+                    created_by_username=importer.username,
+                )
+                db.add(row)
+                db.commit()
+                report["imported_tasks"] += 1
+                report["imported_task_uids"].append(task_uid)
+                if created_project:
+                    created_project_uids.add(project.project_uid)
+                if created_batch:
+                    created_batch_uids.add(batch.survey_batch_uid)
+            except Exception as exc:
+                db.rollback()
+                if final_dir is not None:
+                    shutil.rmtree(final_dir, ignore_errors=True)
+                report["conflict_tasks"] += 1
+                if len(report["issues"]) < 100:
+                    report["issues"].append(f"{label}：{str(exc) or '无法接续'}")
+        report["created_projects"] = len(created_project_uids)
+        report["created_batches"] = len(created_batch_uids)
+        return report
+    except sqlite3.Error as exc:
+        raise ValueError("数据库备份读取失败，请确认备份完整且未损坏。") from exc
     finally:
         temp_path.unlink(missing_ok=True)
         await upload.close()

@@ -11,6 +11,7 @@ from app.models.auth import User
 from app.models.project import Project, SurveyBatch
 from app.models.survey_task import SurveyTask
 from app.schemas.survey_task import (
+    DesktopDatabaseHandoverRead,
     FrozenScopeRead,
     SurveyTaskCreate,
     SurveyTaskDetail,
@@ -25,6 +26,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 TaskReader = Annotated[User, Depends(require_permission("tasks.read"))]
 TaskWriter = Annotated[User, Depends(require_permission("tasks.write"))]
 TaskDownloader = Annotated[User, Depends(require_permission("tasks.download"))]
+TaskAdministrator = Annotated[User, Depends(require_permission("*"))]
 
 
 def to_read(row: SurveyTask, project: Project, batch: SurveyBatch) -> SurveyTaskRead:
@@ -62,10 +64,15 @@ def to_read(row: SurveyTask, project: Project, batch: SurveyBatch) -> SurveyTask
         created_at=row.created_at,
         source_channel=(
             "desktop_handover"
-            if handover.get("source") == "desktop_existing_task"
+            if handover.get("source")
+            in {"desktop_existing_task", "desktop_database_handover"}
             else "web_center"
         ),
-        source_filename=(str(handover.get("original_filename")) if handover.get("original_filename") else None),
+        source_filename=(
+            str(handover.get("original_filename"))
+            if handover.get("original_filename")
+            else None
+        ),
     )
 
 
@@ -120,6 +127,33 @@ def post_task(payload: SurveyTaskCreate, request: Request, creator: TaskWriter, 
         "selected_scope_count": row.selected_scope_count,
     }
     return to_detail(row, project, batch)
+
+
+@router.post("/handover-desktop-database", response_model=DesktopDatabaseHandoverRead)
+async def handover_desktop_database(
+    request: Request,
+    importer: TaskAdministrator,
+    db: DbSession,
+    file: UploadFile = File(...),
+):
+    try:
+        report = await survey_task_service.import_desktop_task_history_database(
+            db, upload=file, importer=importer
+        )
+    except survey_task_service.TaskUploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    request.state.audit_summary = "从桌面中心库接续正式下发任务"
+    request.state.audit_details = {
+        "source_filename": report["source_filename"],
+        "database_sha256": report["database_sha256"],
+        "discovered_tasks": report["discovered_tasks"],
+        "imported_tasks": report["imported_tasks"],
+        "existing_tasks": report["existing_tasks"],
+        "conflict_tasks": report["conflict_tasks"],
+    }
+    return report
 
 
 @router.post("/import-existing", response_model=SurveyTaskDetail, status_code=status.HTTP_201_CREATED)

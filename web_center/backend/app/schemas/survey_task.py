@@ -93,3 +93,16 @@ class SurveyTaskPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DesktopDatabaseHandoverRead(BaseModel):
+    source_filename: str
+    database_sha256: str
+    discovered_tasks: int
+    imported_tasks: int
+    existing_tasks: int
+    conflict_tasks: int
+    created_projects: int
+    created_batches: int
+    imported_task_uids: list[str]
+    issues: list[str]

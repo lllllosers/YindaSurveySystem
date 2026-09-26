@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import sqlite3
 import sys
 from uuid import uuid4
 
@@ -260,6 +261,194 @@ def test_register_existing_desktop_task_is_idempotent(tmp_path: Path) -> None:
             cleanup_task(task_uid)
         client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
         client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(admin.user_uid)
+
+
+def test_handover_issued_tasks_from_read_only_desktop_database(tmp_path: Path) -> None:
+    from services.survey_task_package_reader import inspect_survey_task_package
+
+    admin = create_test_user("admin")
+    manager = create_test_user("manager")
+    client = TestClient(app)
+    manager_client = TestClient(app)
+    csrf = login_client(client, admin.username)
+    manager_csrf = login_client(manager_client, manager.username)
+    source = tmp_path / "desktop-center-backup.db"
+    task_uid = uuid4().hex
+    package_uid = uuid4().hex
+    project_uid = uuid4().hex
+    batch_uid = uuid4().hex
+    department_uid = uuid4().hex
+    office_uid = uuid4().hex
+    parent_canal_uid = uuid4().hex
+    canal_uid = uuid4().hex
+    scope_uid = uuid4().hex
+
+    with sqlite3.connect(source) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE survey_task_issues (
+                id INTEGER PRIMARY KEY,
+                task_uid TEXT NOT NULL,
+                source_package_uid TEXT NOT NULL,
+                task_schema_version TEXT NOT NULL,
+                app_version TEXT NOT NULL,
+                parent_task_uid TEXT,
+                root_task_uid TEXT,
+                task_depth INTEGER NOT NULL,
+                target_unit_type TEXT NOT NULL,
+                project_uid TEXT NOT NULL,
+                project_name_snapshot TEXT NOT NULL,
+                project_short_name_snapshot TEXT,
+                survey_batch_uid TEXT NOT NULL,
+                batch_name_snapshot TEXT NOT NULL,
+                batch_code_snapshot TEXT NOT NULL,
+                batch_start_date_snapshot TEXT,
+                batch_end_date_snapshot TEXT,
+                department_uid TEXT NOT NULL,
+                department_name_snapshot TEXT NOT NULL,
+                organization_unit_uid TEXT NOT NULL,
+                organization_name_snapshot TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                notes TEXT,
+                selected_scope_count INTEGER NOT NULL,
+                task_created_at TEXT NOT NULL,
+                issued_at TEXT NOT NULL
+            );
+            CREATE TABLE survey_task_issue_scopes (
+                id INTEGER PRIMARY KEY,
+                task_issue_id INTEGER NOT NULL,
+                management_scope_uid TEXT NOT NULL,
+                canal_unit_uid TEXT NOT NULL,
+                organization_unit_uid TEXT NOT NULL,
+                canal_name_snapshot TEXT NOT NULL,
+                canal_level_snapshot TEXT NOT NULL,
+                range_mode TEXT NOT NULL,
+                start_stake_text TEXT,
+                start_stake_value REAL,
+                end_stake_text TEXT,
+                end_stake_value REAL,
+                sort_order INTEGER NOT NULL,
+                source_scope_status TEXT NOT NULL,
+                description TEXT
+            );
+            CREATE TABLE organization_units (
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER,
+                name TEXT NOT NULL,
+                unit_type TEXT NOT NULL,
+                business_code TEXT,
+                status TEXT NOT NULL,
+                description TEXT,
+                sort_order INTEGER NOT NULL,
+                organization_unit_uid TEXT NOT NULL
+            );
+            CREATE TABLE canal_units (
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER,
+                name TEXT NOT NULL,
+                canal_level TEXT NOT NULL,
+                status TEXT NOT NULL,
+                description TEXT,
+                sort_order INTEGER NOT NULL,
+                canal_unit_uid TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO organization_units VALUES (1, NULL, ?, 'department', 'D01', 'active', NULL, 1, ?)",
+            ("第一管理处", department_uid),
+        )
+        connection.execute(
+            "INSERT INTO organization_units VALUES (2, 1, ?, 'water_office', 'O01', 'active', NULL, 2, ?)",
+            ("第一水管所", office_uid),
+        )
+        connection.execute(
+            "INSERT INTO canal_units VALUES (1, NULL, ?, '01', 'active', NULL, 1, ?)",
+            ("总干渠", parent_canal_uid),
+        )
+        connection.execute(
+            "INSERT INTO canal_units VALUES (2, 1, ?, '02', 'active', NULL, 2, ?)",
+            ("一干渠", canal_uid),
+        )
+        connection.execute(
+            """
+            INSERT INTO survey_task_issues VALUES (
+                1, ?, ?, '3.0', '1.2.0', NULL, ?, 0, 'water_office',
+                ?, '历史项目', '历史项目', ?, '历史批次', 'HISTORY-2026',
+                '2026-01-01', '2026-12-31', ?, '第一管理处', ?, '第一水管所',
+                '桌面端正式下发任务', '从不可变历史接续', 1,
+                '2026-09-01T09:00:00+08:00', '2026-09-01 09:00:00'
+            )
+            """,
+            (task_uid, package_uid, task_uid, project_uid, batch_uid, department_uid, office_uid),
+        )
+        connection.execute(
+            """
+            INSERT INTO survey_task_issue_scopes VALUES (
+                1, 1, ?, ?, ?, '一干渠', '02', 'segment_known',
+                '0+000', 0.0, '1+000', 1000.0, 1, 'active', '历史冻结范围'
+            )
+            """,
+            (scope_uid, canal_uid, office_uid),
+        )
+
+    task_created = False
+    try:
+        database_bytes = source.read_bytes()
+        forbidden = manager_client.post(
+            "/api/v1/survey-tasks/handover-desktop-database",
+            headers={"X-CSRF-Token": manager_csrf},
+            files={"file": (source.name, database_bytes, "application/vnd.sqlite3")},
+        )
+        assert forbidden.status_code == 403
+
+        imported = client.post(
+            "/api/v1/survey-tasks/handover-desktop-database",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": (source.name, database_bytes, "application/vnd.sqlite3")},
+        )
+        assert imported.status_code == 200, imported.text
+        report = imported.json()
+        assert report["discovered_tasks"] == 1
+        assert report["imported_tasks"] == 1
+        assert report["existing_tasks"] == 0
+        assert report["conflict_tasks"] == 0
+        assert report["created_projects"] == 1
+        assert report["created_batches"] == 1
+        task_created = True
+
+        detail = client.get(f"/api/v1/survey-tasks/{task_uid}")
+        assert detail.status_code == 200
+        assert detail.json()["source_channel"] == "desktop_handover"
+        assert detail.json()["source_filename"] == source.name
+        assert detail.json()["selected_scope_count"] == 1
+        assert detail.json()["frozen_scopes"][0]["canal_name"] == "一干渠"
+
+        package = client.get(f"/api/v1/survey-tasks/{task_uid}/download")
+        assert package.status_code == 200
+        package_path = tmp_path / "recovered.ydtask"
+        package_path.write_bytes(package.content)
+        inspection = inspect_survey_task_package(package_path)
+        assert inspection.valid, inspection.format_text()
+        assert inspection.task is not None
+        assert inspection.task["task_uid"] == task_uid
+        assert len(inspection.canals) == 2
+
+        repeated = client.post(
+            "/api/v1/survey-tasks/handover-desktop-database",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": (source.name, database_bytes, "application/vnd.sqlite3")},
+        )
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["imported_tasks"] == 0
+        assert repeated.json()["existing_tasks"] == 1
+    finally:
+        if task_created:
+            cleanup_task(task_uid)
+        client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
+        client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(manager.user_uid)
         cleanup_test_user(admin.user_uid)
 
 

@@ -17,7 +17,7 @@ from app.services.master_data_service import get_snapshot
 
 
 router = APIRouter(tags=["System"])
-API_GENERATION = "2026.09.26-canal-scope-v2"
+API_GENERATION = "2026.09.26-task-handover-v3"
 OverviewReader = Annotated[
     User,
     Depends(require_permission("projects.read")),

@@ -75,6 +75,19 @@ export interface SurveyTaskPage {
   offset: number;
 }
 
+export interface DesktopDatabaseHandoverReport {
+  source_filename: string;
+  database_sha256: string;
+  discovered_tasks: number;
+  imported_tasks: number;
+  existing_tasks: number;
+  conflict_tasks: number;
+  created_projects: number;
+  created_batches: number;
+  imported_task_uids: string[];
+  issues: string[];
+}
+
 export async function listSurveyTasks(): Promise<SurveyTaskPage> {
   const response = await api.get<SurveyTaskPage>("/survey-tasks");
   return response.data;
@@ -94,6 +107,17 @@ export async function importExistingSurveyTask(file: File): Promise<SurveyTaskDe
   const form = new FormData();
   form.append("file", file);
   const response = await api.post<SurveyTaskDetail>("/survey-tasks/import-existing", form, { timeout: 0 });
+  return response.data;
+}
+
+export async function handoverDesktopDatabase(file: File): Promise<DesktopDatabaseHandoverReport> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await api.post<DesktopDatabaseHandoverReport>(
+    "/survey-tasks/handover-desktop-database",
+    form,
+    { timeout: 0 },
+  );
   return response.data;
 }
 

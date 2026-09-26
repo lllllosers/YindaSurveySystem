@@ -124,5 +124,5 @@ def test_health_reports_api_generation_for_launcher_compatibility() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "yinda-web-center-api",
-        "api_generation": "2026.09.26-canal-scope-v2",
+        "api_generation": "2026.09.26-task-handover-v3",
     }

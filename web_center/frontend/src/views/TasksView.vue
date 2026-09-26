@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Download, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
+import { Coin, Download, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 
 import { getMasterDataSnapshot, type MasterDataSnapshot } from "../api/masterData";
@@ -10,10 +10,12 @@ import {
   createSurveyTask,
   downloadSurveyTask,
   getSurveyTask,
+  handoverDesktopDatabase,
   importExistingSurveyTask,
   listSurveyTasks,
   type SurveyTask,
   type SurveyTaskDetail,
+  type DesktopDatabaseHandoverReport,
   type TaskTargetType,
 } from "../api/surveyTasks";
 import { useAuthStore } from "../stores/auth";
@@ -31,6 +33,10 @@ const tasks = ref<SurveyTask[]>([]);
 const detail = ref<SurveyTaskDetail | null>(null);
 const importInput = ref<HTMLInputElement>();
 const importing = ref(false);
+const databaseInput = ref<HTMLInputElement>();
+const databaseImporting = ref(false);
+const handoverReport = ref<DesktopDatabaseHandoverReport | null>(null);
+const reportVisible = ref(false);
 
 const form = reactive({
   project_uid: "",
@@ -205,6 +211,51 @@ async function importExistingTasks(event: Event) {
   await loadAll();
 }
 
+async function chooseDesktopDatabase() {
+  try {
+    await ElMessageBox.confirm(
+      "请使用桌面端中心数据库的完整备份。系统只读取已经正式下发的任务历史，不读取未下发草稿，不修改所选数据库，也不会覆盖 Web 中已有任务。建议先退出桌面端再复制数据库文件，避免备份不完整。",
+      "从桌面中心库接续任务",
+      {
+        confirmButtonText: "选择数据库备份",
+        cancelButtonText: "暂不处理",
+        type: "info",
+        distinguishCancelAndClose: true,
+      },
+    );
+    databaseInput.value?.click();
+  } catch {
+    // 用户取消，不提示错误。
+  }
+}
+
+async function importDesktopDatabase(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  if (!/[.](db|sqlite|sqlite3)$/i.test(file.name)) {
+    ElMessage.error("请选择桌面端数据库备份（.db、.sqlite 或 .sqlite3）");
+    return;
+  }
+  databaseImporting.value = true;
+  try {
+    handoverReport.value = await handoverDesktopDatabase(file);
+    reportVisible.value = true;
+    const report = handoverReport.value;
+    if (report.conflict_tasks) {
+      ElMessage.warning(`接续完成：新增 ${report.imported_tasks} 个，已有 ${report.existing_tasks} 个，${report.conflict_tasks} 个需要核对`);
+    } else {
+      ElMessage.success(`接续完成：新增 ${report.imported_tasks} 个，已有 ${report.existing_tasks} 个`);
+    }
+    await loadAll();
+  } catch (error: any) {
+    ElMessage.error(String(error?.response?.data?.detail || "数据库备份无法接续，请核对文件后重试"));
+  } finally {
+    databaseImporting.value = false;
+  }
+}
+
 async function showDetail(task: SurveyTask) {
   try {
     detail.value = await getSurveyTask(task.task_uid);
@@ -239,8 +290,10 @@ onMounted(loadAll);
     <div class="header-actions">
       <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
       <el-button v-if="canWrite" :icon="UploadFilled" :loading="importing" @click="chooseExistingTasks">接续已有桌面任务</el-button>
+      <el-button v-if="auth.isAdmin" :icon="Coin" :loading="databaseImporting" @click="chooseDesktopDatabase">从桌面中心库接续</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建并下发任务</el-button>
       <input ref="importInput" type="file" accept=".ydtask" multiple hidden @change="importExistingTasks" />
+      <input ref="databaseInput" type="file" accept=".db,.sqlite,.sqlite3" hidden @change="importDesktopDatabase" />
     </div>
   </div>
 
@@ -254,7 +307,7 @@ onMounted(loadAll);
 
   <el-alert
     class="task-handover-alert"
-    title="已经由桌面端下发、仍在执行或需要回收历史成果的任务，不用重建。点击“接续已有桌面任务”批量选择原始任务文件，系统会保留原任务身份和当时的调查范围。"
+    title="已经由桌面端下发、仍在执行或需要回收历史成果的任务，不用重建。有原始任务文件时可批量接续；文件不全时，由系统管理员从桌面中心数据库备份接续正式下发历史。"
     type="info"
     :closable="false"
     show-icon
@@ -407,4 +460,93 @@ onMounted(loadAll);
       </div>
     </template>
   </el-drawer>
+
+  <el-dialog v-model="reportVisible" title="桌面任务接续结果" width="680px">
+    <template v-if="handoverReport">
+      <el-alert
+        :title="handoverReport.conflict_tasks ? '接续已完成，部分任务需要核对' : '桌面端正式下发任务已接续完成'"
+        :type="handoverReport.conflict_tasks ? 'warning' : 'success'"
+        :closable="false"
+        show-icon
+      />
+      <div class="handover-report-grid">
+        <div><span>发现正式任务</span><strong>{{ handoverReport.discovered_tasks }}</strong></div>
+        <div><span>本次新增</span><strong>{{ handoverReport.imported_tasks }}</strong></div>
+        <div><span>已经存在</span><strong>{{ handoverReport.existing_tasks }}</strong></div>
+        <div><span>需要核对</span><strong>{{ handoverReport.conflict_tasks }}</strong></div>
+      </div>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="数据库备份">{{ handoverReport.source_filename }}</el-descriptions-item>
+        <el-descriptions-item label="补建资料">{{ handoverReport.created_projects }} 个项目、{{ handoverReport.created_batches }} 个批次</el-descriptions-item>
+      </el-descriptions>
+      <div v-if="handoverReport.issues.length" class="handover-issues">
+        <h3>需要核对的任务</h3>
+        <div v-for="item in handoverReport.issues" :key="item" class="handover-issue-row">{{ item }}</div>
+      </div>
+      <p class="handover-note">这里只登记桌面端已经正式下发的任务，不导入草稿或当前编辑内容。后续上传原成果文件时，系统会继续按原任务身份和原调查范围核验。</p>
+    </template>
+    <template #footer><el-button type="primary" @click="reportVisible = false">完成</el-button></template>
+  </el-dialog>
 </template>
+
+<style scoped>
+.handover-report-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.handover-report-grid > div {
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-lighter);
+}
+
+.handover-report-grid span,
+.handover-report-grid strong {
+  display: block;
+}
+
+.handover-report-grid span {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.handover-report-grid strong {
+  margin-top: 6px;
+  color: var(--el-text-color-primary);
+  font-size: 26px;
+}
+
+.handover-issues {
+  margin-top: 18px;
+}
+
+.handover-issues h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.handover-issue-row {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--el-color-warning-dark-2);
+  background: var(--el-color-warning-light-9);
+  line-height: 1.6;
+}
+
+.handover-note {
+  margin: 16px 0 0;
+  color: var(--el-text-color-secondary);
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+  .handover-report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
