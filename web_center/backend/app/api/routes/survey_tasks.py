@@ -17,6 +17,7 @@ from app.schemas.survey_task import (
     SurveyTaskDetail,
     SurveyTaskPage,
     SurveyTaskRead,
+    SurveyTaskSummary,
 )
 from app.services import survey_task_service
 
@@ -90,14 +91,20 @@ def get_tasks(
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
+    source_channel: str | None = None,
+    keyword: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    rows, total = survey_task_service.list_tasks(
+    if source_channel not in {None, "web_center", "desktop_handover"}:
+        raise HTTPException(status_code=422, detail="任务来源筛选条件无效。")
+    rows, total, summary = survey_task_service.list_tasks(
         db,
         project_uid=project_uid,
         survey_batch_uid=survey_batch_uid,
         status=status_filter,
+        source_channel=source_channel,
+        keyword=keyword,
         limit=limit,
         offset=offset,
     )
@@ -106,6 +113,7 @@ def get_tasks(
         total=total,
         limit=limit,
         offset=offset,
+        summary=SurveyTaskSummary(**summary),
     )
 
 

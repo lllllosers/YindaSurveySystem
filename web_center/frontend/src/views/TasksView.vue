@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Coin, Download, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
+import { Coin, Download, Plus, Refresh, Search, UploadFilled, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 
 import { getMasterDataSnapshot, type MasterDataSnapshot } from "../api/masterData";
@@ -15,6 +15,7 @@ import {
   listSurveyTasks,
   type SurveyTask,
   type SurveyTaskDetail,
+  type SurveyTaskSummary,
   type DesktopDatabaseHandoverReport,
   type TaskTargetType,
 } from "../api/surveyTasks";
@@ -28,6 +29,7 @@ const detailVisible = ref(false);
 const formRef = ref<FormInstance>();
 const projects = ref<Project[]>([]);
 const batches = ref<SurveyBatch[]>([]);
+const filterBatches = ref<SurveyBatch[]>([]);
 const master = ref<MasterDataSnapshot | null>(null);
 const tasks = ref<SurveyTask[]>([]);
 const detail = ref<SurveyTaskDetail | null>(null);
@@ -37,6 +39,24 @@ const databaseInput = ref<HTMLInputElement>();
 const databaseImporting = ref(false);
 const handoverReport = ref<DesktopDatabaseHandoverReport | null>(null);
 const reportVisible = ref(false);
+const taskTotal = ref(0);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const taskSummary = ref<SurveyTaskSummary>({
+  total: 0,
+  issued: 0,
+  downloaded: 0,
+  result_received: 0,
+  closed: 0,
+  cancelled: 0,
+});
+const filters = reactive({
+  keyword: "",
+  project_uid: "",
+  survey_batch_uid: "",
+  status: "",
+  source_channel: "" as "" | "web_center" | "desktop_handover",
+});
 
 const form = reactive({
   project_uid: "",
@@ -58,6 +78,7 @@ const rules: FormRules = {
 
 const canWrite = computed(() => auth.hasPermission("tasks.write"));
 const canDownload = computed(() => auth.hasPermission("tasks.download"));
+const hasTaskFilters = computed(() => Object.values(filters).some((value) => Boolean(value)));
 const activeProjects = computed(() => projects.value.filter((item) => item.status === "active"));
 const activeBatches = computed(() => batches.value.filter((item) => item.status === "active"));
 const targetOptions = computed(() => {
@@ -89,7 +110,7 @@ const statusLabels: Record<string, string> = {
 };
 const statusTypes: Record<string, "success" | "warning" | "info" | "danger"> = {
   issued: "warning",
-  downloaded: "success",
+  downloaded: "warning",
   result_received: "success",
   closed: "info",
   cancelled: "danger",
@@ -109,19 +130,44 @@ function formatSize(value: number) {
   return value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function loadTasks() {
+  const taskData = await listSurveyTasks({
+    keyword: filters.keyword.trim() || undefined,
+    project_uid: filters.project_uid || undefined,
+    survey_batch_uid: filters.survey_batch_uid || undefined,
+    status: filters.status || undefined,
+    source_channel: filters.source_channel || undefined,
+    limit: pageSize.value,
+    offset: (currentPage.value - 1) * pageSize.value,
+  });
+  tasks.value = taskData.items;
+  taskTotal.value = taskData.total;
+  taskSummary.value = taskData.summary;
+}
+
 async function loadAll() {
   loading.value = true;
   try {
-    const [projectData, masterData, taskData] = await Promise.all([
+    const [projectData, masterData] = await Promise.all([
       listProjects(),
       getMasterDataSnapshot(),
-      listSurveyTasks(),
     ]);
     projects.value = projectData;
     master.value = masterData;
-    tasks.value = taskData.items;
+    await loadTasks();
   } catch {
     ElMessage.error("任务中心数据加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function refreshTasks() {
+  loading.value = true;
+  try {
+    await loadTasks();
+  } catch {
+    ElMessage.error("任务台账加载失败，请稍后重试");
   } finally {
     loading.value = false;
   }
@@ -130,6 +176,44 @@ async function loadAll() {
 async function onProjectChange() {
   form.survey_batch_uid = "";
   batches.value = form.project_uid ? await listSurveyBatches(form.project_uid) : [];
+}
+
+async function onFilterProjectChange() {
+  filters.survey_batch_uid = "";
+  filterBatches.value = filters.project_uid
+    ? await listSurveyBatches(filters.project_uid)
+    : [];
+  currentPage.value = 1;
+  await refreshTasks();
+}
+
+async function applyFilters() {
+  currentPage.value = 1;
+  await refreshTasks();
+}
+
+async function clearFilters() {
+  Object.assign(filters, {
+    keyword: "",
+    project_uid: "",
+    survey_batch_uid: "",
+    status: "",
+    source_channel: "",
+  });
+  filterBatches.value = [];
+  currentPage.value = 1;
+  await refreshTasks();
+}
+
+async function changePage(page: number) {
+  currentPage.value = page;
+  await refreshTasks();
+}
+
+async function changePageSize(size: number) {
+  pageSize.value = size;
+  currentPage.value = 1;
+  await refreshTasks();
 }
 
 watch(
@@ -288,7 +372,7 @@ onMounted(loadAll);
       <p>在中心确定调查单位和范围，下载任务文件后交给基层人员在桌面端开展调查。</p>
     </div>
     <div class="header-actions">
-      <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
+      <el-button :icon="Refresh" :loading="loading" @click="refreshTasks">刷新</el-button>
       <el-button v-if="canWrite" :icon="UploadFilled" :loading="importing" @click="chooseExistingTasks">接续已有桌面任务</el-button>
       <el-button v-if="auth.isAdmin" :icon="Coin" :loading="databaseImporting" @click="chooseDesktopDatabase">从桌面中心库接续</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建并下发任务</el-button>
@@ -314,14 +398,47 @@ onMounted(loadAll);
   />
 
   <div class="task-stat-row">
-    <div><span>任务总数</span><strong>{{ tasks.length }}</strong></div>
-    <div><span>待下载</span><strong>{{ tasks.filter((item) => item.status === 'issued').length }}</strong></div>
-    <div><span>已下载</span><strong>{{ tasks.filter((item) => item.status === 'downloaded').length }}</strong></div>
-    <div><span>已有成果</span><strong>{{ tasks.filter((item) => item.status === 'result_received').length }}</strong></div>
+    <div><span>任务总数</span><strong>{{ taskSummary.total }}</strong></div>
+    <div><span>等待基层回传</span><strong>{{ taskSummary.issued + taskSummary.downloaded }}</strong></div>
+    <div><span>已有成果返回</span><strong>{{ taskSummary.result_received }}</strong></div>
+    <div><span>已正式入库</span><strong>{{ taskSummary.closed }}</strong></div>
   </div>
 
   <el-card shadow="never" class="business-card task-list-card" v-loading="loading">
-    <el-table :data="tasks" stripe height="570">
+    <template #header>
+      <div class="task-ledger-header">
+        <div>
+          <strong>任务协同台账</strong>
+          <span>共 {{ taskTotal }} 条符合当前条件</span>
+        </div>
+        <div class="task-filter-row">
+          <el-input
+            v-model="filters.keyword"
+            clearable
+            placeholder="任务、单位、项目或批次"
+            style="width: 230px"
+            @keyup.enter="applyFilters"
+            @clear="applyFilters"
+          />
+          <el-select v-model="filters.project_uid" clearable placeholder="全部项目" style="width: 180px" @change="onFilterProjectChange">
+            <el-option v-for="item in projects" :key="item.project_uid" :label="item.name" :value="item.project_uid" />
+          </el-select>
+          <el-select v-model="filters.survey_batch_uid" clearable placeholder="全部批次" style="width: 170px" :disabled="!filters.project_uid" @change="applyFilters">
+            <el-option v-for="item in filterBatches" :key="item.survey_batch_uid" :label="item.batch_name" :value="item.survey_batch_uid" />
+          </el-select>
+          <el-select v-model="filters.source_channel" clearable placeholder="全部来源" style="width: 140px" @change="applyFilters">
+            <el-option label="Web 下发" value="web_center" />
+            <el-option label="桌面端接续" value="desktop_handover" />
+          </el-select>
+          <el-select v-model="filters.status" clearable placeholder="全部进度" style="width: 150px" @change="applyFilters">
+            <el-option v-for="(label, value) in statusLabels" :key="value" :label="label" :value="value" />
+          </el-select>
+          <el-button type="primary" :icon="Search" @click="applyFilters">查询</el-button>
+          <el-button v-if="hasTaskFilters" @click="clearFilters">清空</el-button>
+        </div>
+      </div>
+    </template>
+    <el-table :data="tasks" stripe height="520">
       <el-table-column prop="task_name" label="任务" min-width="210">
         <template #default="scope">
           <div class="task-name">{{ scope.row.task_name }}</div>
@@ -359,8 +476,8 @@ onMounted(loadAll);
       <template #empty>
         <div class="business-empty">
           <div class="business-empty-mark">任</div>
-          <h3>还没有下发调查任务</h3>
-          <p>先确认项目批次已进入“进行中”，并在单位与渠系中设置好调查范围，再把任务交给桌面端或用于 Web 在线录入。</p>
+          <h3>{{ hasTaskFilters ? "没有符合条件的任务" : "还没有下发调查任务" }}</h3>
+          <p>{{ hasTaskFilters ? "可以调整上方查询条件，查看其他项目、批次或办理进度。" : "先确认项目批次已进入“进行中”，并在单位与渠系中设置好调查范围，再把任务交给桌面端或用于 Web 在线录入。" }}</p>
           <div class="empty-actions">
             <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建调查任务</el-button>
             <el-button @click="$router.push('/projects')">检查项目批次</el-button>
@@ -369,6 +486,18 @@ onMounted(loadAll);
         </div>
       </template>
     </el-table>
+    <div class="task-pagination">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 50, 100]"
+        :total="taskTotal"
+        layout="total, sizes, prev, pager, next, jumper"
+        background
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
+    </div>
   </el-card>
 
   <el-dialog v-model="dialogVisible" title="新建调查任务" width="760px" destroy-on-close>
@@ -490,6 +619,44 @@ onMounted(loadAll);
 </template>
 
 <style scoped>
+.task-ledger-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.task-ledger-header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.task-ledger-header > div:first-child strong {
+  font-size: 17px;
+}
+
+.task-ledger-header > div:first-child span {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.task-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.task-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
 .handover-report-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -545,6 +712,10 @@ onMounted(loadAll);
 }
 
 @media (max-width: 760px) {
+  .task-filter-row {
+    justify-content: flex-start;
+  }
+
   .handover-report-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

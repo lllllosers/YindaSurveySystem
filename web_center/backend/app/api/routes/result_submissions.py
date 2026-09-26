@@ -25,6 +25,7 @@ from app.schemas.result_submission import (
     ResultReviewRequest,
     ResultSubmissionPage,
     ResultSubmissionRead,
+    ResultSubmissionSummary,
     WorkflowIssueRead,
 )
 from app.schemas.result_verification import ResultFileVerificationRead
@@ -212,12 +213,18 @@ def get_submissions(
     _: ResultReader,
     db: DbSession,
     status_filter: str | None = Query(default=None, alias="status"),
-    limit: int = Query(default=50, ge=1, le=200),
+    project_uid: str | None = None,
+    survey_batch_uid: str | None = None,
+    keyword: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    rows, total = result_submission_service.list_submissions(
+    rows, total, summary = result_submission_service.list_submissions(
         db,
         status=status_filter,
+        project_uid=project_uid,
+        survey_batch_uid=survey_batch_uid,
+        keyword=keyword,
         limit=limit,
         offset=offset,
     )
@@ -227,6 +234,7 @@ def get_submissions(
         total=total,
         limit=limit,
         offset=offset,
+        summary=ResultSubmissionSummary(**summary),
     )
 
 

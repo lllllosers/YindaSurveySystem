@@ -121,6 +121,21 @@ def test_result_package_upload_and_permissions() -> None:
         assert data["status"] == "inspected"
         assert data["inspection_error_count"] == 0
 
+        filtered = admin_client.get(
+            "/api/v1/result-submissions",
+            params={
+                "project_uid": "3" * 32,
+                "survey_batch_uid": "4" * 32,
+                "keyword": "API 测试成果",
+                "limit": 1,
+            },
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        assert filtered.json()["items"][0]["submission_uid"] == submission_uid
+        assert filtered.json()["summary"]["total"] == 1
+        assert filtered.json()["summary"]["awaiting_check"] == 1
+
         response = admin_client.get("/api/v1/result-submissions")
         assert response.status_code == 200
         assert any(

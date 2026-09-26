@@ -113,7 +113,7 @@ async function loadAll() {
   try {
     const [entryPage, taskPage, formDefinitions] = await Promise.all([
       listOnlineEntries(),
-      listSurveyTasks(),
+      listSurveyTasks({ limit: 200 }),
       getOnlineFormDefinitions(),
     ]);
     entries.value = entryPage.items;

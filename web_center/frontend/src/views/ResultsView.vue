@@ -12,7 +12,9 @@ import {
   resultDownloadUrl,
   uploadResultPackage,
   type ResultSubmission,
+  type ResultSubmissionSummary,
 } from "../api/results";
+import { listProjects, listSurveyBatches, type Project, type SurveyBatch } from "../api/projects";
 import { useAuthStore } from "../stores/auth";
 
 const router = useRouter();
@@ -23,6 +25,22 @@ const uploading = ref(false);
 const rows = ref<ResultSubmission[]>([]);
 const uploadFiles = ref<UploadFile[]>([]);
 const statusFilter = ref("");
+const keyword = ref("");
+const projectUid = ref("");
+const batchUid = ref("");
+const projects = ref<Project[]>([]);
+const batches = ref<SurveyBatch[]>([]);
+const total = ref(0);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const summary = ref<ResultSubmissionSummary>({
+  total: 0,
+  awaiting_check: 0,
+  awaiting_review: 0,
+  needs_attention: 0,
+  accepted: 0,
+  imported: 0,
+});
 
 const canUpload = computed(
   () => auth.hasPermission("results.upload"),
@@ -106,13 +124,64 @@ function uploadErrorMessage(error: any): string {
 async function refresh() {
   loading.value = true;
   try {
-    const data = await listResultSubmissions(
-      statusFilter.value,
-    );
+    const data = await listResultSubmissions({
+      status: statusFilter.value || undefined,
+      project_uid: projectUid.value || undefined,
+      survey_batch_uid: batchUid.value || undefined,
+      keyword: keyword.value.trim() || undefined,
+      limit: pageSize.value,
+      offset: (currentPage.value - 1) * pageSize.value,
+    });
     rows.value = data.items;
+    total.value = data.total;
+    summary.value = data.summary;
+  } catch {
+    ElMessage.error("成果台账加载失败，请稍后重试");
   } finally {
     loading.value = false;
   }
+}
+
+async function loadInitial() {
+  try {
+    projects.value = await listProjects();
+  } catch {
+    ElMessage.error("项目资料加载失败");
+  }
+  await refresh();
+}
+
+async function onProjectChange() {
+  batchUid.value = "";
+  batches.value = projectUid.value ? await listSurveyBatches(projectUid.value) : [];
+  currentPage.value = 1;
+  await refresh();
+}
+
+async function applyFilters() {
+  currentPage.value = 1;
+  await refresh();
+}
+
+async function clearFilters() {
+  keyword.value = "";
+  projectUid.value = "";
+  batchUid.value = "";
+  statusFilter.value = "";
+  batches.value = [];
+  currentPage.value = 1;
+  await refresh();
+}
+
+async function changePage(page: number) {
+  currentPage.value = page;
+  await refresh();
+}
+
+async function changePageSize(size: number) {
+  pageSize.value = size;
+  currentPage.value = 1;
+  await refresh();
 }
 
 function fileChanged(uploadFile: UploadFile) {
@@ -170,7 +239,7 @@ async function upload() {
   await refresh();
 }
 
-onMounted(refresh);
+onMounted(loadInitial);
 </script>
 
 <template>
@@ -199,6 +268,15 @@ onMounted(refresh);
       登记原始任务文件，再批量上传成果；项目、批次和历史调查范围会自动接续，无需重做。
     </template>
   </el-alert>
+
+  <div class="result-stat-row">
+    <div><span>成果总数</span><strong>{{ summary.total }}</strong></div>
+    <div><span>待业务核验</span><strong>{{ summary.awaiting_check }}</strong></div>
+    <div><span>待审核</span><strong>{{ summary.awaiting_review }}</strong></div>
+    <div><span>需要处理</span><strong>{{ summary.needs_attention }}</strong></div>
+    <div><span>待正式入库</span><strong>{{ summary.accepted }}</strong></div>
+    <div><span>已正式入库</span><strong>{{ summary.imported }}</strong></div>
+  </div>
 
   <el-card
     v-if="canUpload"
@@ -246,15 +324,45 @@ onMounted(refresh);
   >
     <template #header>
       <div class="card-header">
-        <span>成果提交记录</span>
+        <div class="result-ledger-title">
+          <span>成果协同台账</span>
+          <small>共 {{ total }} 条符合当前条件</small>
+        </div>
 
         <div class="result-filter">
+          <el-input
+            v-model="keyword"
+            clearable
+            placeholder="成果名称、文件名或上传人"
+            style="width: 230px"
+            @keyup.enter="applyFilters"
+            @clear="applyFilters"
+          />
+          <el-select
+            v-model="projectUid"
+            clearable
+            placeholder="全部项目"
+            style="width: 180px"
+            @change="onProjectChange"
+          >
+            <el-option v-for="item in projects" :key="item.project_uid" :label="item.name" :value="item.project_uid" />
+          </el-select>
+          <el-select
+            v-model="batchUid"
+            clearable
+            placeholder="全部批次"
+            style="width: 170px"
+            :disabled="!projectUid"
+            @change="applyFilters"
+          >
+            <el-option v-for="item in batches" :key="item.survey_batch_uid" :label="item.batch_name" :value="item.survey_batch_uid" />
+          </el-select>
           <el-select
             v-model="statusFilter"
             clearable
             placeholder="全部状态"
             style="width: 180px"
-            @change="refresh"
+            @change="applyFilters"
           >
             <el-option
               label="文件检查通过"
@@ -267,6 +375,10 @@ onMounted(refresh);
             <el-option
               label="需要处理"
               value="conflict"
+            />
+            <el-option
+              label="业务核验通过"
+              value="preflight_passed"
             />
             <el-option
               label="审核中"
@@ -286,9 +398,9 @@ onMounted(refresh);
             />
           </el-select>
 
-          <el-button @click="refresh">
-            刷新
-          </el-button>
+          <el-button type="primary" @click="applyFilters">查询</el-button>
+          <el-button v-if="keyword || projectUid || batchUid || statusFilter" @click="clearFilters">清空</el-button>
+          <el-button @click="refresh">刷新</el-button>
         </div>
       </div>
     </template>
@@ -438,5 +550,85 @@ onMounted(refresh);
         </div>
       </template>
     </el-table>
+    <div class="result-pagination">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        background
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
+    </div>
   </el-card>
 </template>
+
+<style scoped>
+.result-stat-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.result-stat-row > div {
+  padding: 16px 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  background: var(--el-bg-color);
+}
+
+.result-stat-row span,
+.result-stat-row strong {
+  display: block;
+}
+
+.result-stat-row span {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.result-stat-row strong {
+  margin-top: 5px;
+  font-size: 25px;
+}
+
+.result-ledger-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.result-ledger-title small {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.result-filter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.result-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
+@media (max-width: 1180px) {
+  .result-stat-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .result-stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>

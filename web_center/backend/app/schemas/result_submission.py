@@ -72,8 +72,18 @@ class ResultSubmissionRead(BaseModel):
     uploaded_at: datetime
 
 
+class ResultSubmissionSummary(BaseModel):
+    total: int
+    awaiting_check: int
+    awaiting_review: int
+    needs_attention: int
+    accepted: int
+    imported: int
+
+
 class ResultSubmissionPage(BaseModel):
     items: list[ResultSubmissionRead]
     total: int
     limit: int
     offset: int
+    summary: ResultSubmissionSummary

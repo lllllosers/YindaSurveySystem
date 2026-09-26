@@ -7,7 +7,7 @@ import shutil
 from uuid import uuid4
 
 from fastapi import UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
@@ -69,10 +69,28 @@ def list_submissions(
     db: Session,
     *,
     status: str | None,
+    project_uid: str | None,
+    survey_batch_uid: str | None,
+    keyword: str | None,
     limit: int,
     offset: int,
-) -> tuple[list[ResultSubmission], int]:
-    filters = []
+) -> tuple[list[ResultSubmission], int, dict[str, int]]:
+    context_filters = []
+    if project_uid:
+        context_filters.append(ResultSubmission.project_uid == project_uid)
+    if survey_batch_uid:
+        context_filters.append(ResultSubmission.survey_batch_uid == survey_batch_uid)
+    normalized_keyword = str(keyword or "").strip()
+    if normalized_keyword:
+        pattern = f"%{normalized_keyword}%"
+        context_filters.append(
+            or_(
+                ResultSubmission.result_name.ilike(pattern),
+                ResultSubmission.original_filename.ilike(pattern),
+                ResultSubmission.uploader_username.ilike(pattern),
+            )
+        )
+    filters = list(context_filters)
     if status:
         filters.append(ResultSubmission.status == status)
 
@@ -91,7 +109,27 @@ def list_submissions(
             .offset(offset)
         )
     )
-    return rows, total
+    status_counts = {
+        str(value): int(count)
+        for value, count in db.execute(
+            select(ResultSubmission.status, func.count(ResultSubmission.id))
+            .where(*context_filters)
+            .group_by(ResultSubmission.status)
+        ).all()
+    }
+    summary = {
+        "total": sum(status_counts.values()),
+        "awaiting_check": sum(status_counts.get(value, 0) for value in {"uploaded", "inspected"}),
+        "awaiting_review": sum(
+            status_counts.get(value, 0) for value in {"preflight_passed", "reviewing"}
+        ),
+        "needs_attention": sum(
+            status_counts.get(value, 0) for value in {"invalid", "conflict", "rejected"}
+        ),
+        "accepted": status_counts.get("accepted", 0),
+        "imported": status_counts.get("imported", 0),
+    }
+    return rows, total, summary
 
 
 async def receive_submission(

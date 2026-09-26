@@ -79,7 +79,7 @@ def test_create_download_and_validate_desktop_v3_task_package(tmp_path: Path) ->
             json={
                 "project_uid": project_uid,
                 "survey_batch_uid": batch_uid,
-                "task_name": "桌面兼容任务包测试",
+                "task_name": f"桌面兼容任务包测试-{token}",
                 "notes": "由 Web 中心生成",
                 "target_unit_type": "water_office",
                 "target_master_key": office.master_key,
@@ -95,6 +95,28 @@ def test_create_download_and_validate_desktop_v3_task_package(tmp_path: Path) ->
         assert detail["selected_scope_count"] == 1
         assert detail["form_count"] == 14
         assert detail["status"] == "issued"
+
+        filtered = client.get(
+            "/api/v1/survey-tasks",
+            params={
+                "keyword": token,
+                "source_channel": "web_center",
+                "status": "issued",
+                "limit": 1,
+            },
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        assert filtered.json()["items"][0]["task_uid"] == task_uid
+        assert filtered.json()["summary"]["total"] == 1
+        assert filtered.json()["summary"]["issued"] == 1
+
+        desktop_only = client.get(
+            "/api/v1/survey-tasks",
+            params={"keyword": token, "source_channel": "desktop_handover"},
+        )
+        assert desktop_only.status_code == 200
+        assert desktop_only.json()["total"] == 0
 
         package_response = client.get(f"/api/v1/survey-tasks/{task_uid}/download")
         assert package_response.status_code == 200, package_response.text

@@ -14,7 +14,7 @@ import zipfile
 
 from fastapi import UploadFile
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
@@ -1134,14 +1134,43 @@ def list_tasks(
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
     status: str | None = None,
+    source_channel: str | None = None,
+    keyword: str | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> tuple[list[tuple[SurveyTask, Project, SurveyBatch]], int]:
-    filters = []
+) -> tuple[list[tuple[SurveyTask, Project, SurveyBatch]], int, dict[str, int]]:
+    context_filters = []
     if project_uid:
-        filters.append(Project.project_uid == project_uid)
+        context_filters.append(Project.project_uid == project_uid)
     if survey_batch_uid:
-        filters.append(SurveyBatch.survey_batch_uid == survey_batch_uid)
+        context_filters.append(SurveyBatch.survey_batch_uid == survey_batch_uid)
+    normalized_keyword = str(keyword or "").strip()
+    if normalized_keyword:
+        pattern = f"%{normalized_keyword}%"
+        context_filters.append(
+            or_(
+                SurveyTask.task_name.ilike(pattern),
+                SurveyTask.organization_name.ilike(pattern),
+                SurveyTask.department_name.ilike(pattern),
+                Project.name.ilike(pattern),
+                SurveyBatch.batch_name.ilike(pattern),
+                SurveyBatch.batch_code.ilike(pattern),
+            )
+        )
+    handover_source = SurveyTask.frozen_snapshot_json["handover"]["source"].as_string()
+    if source_channel == "desktop_handover":
+        context_filters.append(
+            handover_source.in_({"desktop_existing_task", "desktop_database_handover"})
+        )
+    elif source_channel == "web_center":
+        context_filters.append(
+            or_(
+                handover_source.is_(None),
+                ~handover_source.in_({"desktop_existing_task", "desktop_database_handover"}),
+            )
+        )
+
+    filters = list(context_filters)
     if status:
         filters.append(SurveyTask.status == status)
     base = (
@@ -1157,7 +1186,25 @@ def list_tasks(
         .where(*filters)
     )
     rows = list(db.execute(base.order_by(SurveyTask.created_at.desc()).limit(limit).offset(offset)).all())
-    return rows, int(db.scalar(count_query) or 0)
+    summary_rows = db.execute(
+        select(SurveyTask.status, func.count(SurveyTask.id))
+        .join(Project, Project.id == SurveyTask.project_id)
+        .join(SurveyBatch, SurveyBatch.id == SurveyTask.survey_batch_id)
+        .where(*context_filters)
+        .group_by(SurveyTask.status)
+    ).all()
+    summary = {
+        "issued": 0,
+        "downloaded": 0,
+        "result_received": 0,
+        "closed": 0,
+        "cancelled": 0,
+    }
+    for task_status, count in summary_rows:
+        if task_status in summary:
+            summary[str(task_status)] = int(count)
+    summary["total"] = sum(summary.values())
+    return rows, int(db.scalar(count_query) or 0), summary
 
 
 def get_task(db: Session, task_uid: str) -> tuple[SurveyTask, Project, SurveyBatch] | None:

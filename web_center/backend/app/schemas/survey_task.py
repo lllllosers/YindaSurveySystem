@@ -88,11 +88,21 @@ class SurveyTaskDetail(SurveyTaskRead):
     form_contract_version: str
 
 
+class SurveyTaskSummary(BaseModel):
+    total: int
+    issued: int
+    downloaded: int
+    result_received: int
+    closed: int
+    cancelled: int
+
+
 class SurveyTaskPage(BaseModel):
     items: list[SurveyTaskRead]
     total: int
     limit: int
     offset: int
+    summary: SurveyTaskSummary
 
 
 class DesktopDatabaseHandoverRead(BaseModel):

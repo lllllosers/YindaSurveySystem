@@ -73,6 +73,26 @@ export interface SurveyTaskPage {
   total: number;
   limit: number;
   offset: number;
+  summary: SurveyTaskSummary;
+}
+
+export interface SurveyTaskSummary {
+  total: number;
+  issued: number;
+  downloaded: number;
+  result_received: number;
+  closed: number;
+  cancelled: number;
+}
+
+export interface SurveyTaskQuery {
+  project_uid?: string;
+  survey_batch_uid?: string;
+  status?: string;
+  source_channel?: "web_center" | "desktop_handover";
+  keyword?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export interface DesktopDatabaseHandoverReport {
@@ -88,8 +108,8 @@ export interface DesktopDatabaseHandoverReport {
   issues: string[];
 }
 
-export async function listSurveyTasks(): Promise<SurveyTaskPage> {
-  const response = await api.get<SurveyTaskPage>("/survey-tasks");
+export async function listSurveyTasks(params: SurveyTaskQuery = {}): Promise<SurveyTaskPage> {
+  const response = await api.get<SurveyTaskPage>("/survey-tasks", { params });
   return response.data;
 }
 

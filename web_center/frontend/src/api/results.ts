@@ -62,6 +62,32 @@ export interface ResultImportResult {
   changed_records: number;
 }
 
+export interface ResultSubmissionSummary {
+  total: number;
+  awaiting_check: number;
+  awaiting_review: number;
+  needs_attention: number;
+  accepted: number;
+  imported: number;
+}
+
+export interface ResultSubmissionPage {
+  items: ResultSubmission[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary: ResultSubmissionSummary;
+}
+
+export interface ResultSubmissionQuery {
+  status?: string;
+  project_uid?: string;
+  survey_batch_uid?: string;
+  keyword?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface ResultFileVerification {
   submission_uid: string;
   storage_status: string;
@@ -79,15 +105,11 @@ export interface ResultFileVerification {
 }
 
 export async function listResultSubmissions(
-  status = "",
-) {
-  const response = await api.get(
+  params: ResultSubmissionQuery = {},
+): Promise<ResultSubmissionPage> {
+  const response = await api.get<ResultSubmissionPage>(
     "/result-submissions",
-    {
-      params: status
-        ? { status }
-        : undefined,
-    },
+    { params },
   );
   return response.data;
 }
