@@ -120,6 +120,12 @@ function payloadText(key: string) {
   return String(value);
 }
 
+function sourceText() {
+  return detail.value?.record_payload?.source_channel === "web_online_entry"
+    ? "由 Web 端在线填写，经审核后进入正式成果库"
+    : "由桌面端完成现场调查，经中心审核后进入正式成果库";
+}
+
 onMounted(async () => {
   await Promise.all([refresh(), refreshSummary()]);
 });
@@ -226,7 +232,7 @@ onMounted(async () => {
           <el-descriptions-item label="业务编号">{{ detail.business_code || "—" }}</el-descriptions-item>
           <el-descriptions-item label="管理单位">{{ detail.organization_name }}</el-descriptions-item>
           <el-descriptions-item label="渠道">{{ detail.canal_name }}</el-descriptions-item>
-          <el-descriptions-item label="调查来源" :span="2">由桌面端调查任务采集并经中心审核入库</el-descriptions-item>
+          <el-descriptions-item label="调查来源" :span="2">{{ sourceText() }}</el-descriptions-item>
         </el-descriptions>
         <h3 class="drawer-section-title">调查结论</h3>
         <el-descriptions :column="2" border>

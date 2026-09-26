@@ -8,6 +8,7 @@ from app.models.central_record import (
     CentralSurveyRecord,
 )
 from app.models.project import Project, SurveyBatch
+from app.models.online_entry import OnlineSurveyEntry
 from app.models.result_submission import ResultSubmission
 from app.models.survey_task import SurveyTask
 
@@ -25,4 +26,5 @@ __all__ = [
     "CentralSurveyMedia",
     "ResultSubmission",
     "SurveyTask",
+    "OnlineSurveyEntry",
 ]

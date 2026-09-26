@@ -87,7 +87,7 @@ onMounted(checkServices);
     <div>
       <div class="hero-badge"><span></span> 中心管理平台运行正常</div>
       <h2>让现场调查有任务、有依据<br />让每份成果可核验、可追溯</h2>
-      <p>庄浪河大渡槽 · 中心统一安排，基层桌面端离线调查，成果回传集中管理。</p>
+      <p>庄浪河大渡槽 · 中心统一安排，现场离线采集与在线补录协同开展，成果集中管理。</p>
     </div>
     <div class="hero-version">
       <span>当前调查版本</span>
@@ -118,7 +118,7 @@ onMounted(checkServices);
   <el-card shadow="never" class="business-card collaboration-card">
     <template #header>
       <div class="card-header">
-        <span>中心端与桌面端如何配合</span>
+        <span>中心端、Web 端与桌面端如何配合</span>
         <small>一套数据标准贯穿全过程</small>
       </div>
     </template>
@@ -127,16 +127,16 @@ onMounted(checkServices);
       <i>→</i>
       <div><b>2</b><strong>下发调查任务</strong><span>下载任务文件交给管理处或水管所</span></div>
       <i>→</i>
-      <div><b>3</b><strong>桌面端现场调查</strong><span>无网络也能录入表格和照片</span></div>
+      <div><b>3</b><strong>选择合适的录入方式</strong><span>桌面端离线现场采集，Web 端在线补录</span></div>
       <i>→</i>
-      <div><b>4</b><strong>回传调查成果</strong><span>桌面端导出成果文件并上传中心</span></div>
+      <div><b>4</b><strong>提交调查成果</strong><span>桌面端上传成果文件，Web 端直接提交审核</span></div>
       <i>→</i>
       <div><b>5</b><strong>审核并形成成果库</strong><span>自动核对范围，减少人工汇总</span></div>
     </div>
     <div class="collaboration-benefits">
       <span>基础资料只维护一次</span>
       <span>项目批次不重复填写</span>
-      <span>现场无网络照常调查</span>
+      <span>离线采集和在线补录并行</span>
       <span>多单位成果集中汇总</span>
     </div>
   </el-card>

@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.db.session import engine
 from app.models.auth import User
 from app.models.central_record import CentralSurveyRecord
+from app.models.online_entry import OnlineSurveyEntry
 from app.models.project import Project, SurveyBatch
 from app.models.result_submission import ResultSubmission
 from app.models.survey_task import SurveyTask
@@ -58,7 +59,7 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
 
     return {
         "product_version": "V1.2.0",
-        "web_stage": "Web Center Preview 0.3",
+        "web_stage": "中心业务版",
         "task_protocol": ".ydtask V3",
         "result_protocol": ".ydresult 2.2",
         "project_count": int(
@@ -86,6 +87,13 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
                 select(func.count())
                 .select_from(ResultSubmission)
                 .where(ResultSubmission.status == "preflight_passed")
+            )
+            or 0
+        ) + int(
+            db.scalar(
+                select(func.count())
+                .select_from(OnlineSurveyEntry)
+                .where(OnlineSurveyEntry.status == "submitted")
             )
             or 0
         ),

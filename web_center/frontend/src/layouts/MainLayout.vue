@@ -8,6 +8,7 @@ import {
   Files,
   Management,
   OfficeBuilding,
+  EditPen,
   Tickets,
   UserFilled,
 } from "@element-plus/icons-vue";
@@ -71,6 +72,10 @@ async function logout() {
         <el-menu-item v-if="auth.hasPermission('tasks.read')" index="/tasks">
           <el-icon><Document /></el-icon>
           <span>调查任务</span>
+        </el-menu-item>
+        <el-menu-item v-if="auth.hasPermission('online_entries.read')" index="/online-entry">
+          <el-icon><EditPen /></el-icon>
+          <span>调查数据录入</span>
         </el-menu-item>
         <el-menu-item v-if="auth.hasPermission('results.read')" index="/results">
           <el-icon><Files /></el-icon>

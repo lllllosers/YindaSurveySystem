@@ -4,6 +4,7 @@ from app.api.routes.audit import router as audit_router
 from app.api.routes.central_records import router as central_records_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.master_data import router as master_data_router
+from app.api.routes.online_entries import router as online_entries_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.result_submissions import (
     router as result_submissions_router,
@@ -25,6 +26,7 @@ api_router.include_router(projects_router)
 api_router.include_router(survey_batches_router)
 api_router.include_router(master_data_router)
 api_router.include_router(survey_tasks_router)
+api_router.include_router(online_entries_router)
 api_router.include_router(result_submissions_router)
 api_router.include_router(central_records_router)
 api_router.include_router(audit_router)

@@ -39,6 +39,12 @@ export const router = createRouter({
           meta: { permission: "tasks.read" },
         },
         {
+          path: "online-entry",
+          name: "online-entry",
+          component: () => import("../views/OnlineEntryView.vue"),
+          meta: { permission: "online_entries.read" },
+        },
+        {
           path: "results",
           name: "results",
           component: () => import("../views/ResultsView.vue"),
