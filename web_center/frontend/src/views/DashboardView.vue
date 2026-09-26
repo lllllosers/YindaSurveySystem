@@ -118,26 +118,22 @@ onMounted(checkServices);
   <el-card shadow="never" class="business-card collaboration-card">
     <template #header>
       <div class="card-header">
-        <span>中心端、Web 端与桌面端如何配合</span>
-        <small>一套数据标准贯穿全过程</small>
+        <span>一项调查，三步完成</span>
+        <small>Web 与桌面端共同使用一套任务和正式资料</small>
       </div>
     </template>
     <div class="collaboration-flow">
-      <div><b>1</b><strong>建立项目批次</strong><span>中心明确本次调查范围和时间</span></div>
+      <div><b>1</b><strong>准备调查</strong><span>维护单位与渠系，建立批次并下发任务</span></div>
       <i>→</i>
-      <div><b>2</b><strong>下发调查任务</strong><span>下载任务文件交给管理处或水管所</span></div>
+      <div><b>2</b><strong>开展录入</strong><span>有网络时在 Web 录入，现场无网络时使用桌面端，同一条记录不重复录入</span></div>
       <i>→</i>
-      <div><b>3</b><strong>选择合适的录入方式</strong><span>桌面端离线现场采集，Web 端在线补录</span></div>
-      <i>→</i>
-      <div><b>4</b><strong>提交调查成果</strong><span>桌面端上传成果文件，Web 端直接提交审核</span></div>
-      <i>→</i>
-      <div><b>5</b><strong>审核并形成成果库</strong><span>自动核对范围，减少人工汇总</span></div>
+      <div><b>3</b><strong>审核入库</strong><span>Web 录入和桌面端成果在同一处审核，通过后形成唯一正式成果</span></div>
     </div>
     <div class="collaboration-benefits">
       <span>基础资料只维护一次</span>
-      <span>项目批次不重复填写</span>
-      <span>离线采集和在线补录并行</span>
-      <span>多单位成果集中汇总</span>
+      <span>干渠也可分段分所管理</span>
+      <span>在线录入与离线采集互补</span>
+      <span>审核后只保留一套正式成果</span>
     </div>
   </el-card>
 
@@ -160,7 +156,7 @@ onMounted(checkServices);
 
     <el-card shadow="never" class="business-card master-panel">
       <template #header>
-        <div class="card-header"><span>基础资料</span><router-link to="/master-data">查看详情</router-link></div>
+        <div class="card-header"><span>单位与渠系</span><router-link to="/master-data">前往维护</router-link></div>
       </template>
       <div class="master-overview">
         <div class="master-orb"><el-icon><OfficeBuilding /></el-icon></div>
@@ -168,10 +164,13 @@ onMounted(checkServices);
           <div><strong>{{ overview?.official_department_count ?? "—" }}</strong><span>管理处</span></div>
           <div><strong>{{ overview?.official_office_count ?? "—" }}</strong><span>管理所</span></div>
           <div><strong>{{ overview?.official_canal_count ?? "—" }}</strong><span>渠道</span></div>
-          <div><strong>{{ overview?.official_scope_count ?? "—" }}</strong><span>范围</span></div>
+          <div><strong>{{ overview?.official_scope_count ?? "—" }}</strong><span>分管段</span></div>
         </div>
       </div>
-      <div class="version-line">组织、渠道和分管范围已统一校验</div>
+      <router-link v-if="overview?.unassigned_backbone_canal_count" class="master-attention" to="/master-data">
+        {{ overview.unassigned_backbone_canal_count }} 条骨干渠还没有设置分管所，点击前往补充
+      </router-link>
+      <div v-else class="version-line">单位、渠系和分管关系已设置完整</div>
     </el-card>
   </div>
 </template>

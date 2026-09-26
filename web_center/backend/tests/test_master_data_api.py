@@ -113,6 +113,7 @@ def test_overview_reports_web_and_master_data_status() -> None:
         assert payload["result_protocol"] == ".ydresult 2.2"
         assert payload["official_canal_count"] == 68
         assert payload["official_scope_count"] == 63
+        assert payload["unassigned_backbone_canal_count"] == 5
     finally:
         cleanup_test_user(viewer.user_uid)
 
@@ -123,5 +124,5 @@ def test_health_reports_api_generation_for_launcher_compatibility() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "yinda-web-center-api",
-        "api_generation": "2026.09.26-master-data-v1",
+        "api_generation": "2026.09.26-canal-scope-v2",
     }

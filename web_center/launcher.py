@@ -24,7 +24,7 @@ NPM_EXE = "npm.cmd"
 LOG_DIR = WEB_ROOT / ".runtime" / "logs"
 API_URL = "http://127.0.0.1:8000"
 WEB_URL = "http://127.0.0.1:8848"
-EXPECTED_API_GENERATION = "2026.09.26-master-data-v1"
+EXPECTED_API_GENERATION = "2026.09.26-canal-scope-v2"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 

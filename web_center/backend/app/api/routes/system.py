@@ -17,7 +17,7 @@ from app.services.master_data_service import get_snapshot
 
 
 router = APIRouter(tags=["System"])
-API_GENERATION = "2026.09.26-master-data-v1"
+API_GENERATION = "2026.09.26-canal-scope-v2"
 OverviewReader = Annotated[
     User,
     Depends(require_permission("projects.read")),
@@ -57,7 +57,20 @@ def database_health_check() -> dict[str, str]:
 
 @router.get("/overview")
 def overview(_: OverviewReader, db: DbSession) -> dict:
-    master_data = get_snapshot().summary
+    snapshot = get_snapshot()
+    master_data = snapshot.summary
+    active_scope_canal_keys = {
+        item.canal_master_key
+        for item in snapshot.management_scopes
+        if item.status == "active"
+    }
+    unassigned_backbone_canal_count = sum(
+        1
+        for item in snapshot.canals
+        if item.status == "active"
+        and item.canal_level in {"01", "02"}
+        and item.master_key not in active_scope_canal_keys
+    )
 
     return {
         "product_version": "V1.2.0",
@@ -111,5 +124,6 @@ def overview(_: OverviewReader, db: DbSession) -> dict:
         "official_office_count": master_data.office_count,
         "official_canal_count": master_data.canal_count,
         "official_scope_count": master_data.management_scope_count,
+        "unassigned_backbone_canal_count": unassigned_backbone_canal_count,
         "master_data_version": master_data.master_data_version,
     }

@@ -29,6 +29,7 @@ export interface OverviewResponse {
   official_office_count: number;
   official_canal_count: number;
   official_scope_count: number;
+  unassigned_backbone_canal_count: number;
   master_data_version: string;
 }
 
