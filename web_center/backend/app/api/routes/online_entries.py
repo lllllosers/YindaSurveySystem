@@ -1,6 +1,8 @@
+import mimetypes
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,7 @@ from app.schemas.online_entry import (
     OnlineEntryReview,
     OnlineEntryUpdate,
     OnlineFormDefinitionRead,
+    OnlineMediaRead,
 )
 from app.services import online_entry_service
 
@@ -59,6 +62,7 @@ def to_read(row: OnlineSurveyEntry, task: SurveyTask, project: Project, batch: S
         form_data=row.form_data_json,
         evaluations=row.evaluations_json,
         conclusion=row.conclusion_json,
+        media=[OnlineMediaRead.model_validate(item) for item in (row.media_json or [])],
         status=row.status,
         revision_no=row.revision_no,
         review_notes=row.review_notes,
@@ -130,6 +134,86 @@ def post_entry(payload: OnlineEntryPayload, request: Request, creator: EntryWrit
 def get_entry(entry_uid: str, _: EntryReader, db: DbSession):
     row = require_entry(db, entry_uid)
     return to_read(row, *_context(db, row))
+
+
+@router.post("/{entry_uid}/media", response_model=OnlineMediaRead, status_code=status.HTTP_201_CREATED)
+async def upload_entry_media(
+    entry_uid: str,
+    request: Request,
+    user: EntryWriter,
+    db: DbSession,
+    file: UploadFile = File(...),
+    media_role: str = Form(default="现场记录"),
+    part_name: str | None = Form(default=None),
+    notes: str | None = Form(default=None),
+):
+    row = require_entry(db, entry_uid)
+    require_owner(row, user)
+    try:
+        item = await online_entry_service.add_media(
+            db,
+            row,
+            upload=file,
+            media_role=media_role,
+            part_name=part_name,
+            notes=notes,
+        )
+    except online_entry_service.MediaUploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except online_entry_service.OnlineEntryStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    request.state.audit_summary = "上传在线调查影像"
+    request.state.audit_details = {
+        "entry_uid": entry_uid,
+        "media_uid": item["media_uid"],
+        "media_kind": item["media_kind"],
+        "file_size": item["file_size"],
+    }
+    return OnlineMediaRead.model_validate(item)
+
+
+@router.get("/{entry_uid}/media/{media_uid}")
+def download_entry_media(entry_uid: str, media_uid: str, _: EntryReader, db: DbSession):
+    row = require_entry(db, entry_uid)
+    item = next(
+        (value for value in (row.media_json or []) if value.get("media_uid") == media_uid),
+        None,
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="没有找到该调查影像。")
+    try:
+        path = online_entry_service.online_media_path(item)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    media_type = mimetypes.guess_type(str(item.get("original_filename") or path.name))[0]
+    return FileResponse(
+        path,
+        media_type=media_type or "application/octet-stream",
+        filename=str(item.get("original_filename") or path.name),
+        content_disposition_type="inline",
+    )
+
+
+@router.delete("/{entry_uid}/media/{media_uid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_entry_media(
+    entry_uid: str,
+    media_uid: str,
+    request: Request,
+    user: EntryWriter,
+    db: DbSession,
+):
+    row = require_entry(db, entry_uid)
+    require_owner(row, user)
+    try:
+        online_entry_service.remove_media(db, row, media_uid)
+    except online_entry_service.OnlineEntryStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    request.state.audit_summary = "删除在线调查影像"
+    request.state.audit_details = {"entry_uid": entry_uid, "media_uid": media_uid}
 
 
 @router.put("/{entry_uid}", response_model=OnlineEntryRead)

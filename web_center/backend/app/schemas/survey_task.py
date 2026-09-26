@@ -64,6 +64,8 @@ class SurveyTaskRead(BaseModel):
     last_downloaded_at: datetime | None
     created_by_username: str
     created_at: datetime
+    source_channel: Literal["web_center", "desktop_handover"]
+    source_filename: str | None
 
 
 class FrozenScopeRead(BaseModel):

@@ -34,6 +34,18 @@ class OnlineEntryReview(BaseModel):
         return self
 
 
+class OnlineMediaRead(BaseModel):
+    media_uid: str
+    original_filename: str
+    media_kind: Literal["photo", "video"]
+    media_role: str
+    part_name: str | None
+    notes: str | None
+    file_size: int
+    file_sha256: str
+    uploaded_at: datetime
+
+
 class OnlineEntryRead(BaseModel):
     entry_uid: str
     task_uid: str
@@ -53,6 +65,7 @@ class OnlineEntryRead(BaseModel):
     form_data: dict
     evaluations: list[dict]
     conclusion: dict
+    media: list[OnlineMediaRead]
     status: OnlineEntryStatus
     revision_no: int
     review_notes: str | None
@@ -63,8 +76,6 @@ class OnlineEntryRead(BaseModel):
     imported_at: datetime | None
     created_at: datetime
     updated_at: datetime
-
-
 class OnlineEntryPage(BaseModel):
     items: list[OnlineEntryRead]
     total: int

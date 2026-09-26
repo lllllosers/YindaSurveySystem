@@ -5,6 +5,7 @@ import { ElMessage } from "element-plus";
 
 import {
   centralRecordExportUrl,
+  centralRecordMediaUrl,
   getCentralRecord,
   getCentralRecordSummary,
   listCentralRecords,
@@ -124,6 +125,15 @@ function sourceText() {
   return detail.value?.record_payload?.source_channel === "web_online_entry"
     ? "由 Web 端在线填写，经审核后进入正式成果库"
     : "由桌面端完成现场调查，经中心审核后进入正式成果库";
+}
+
+function mediaKindText(value: unknown) {
+  return value === "video" ? "视频" : "照片";
+}
+
+function openMedia(item: Record<string, unknown>) {
+  if (!detail.value || !item.media_uid) return;
+  window.open(centralRecordMediaUrl(detail.value.survey_record_uid, String(item.media_uid)), "_blank");
 }
 
 onMounted(async () => {
@@ -254,10 +264,11 @@ onMounted(async () => {
         <h3 class="drawer-section-title">调查影像（{{ detail.media.length }}）</h3>
         <el-table :data="detail.media" border>
           <el-table-column prop="original_filename" label="文件名" min-width="180" />
-          <el-table-column prop="media_kind" label="类型" width="100" />
+          <el-table-column label="类型" width="90"><template #default="{ row }">{{ mediaKindText(row.media_kind) }}</template></el-table-column>
           <el-table-column prop="media_role" label="用途" width="100" />
           <el-table-column prop="part_name" label="部位" min-width="130" />
           <el-table-column prop="notes" label="备注" min-width="150" />
+          <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openMedia(row)">查看</el-button></template></el-table-column>
         </el-table>
       </template>
     </div>

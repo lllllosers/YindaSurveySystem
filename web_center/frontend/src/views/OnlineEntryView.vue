@@ -5,11 +5,14 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import {
   createOnlineEntry,
+  deleteOnlineMedia,
   getOnlineFormDefinitions,
   listOnlineEntries,
+  onlineMediaUrl,
   reviewOnlineEntry,
   submitOnlineEntry,
   updateOnlineEntry,
+  uploadOnlineMedia,
   type FormField,
   type OnlineEntry,
   type OnlineFormDefinition,
@@ -37,6 +40,8 @@ const taskDetail = ref<SurveyTaskDetail | null>(null);
 const definitions = ref<OnlineFormDefinition[]>([]);
 const selectedEntry = ref<OnlineEntry | null>(null);
 const editingUid = ref("");
+const mediaInput = ref<HTMLInputElement>();
+const uploadingMedia = ref(false);
 const selector = reactive({ task_uid: "", management_scope_uid: "", form_code: "" });
 const formData = ref<Record<string, unknown>>({});
 const evaluations = ref<EntryEvaluation[]>([]);
@@ -80,6 +85,11 @@ function errorMessage(error: unknown, fallback: string) {
 
 function formatTime(value: string | null) {
   return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+}
+
+function formatSize(value: number) {
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function rangeText(scope: FrozenScope) {
@@ -225,6 +235,58 @@ async function saveDraft(showMessage = true): Promise<OnlineEntry | null> {
     return null;
   } finally {
     saving.value = false;
+  }
+}
+
+async function chooseMedia() {
+  if (!editingUid.value) {
+    const row = await saveDraft(false);
+    if (!row) return;
+    ElMessage.success("草稿已保存，现在可以添加现场影像");
+  }
+  mediaInput.value?.click();
+}
+
+async function addSelectedMedia(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = "";
+  if (!files.length || !editingUid.value) return;
+  uploadingMedia.value = true;
+  let success = 0;
+  for (const file of files) {
+    try {
+      const item = await uploadOnlineMedia(editingUid.value, file);
+      if (selectedEntry.value) selectedEntry.value.media = [...selectedEntry.value.media, item];
+      success += 1;
+    } catch (error) {
+      ElMessage.error(`${file.name}：${errorMessage(error, "影像上传失败")}`);
+    }
+  }
+  uploadingMedia.value = false;
+  if (success) ElMessage.success(`已添加 ${success} 个现场影像`);
+  await loadAll();
+}
+
+function openMedia(mediaUid: string) {
+  if (editingUid.value) window.open(onlineMediaUrl(editingUid.value, mediaUid), "_blank");
+}
+
+function openEntryMedia(entryUid: string, mediaUid: string) {
+  window.open(onlineMediaUrl(entryUid, mediaUid), "_blank");
+}
+
+async function removeMedia(mediaUid: string) {
+  if (!editingUid.value) return;
+  try {
+    await ElMessageBox.confirm("确认删除这个现场影像吗？", "删除影像", { type: "warning" });
+    await deleteOnlineMedia(editingUid.value, mediaUid);
+    if (selectedEntry.value) selectedEntry.value.media = selectedEntry.value.media.filter((item) => item.media_uid !== mediaUid);
+    ElMessage.success("影像已删除");
+    await loadAll();
+  } catch (error) {
+    if (error === "cancel" || error === "close") return;
+    ElMessage.error(errorMessage(error, "影像删除失败"));
   }
 }
 
@@ -503,6 +565,26 @@ onMounted(loadAll);
             <div class="entry-field full"><label>调查意见与建议 <i>*</i></label><el-input v-model="conclusion.survey_comment" type="textarea" :rows="3" placeholder="填写现场发现的问题、处置建议或需要说明的情况" /></div>
           </div>
         </section>
+
+        <section class="entry-form-section entry-media-section">
+          <div class="entry-media-heading">
+            <div>
+              <h3>现场照片与视频</h3>
+              <p>可上传现场全貌、问题部位和处置前后对比影像；桌面端成果包中的影像也会进入同一正式成果库。</p>
+            </div>
+            <el-button v-if="editable" :icon="UploadFilled" :loading="uploadingMedia" @click="chooseMedia">添加照片或视频</el-button>
+            <input ref="mediaInput" type="file" accept="image/*,video/*" multiple hidden @change="addSelectedMedia" />
+          </div>
+          <div v-if="selectedEntry?.media.length" class="entry-media-list">
+            <div v-for="item in selectedEntry.media" :key="item.media_uid" class="entry-media-item">
+              <span class="entry-media-kind">{{ item.media_kind === "photo" ? "照片" : "视频" }}</span>
+              <div><strong>{{ item.original_filename }}</strong><small>{{ item.media_role }} · {{ formatSize(item.file_size) }}</small></div>
+              <el-button link type="primary" @click="openMedia(item.media_uid)">查看</el-button>
+              <el-button v-if="editable" link type="danger" @click="removeMedia(item.media_uid)">删除</el-button>
+            </div>
+          </div>
+          <el-empty v-else description="尚未添加现场影像（不影响保存草稿）" :image-size="54" />
+        </section>
       </template>
     </div>
     <template #footer>
@@ -534,6 +616,14 @@ onMounted(loadAll);
         <el-descriptions-item v-if="selectedEntry.review_notes" label="审核意见" :span="2">{{ selectedEntry.review_notes }}</el-descriptions-item>
       </el-descriptions>
       <el-alert v-if="selectedEntry.status === 'imported'" class="entry-review-alert" title="该记录已审核通过并进入正式成果库，可在“正式成果库”中查询。" type="success" :closable="false" show-icon />
+      <h3 class="drawer-section-title">现场照片与视频（{{ selectedEntry.media.length }}）</h3>
+      <div v-if="selectedEntry.media.length" class="entry-media-list">
+        <div v-for="item in selectedEntry.media" :key="item.media_uid" class="entry-media-item">
+          <span class="entry-media-kind">{{ item.media_kind === "photo" ? "照片" : "视频" }}</span>
+          <div><strong>{{ item.original_filename }}</strong><small>{{ formatSize(item.file_size) }}</small></div>
+          <el-button link type="primary" @click="openEntryMedia(selectedEntry.entry_uid, item.media_uid)">查看</el-button>
+        </div>
+      </div>
     </template>
   </el-drawer>
 </template>

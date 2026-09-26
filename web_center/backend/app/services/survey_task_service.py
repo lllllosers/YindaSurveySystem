@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from hashlib import sha256
 import json
 from pathlib import Path
 import re
 import shutil
+import sys
 from uuid import uuid4
 import zipfile
+
+from fastapi import UploadFile
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -22,12 +25,15 @@ from app.services.master_data_service import REPOSITORY_ROOT, get_snapshot
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TASK_STORAGE_ROOT = BACKEND_ROOT / "storage" / "tasks"
+TASK_INCOMING_ROOT = BACKEND_ROOT / "storage" / "incoming_tasks"
 FORM_CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "forms" / "engineering_form_contract.json"
 TASK_SCHEMA_VERSION = "3.0"
 PACKAGE_FORMAT_VERSION = "1.0"
 PACKAGE_KIND = "survey_task"
 APP_VERSION = "1.2.0"
 APP_VERSION_LABEL = "V1.2.0"
+MAX_TASK_UPLOAD_BYTES = 512 * 1024 * 1024
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class TaskNotFoundError(ValueError):
@@ -39,6 +45,14 @@ class TaskFileMissingError(FileNotFoundError):
 
 
 class TaskStateError(ValueError):
+    pass
+
+
+class TaskUploadTooLargeError(ValueError):
+    pass
+
+
+class TaskPackageConflictError(ValueError):
     pass
 
 
@@ -370,6 +384,213 @@ def create_task(db: Session, payload: SurveyTaskCreate, creator: User) -> Survey
         shutil.rmtree(final_path.parent, ignore_errors=True)
         raise
     return row
+
+
+def _parse_package_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+async def _save_task_upload(upload: UploadFile, target: Path) -> tuple[str, int]:
+    digest = sha256()
+    size = 0
+    with target.open("wb") as output:
+        while True:
+            chunk = await upload.read(UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_TASK_UPLOAD_BYTES:
+                raise TaskUploadTooLargeError("任务文件超过当前 512 MiB 安全上限。")
+            digest.update(chunk)
+            output.write(chunk)
+    return digest.hexdigest(), size
+
+
+def _task_package_reader(path: Path):
+    desktop_src = REPOSITORY_ROOT / "src"
+    desktop_src_text = str(desktop_src)
+    if desktop_src_text not in sys.path:
+        sys.path.insert(0, desktop_src_text)
+    from services.survey_task_package_reader import load_survey_task_package
+
+    return load_survey_task_package(path)
+
+
+def _legacy_frozen_snapshot(contents, *, filename: str) -> dict:
+    task = dict(contents.task)
+    organizations = [dict(item) for item in contents.organizations]
+    canals = [dict(item) for item in contents.canals]
+    scopes = [dict(item) for item in contents.management_scopes]
+    forms = [dict(item) for item in contents.forms]
+    organization_names = {
+        str(item.get("organization_uid") or ""): str(item.get("name") or "")
+        for item in organizations
+    }
+    canal_names = {
+        str(item.get("canal_uid") or ""): str(item.get("name") or "")
+        for item in canals
+    }
+    for item in scopes:
+        item["organization_name"] = organization_names.get(
+            str(item.get("organization_unit_uid") or ""), ""
+        )
+        item["canal_name"] = canal_names.get(str(item.get("canal_uid") or ""), "")
+    form_versions = {
+        str(item.get("version_code") or "") for item in forms if item.get("version_code")
+    }
+    return {
+        "task": task,
+        "organizations": organizations,
+        "canals": canals,
+        "management_scopes": scopes,
+        "forms": forms,
+        "master_data_version": "任务下发时桌面端快照",
+        "master_contract_sha256": "",
+        "form_contract_version": "、".join(sorted(form_versions)) or "桌面端任务包快照",
+        "form_contract_sha256": "",
+        "handover": {
+            "source": "desktop_existing_task",
+            "original_filename": filename,
+            "registered_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+    }
+
+
+async def import_existing_task_package(
+    db: Session,
+    *,
+    upload: UploadFile,
+    importer: User,
+) -> tuple[SurveyTask, bool]:
+    """Register a task already issued by the production desktop system.
+
+    The original package and every stable UID are preserved.  This gives the
+    Web center the immutable issued-task evidence it needs to accept the
+    corresponding historical or still-outstanding result packages.
+    """
+    filename = Path(upload.filename or "desktop-task.ydtask").name.strip()
+    if not filename.lower().endswith(".ydtask"):
+        raise ValueError("请选择由桌面端生成的调查任务文件（.ydtask）。")
+    TASK_INCOMING_ROOT.mkdir(parents=True, exist_ok=True)
+    incoming_uid = uuid4().hex
+    temp_path = TASK_INCOMING_ROOT / f"{incoming_uid}.part"
+    try:
+        file_sha256, file_size = await _save_task_upload(upload, temp_path)
+        try:
+            contents = _task_package_reader(temp_path)
+        except ValueError as exc:
+            raise ValueError("任务文件检查未通过，请使用桌面端原始任务文件。") from exc
+
+        manifest = dict(contents.manifest)
+        task = dict(contents.task)
+        task_uid = str(task["task_uid"])
+        package_uid = str(manifest.get("package_uid") or "")
+        if len(package_uid) != 32:
+            raise ValueError("任务文件缺少有效的文件身份信息。")
+
+        existing = db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid))
+        if existing is not None:
+            if existing.file_sha256 == file_sha256:
+                return existing, True
+            raise TaskPackageConflictError("相同任务已经登记，但文件内容不同，请核对原始任务文件。")
+        package_owner = db.scalar(select(SurveyTask).where(SurveyTask.package_uid == package_uid))
+        if package_owner is not None:
+            raise TaskPackageConflictError("该任务文件身份已经被其他任务占用，请核对原始文件。")
+
+        project_doc = task.get("project") if isinstance(task.get("project"), dict) else {}
+        batch_doc = task.get("survey_batch") if isinstance(task.get("survey_batch"), dict) else {}
+        project_uid = str(project_doc.get("project_uid") or "")
+        batch_uid = str(batch_doc.get("survey_batch_uid") or "")
+        project = db.scalar(select(Project).where(Project.project_uid == project_uid))
+        if project is None:
+            project = Project(
+                project_uid=project_uid,
+                name=str(project_doc.get("name") or "桌面端历史调查项目")[:200],
+                short_name=(str(project_doc.get("short_name") or "").strip()[:100] or None),
+                status="active",
+            )
+            db.add(project)
+            db.flush()
+        batch = db.scalar(select(SurveyBatch).where(SurveyBatch.survey_batch_uid == batch_uid))
+        if batch is None:
+            batch = SurveyBatch(
+                survey_batch_uid=batch_uid,
+                project_id=project.id,
+                batch_name=str(batch_doc.get("batch_name") or "桌面端历史调查批次")[:200],
+                batch_code=str(batch_doc.get("batch_code") or f"HISTORY-{batch_uid[:8]}")[:50],
+                start_date=_parse_package_date(batch_doc.get("start_date")),
+                end_date=_parse_package_date(batch_doc.get("end_date")),
+                status="active",
+            )
+            db.add(batch)
+            db.flush()
+        elif batch.project_id != project.id:
+            raise TaskPackageConflictError("任务文件中的项目与调查批次归属不一致。")
+
+        frozen = _legacy_frozen_snapshot(contents, filename=filename)
+        assignment = task.get("assignment") if isinstance(task.get("assignment"), dict) else {}
+        scope = task.get("scope") if isinstance(task.get("scope"), dict) else {}
+        lineage = task.get("lineage") if isinstance(task.get("lineage"), dict) else {}
+        selected_uids = [str(value) for value in scope.get("selected_management_scope_uids", [])]
+        target_type = str(assignment.get("target_unit_type") or "water_office")
+        parent_task_uid = lineage.get("parent_task_uid")
+        root_task_uid = str(lineage.get("root_task_uid") or task_uid)
+        task_depth = int(lineage.get("depth") or 0)
+
+        now = datetime.now().astimezone()
+        final_dir = TASK_STORAGE_ROOT / "handover" / f"{now.year:04d}" / f"{now.month:02d}" / task_uid
+        final_dir.mkdir(parents=True, exist_ok=False)
+        final_path = final_dir / "package.ydtask"
+        shutil.move(str(temp_path), str(final_path))
+        row = SurveyTask(
+            task_uid=task_uid,
+            package_uid=package_uid,
+            project_id=project.id,
+            survey_batch_id=batch.id,
+            task_name=str(task.get("task_name") or "桌面端历史调查任务")[:240],
+            notes=(str(task.get("notes") or "").strip()[:2000] or None),
+            target_unit_type=target_type,
+            department_uid=str(assignment.get("department_uid") or ""),
+            department_name=str(assignment.get("department_name") or ""),
+            organization_unit_uid=str(assignment.get("organization_unit_uid") or ""),
+            organization_name=str(assignment.get("organization_name") or ""),
+            parent_task_uid=str(parent_task_uid) if parent_task_uid else None,
+            root_task_uid=root_task_uid,
+            task_depth=task_depth,
+            selected_scope_uids=selected_uids,
+            frozen_snapshot_json=frozen,
+            selected_scope_count=len(selected_uids),
+            reference_canal_count=len(contents.canals),
+            reference_organization_count=len(contents.organizations),
+            form_count=len(contents.forms),
+            stored_relative_path=final_path.relative_to(BACKEND_ROOT).as_posix(),
+            file_sha256=file_sha256,
+            file_size=file_size,
+            status="downloaded",
+            download_count=1,
+            first_downloaded_at=now,
+            last_downloaded_at=now,
+            created_by_user_uid=importer.user_uid,
+            created_by_username=importer.username,
+        )
+        db.add(row)
+        try:
+            db.commit()
+            db.refresh(row)
+        except Exception:
+            db.rollback()
+            shutil.rmtree(final_dir, ignore_errors=True)
+            raise
+        return row, False
+    finally:
+        temp_path.unlink(missing_ok=True)
+        await upload.close()
 
 
 def list_tasks(

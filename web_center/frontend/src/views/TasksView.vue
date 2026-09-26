@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Download, Plus, Refresh, View } from "@element-plus/icons-vue";
+import { Download, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 
 import { getMasterDataSnapshot, type MasterDataSnapshot } from "../api/masterData";
@@ -10,6 +10,7 @@ import {
   createSurveyTask,
   downloadSurveyTask,
   getSurveyTask,
+  importExistingSurveyTask,
   listSurveyTasks,
   type SurveyTask,
   type SurveyTaskDetail,
@@ -28,6 +29,8 @@ const batches = ref<SurveyBatch[]>([]);
 const master = ref<MasterDataSnapshot | null>(null);
 const tasks = ref<SurveyTask[]>([]);
 const detail = ref<SurveyTaskDetail | null>(null);
+const importInput = ref<HTMLInputElement>();
+const importing = ref(false);
 
 const form = reactive({
   project_uid: "",
@@ -170,6 +173,38 @@ async function doDownload(task: SurveyTask) {
   }
 }
 
+function chooseExistingTasks() {
+  importInput.value?.click();
+}
+
+async function importExistingTasks(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = "";
+  if (!files.length) return;
+  const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".ydtask"));
+  if (invalid) {
+    ElMessage.error("请选择桌面端原始调查任务文件（.ydtask）");
+    return;
+  }
+  importing.value = true;
+  let success = 0;
+  let failed = 0;
+  for (const file of files) {
+    try {
+      await importExistingSurveyTask(file);
+      success += 1;
+    } catch (error: any) {
+      failed += 1;
+      const detail = String(error?.response?.data?.detail || "任务文件无法登记");
+      ElMessage.error(`${file.name}：${detail}`);
+    }
+  }
+  importing.value = false;
+  if (success) ElMessage.success(`已接续 ${success} 个桌面端既有任务${failed ? `，${failed} 个需要核对` : ""}`);
+  await loadAll();
+}
+
 async function showDetail(task: SurveyTask) {
   try {
     detail.value = await getSurveyTask(task.task_uid);
@@ -203,7 +238,9 @@ onMounted(loadAll);
     </div>
     <div class="header-actions">
       <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
+      <el-button v-if="canWrite" :icon="UploadFilled" :loading="importing" @click="chooseExistingTasks">接续已有桌面任务</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建并下发任务</el-button>
+      <input ref="importInput" type="file" accept=".ydtask" multiple hidden @change="importExistingTasks" />
     </div>
   </div>
 
@@ -211,6 +248,14 @@ onMounted(loadAll);
     class="linkage-alert"
     title="与桌面端联动：中心下发任务文件 → 基层桌面端“任务接收”导入 → 完成现场调查后由桌面端导出成果文件 → 回到成果中心上传。"
     type="success"
+    :closable="false"
+    show-icon
+  />
+
+  <el-alert
+    class="task-handover-alert"
+    title="已经由桌面端下发、仍在执行或需要回收历史成果的任务，不用重建。点击“接续已有桌面任务”批量选择原始任务文件，系统会保留原任务身份和当时的调查范围。"
+    type="info"
     :closable="false"
     show-icon
   />
@@ -234,6 +279,13 @@ onMounted(loadAll);
         <template #default="scope">
           <div>{{ scope.row.organization_name }}</div>
           <div class="result-secondary">{{ scope.row.target_unit_type === 'department' ? '交由管理处分派到所属水管所' : '直接交由水管所调查' }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="任务来源" width="120">
+        <template #default="scope">
+          <el-tag :type="scope.row.source_channel === 'desktop_handover' ? 'warning' : 'info'" effect="plain">
+            {{ scope.row.source_channel === "desktop_handover" ? "桌面端接续" : "Web下发" }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="selected_scope_count" label="分管范围" width="100" align="center" />
@@ -344,6 +396,9 @@ onMounted(loadAll);
         <el-descriptions-item label="调查依据" :span="2">任务下发时的正式组织、渠道和分管范围</el-descriptions-item>
         <el-descriptions-item label="创建人员">{{ detail.created_by_username }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
+        <el-descriptions-item label="任务来源" :span="2">
+          {{ detail.source_channel === "desktop_handover" ? `既有桌面任务接续${detail.source_filename ? ` · ${detail.source_filename}` : ""}` : "由 Web 中心统一下发" }}
+        </el-descriptions-item>
       </el-descriptions>
       <h3 class="drawer-section-title">本次确定的调查范围</h3>
       <div v-for="item in detail.frozen_scopes" :key="item.management_scope_uid" class="frozen-scope-row">

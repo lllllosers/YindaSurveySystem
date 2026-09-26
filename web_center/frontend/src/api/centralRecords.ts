@@ -69,6 +69,10 @@ export async function getCentralRecordSummary(): Promise<CentralRecordSummary> {
   return response.data;
 }
 
+export function centralRecordMediaUrl(recordUid: string, mediaUid: string): string {
+  return `/api/v1/central-records/${recordUid}/media/${mediaUid}`;
+}
+
 export function centralRecordExportUrl(filters: CentralRecordFilters = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {

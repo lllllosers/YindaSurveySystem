@@ -1,6 +1,7 @@
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,8 @@ TaskDownloader = Annotated[User, Depends(require_permission("tasks.download"))]
 
 
 def to_read(row: SurveyTask, project: Project, batch: SurveyBatch) -> SurveyTaskRead:
+    frozen = row.frozen_snapshot_json if isinstance(row.frozen_snapshot_json, dict) else {}
+    handover = frozen.get("handover") if isinstance(frozen.get("handover"), dict) else {}
     return SurveyTaskRead(
         task_uid=row.task_uid,
         package_uid=row.package_uid,
@@ -57,6 +60,12 @@ def to_read(row: SurveyTask, project: Project, batch: SurveyBatch) -> SurveyTask
         last_downloaded_at=row.last_downloaded_at,
         created_by_username=row.created_by_username,
         created_at=row.created_at,
+        source_channel=(
+            "desktop_handover"
+            if handover.get("source") == "desktop_existing_task"
+            else "web_center"
+        ),
+        source_filename=(str(handover.get("original_filename")) if handover.get("original_filename") else None),
     )
 
 
@@ -109,6 +118,36 @@ def post_task(payload: SurveyTaskCreate, request: Request, creator: TaskWriter, 
         "target_unit_type": row.target_unit_type,
         "organization_name": row.organization_name,
         "selected_scope_count": row.selected_scope_count,
+    }
+    return to_detail(row, project, batch)
+
+
+@router.post("/import-existing", response_model=SurveyTaskDetail, status_code=status.HTTP_201_CREATED)
+async def import_existing_task(
+    request: Request,
+    importer: TaskWriter,
+    db: DbSession,
+    file: UploadFile = File(...),
+):
+    try:
+        row, reused = await survey_task_service.import_existing_task_package(
+            db, upload=file, importer=importer
+        )
+    except survey_task_service.TaskUploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except survey_task_service.TaskPackageConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    project = db.get(Project, row.project_id)
+    batch = db.get(SurveyBatch, row.survey_batch_id)
+    assert project is not None and batch is not None
+    request.state.audit_summary = "重复登记既有桌面任务" if reused else "接续既有桌面调查任务"
+    request.state.audit_details = {
+        "task_uid": row.task_uid,
+        "package_uid": row.package_uid,
+        "source_filename": Path(file.filename or "").name,
+        "reused": reused,
     }
     return to_detail(row, project, batch)
 

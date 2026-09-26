@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import {
   ElMessage,
   type UploadFile,
+  type UploadRawFile,
 } from "element-plus";
 
 import {
@@ -20,13 +21,15 @@ const auth = useAuthStore();
 const loading = ref(false);
 const uploading = ref(false);
 const rows = ref<ResultSubmission[]>([]);
-const selectedFile = ref<File | null>(null);
 const uploadFiles = ref<UploadFile[]>([]);
 const statusFilter = ref("");
 
 const canUpload = computed(
   () => auth.hasPermission("results.upload"),
 );
+const selectedFiles = computed(() => uploadFiles.value
+  .map((item) => item.raw)
+  .filter((item): item is UploadRawFile => item !== undefined));
 
 const statusLabels: Record<string, string> = {
   uploaded: "已上传",
@@ -122,12 +125,9 @@ function fileChanged(uploadFile: UploadFile) {
     ElMessage.error(
       "请选择由桌面端导出的成果文件",
     );
-    selectedFile.value = null;
-    uploadFiles.value = [];
+    uploadFiles.value = uploadFiles.value.filter((item) => item.uid !== uploadFile.uid);
     return;
   }
-
-  selectedFile.value = raw;
 }
 
 function openDetail(row: ResultSubmission) {
@@ -144,37 +144,30 @@ function download(row: ResultSubmission) {
 }
 
 async function upload() {
-  if (!selectedFile.value) {
+  if (!selectedFiles.value.length) {
     return;
   }
 
   uploading.value = true;
-
-  try {
-    const row = await uploadResultPackage(
-      selectedFile.value,
-    );
-
-    if (row.status === "inspected") {
-      ElMessage.success(
-        "成果文件已上传，基础检查通过，请继续进行业务核验",
-      );
-    } else {
-      ElMessage.warning(
-        `成果文件已保存，发现 ${row.inspection_error_count} 个需要处理的问题`,
-      );
+  let success = 0;
+  let needsAttention = 0;
+  let failed = 0;
+  for (const file of selectedFiles.value) {
+    try {
+      const row = await uploadResultPackage(file);
+      success += 1;
+      if (row.status !== "inspected") needsAttention += 1;
+    } catch (error: any) {
+      failed += 1;
+      ElMessage.error(`${file.name}：${uploadErrorMessage(error)}`);
     }
-
-    selectedFile.value = null;
-    uploadFiles.value = [];
-    await refresh();
-  } catch (error: any) {
-    ElMessage.error(
-      uploadErrorMessage(error),
-    );
-  } finally {
-    uploading.value = false;
   }
+  uploading.value = false;
+  uploadFiles.value = [];
+  if (success) {
+    ElMessage.success(`已接收 ${success} 份成果文件${needsAttention ? `，其中 ${needsAttention} 份需要核对` : ""}${failed ? `，${failed} 份未接收` : ""}`);
+  }
+  await refresh();
 }
 
 onMounted(refresh);
@@ -199,6 +192,14 @@ onMounted(refresh);
     show-icon
   />
 
+  <el-alert class="task-handover-alert" type="info" :closable="false" show-icon>
+    <template #title>
+      回收以前由桌面端下发任务形成的成果时，请先到
+      <router-link to="/tasks">任务下发</router-link>
+      登记原始任务文件，再批量上传成果；项目、批次和历史调查范围会自动接续，无需重做。
+    </template>
+  </el-alert>
+
   <el-card
     v-if="canUpload"
     shadow="never"
@@ -220,20 +221,21 @@ onMounted(refresh);
       <el-upload
         v-model:file-list="uploadFiles"
         :auto-upload="false"
-        :limit="1"
+        :limit="50"
+        multiple
         accept=".ydresult"
         @change="fileChanged"
       >
-        <el-button>选择成果文件</el-button>
+        <el-button>批量选择成果文件</el-button>
       </el-upload>
 
       <el-button
         type="primary"
         :loading="uploading"
-        :disabled="!selectedFile"
+        :disabled="!selectedFiles.length"
         @click="upload"
       >
-        上传并核对文件
+        上传并核对（{{ selectedFiles.length }}）
       </el-button>
     </div>
   </el-card>

@@ -36,6 +36,7 @@ class OnlineSurveyEntry(Base):
     form_data_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     evaluations_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     conclusion_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    media_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="draft", server_default="draft", index=True
     )

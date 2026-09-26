@@ -6,9 +6,10 @@ from sqlalchemy import delete, select
 
 from app.db.session import SessionLocal
 from app.main import app
-from app.models.central_record import CentralEngineeringAsset, CentralInspectionResult, CentralSurveyRecord
+from app.models.central_record import CentralEngineeringAsset, CentralInspectionResult, CentralSurveyMedia, CentralSurveyRecord
 from app.models.online_entry import OnlineSurveyEntry
 from app.models.survey_task import SurveyTask
+from app.services import online_entry_service
 from app.services.master_data_service import get_snapshot
 from app.services.survey_task_service import BACKEND_ROOT
 from tests.auth_helpers import cleanup_test_user, create_test_user, login_client
@@ -87,6 +88,16 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         entry_uid = create_response.json()["entry_uid"]
         assert create_response.json()["status"] == "draft"
 
+        media_response = client.post(
+            f"/api/v1/online-entries/{entry_uid}/media",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": ("现场全貌.jpg", b"test-photo-bytes", "image/jpeg")},
+            data={"media_role": "现场全貌", "part_name": "进口段"},
+        )
+        assert media_response.status_code == 201, media_response.text
+        media_uid = media_response.json()["media_uid"]
+        assert media_response.json()["media_kind"] == "photo"
+
         submit_response = client.post(
             f"/api/v1/online-entries/{entry_uid}/submit",
             headers={"X-CSRF-Token": csrf},
@@ -109,6 +120,10 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         assert detail["asset_name"] == "Web在线录入测试对象"
         assert detail["record_payload"]["source_channel"] == "web_online_entry"
         assert len(detail["inspections"]) == len(evaluations)
+        assert len(detail["media"]) == 1
+        media_file = client.get(f"/api/v1/central-records/{record_uid}/media/{media_uid}")
+        assert media_file.status_code == 200, media_file.text
+        assert media_file.content == b"test-photo-bytes"
 
         duplicate_response = client.post(
             "/api/v1/online-entries",
@@ -144,11 +159,13 @@ def test_online_entry_draft_submit_review_and_import() -> None:
             asset_uid = uuid5(NAMESPACE_URL, f"yinda:web-entry:asset:{entry_uid}").hex
             record_uid = uuid5(NAMESPACE_URL, f"yinda:web-entry:record:{entry_uid}").hex
             with SessionLocal() as db:
+                db.execute(delete(CentralSurveyMedia).where(CentralSurveyMedia.survey_record_uid == record_uid))
                 db.execute(delete(CentralInspectionResult).where(CentralInspectionResult.survey_record_uid == record_uid))
                 db.execute(delete(CentralSurveyRecord).where(CentralSurveyRecord.survey_record_uid == record_uid))
                 db.execute(delete(CentralEngineeringAsset).where(CentralEngineeringAsset.engineering_asset_uid == asset_uid))
                 db.execute(delete(OnlineSurveyEntry).where(OnlineSurveyEntry.entry_uid == entry_uid))
                 db.commit()
+            shutil.rmtree(online_entry_service.ONLINE_MEDIA_ROOT / entry_uid, ignore_errors=True)
         if task_uid:
             with SessionLocal() as db:
                 row = db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid))

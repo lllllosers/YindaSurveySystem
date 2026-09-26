@@ -58,6 +58,7 @@ export interface OnlineEntry {
   form_data: Record<string, unknown>;
   evaluations: Array<Record<string, unknown>>;
   conclusion: Record<string, unknown>;
+  media: OnlineMedia[];
   status: OnlineEntryStatus;
   revision_no: number;
   review_notes: string | null;
@@ -68,6 +69,18 @@ export interface OnlineEntry {
   imported_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface OnlineMedia {
+  media_uid: string;
+  original_filename: string;
+  media_kind: "photo" | "video";
+  media_role: string;
+  part_name: string | null;
+  notes: string | null;
+  file_size: number;
+  file_sha256: string;
+  uploaded_at: string;
 }
 
 export interface OnlineEntryPage {
@@ -111,4 +124,19 @@ export async function reviewOnlineEntry(
   notes: string | null,
 ): Promise<OnlineEntry> {
   return (await api.post<OnlineEntry>(`/online-entries/${entryUid}/review`, { decision, notes })).data;
+}
+
+export async function uploadOnlineMedia(entryUid: string, file: File): Promise<OnlineMedia> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("media_role", "现场记录");
+  return (await api.post<OnlineMedia>(`/online-entries/${entryUid}/media`, form, { timeout: 0 })).data;
+}
+
+export async function deleteOnlineMedia(entryUid: string, mediaUid: string): Promise<void> {
+  await api.delete(`/online-entries/${entryUid}/media/${mediaUid}`);
+}
+
+export function onlineMediaUrl(entryUid: string, mediaUid: string): string {
+  return `/api/v1/online-entries/${entryUid}/media/${mediaUid}`;
 }

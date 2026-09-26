@@ -196,6 +196,73 @@ def test_form_contract_matches_desktop_registry() -> None:
     assert [item["asset_type"] for item in items] == [item.asset_type for item in desktop]
 
 
+def test_register_existing_desktop_task_is_idempotent(tmp_path: Path) -> None:
+    token = uuid4().hex[:8]
+    admin = create_test_user("admin")
+    client = TestClient(app)
+    csrf = login_client(client, admin.username)
+    project_uid, batch_uid = create_project_and_batch(client, csrf, token)
+    snapshot = get_snapshot()
+    scope = snapshot.management_scopes[0]
+    office = next(item for item in snapshot.offices if item.master_key == scope.organization_master_key)
+    task_uid: str | None = None
+    try:
+        created = client.post(
+            "/api/v1/survey-tasks",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "project_uid": project_uid,
+                "survey_batch_uid": batch_uid,
+                "task_name": "既有桌面任务接续测试",
+                "target_unit_type": "water_office",
+                "target_master_key": office.master_key,
+                "selected_management_scope_uids": [scope.stable_uid],
+            },
+        )
+        assert created.status_code == 201, created.text
+        task_uid = created.json()["task_uid"]
+        package = client.get(f"/api/v1/survey-tasks/{task_uid}/download")
+        assert package.status_code == 200
+        package_bytes = package.content
+
+        with SessionLocal() as db:
+            row = db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid))
+            assert row is not None
+            directory = (BACKEND_ROOT / row.stored_relative_path).parent
+            db.delete(row)
+            db.commit()
+        shutil.rmtree(directory, ignore_errors=True)
+
+        imported = client.post(
+            "/api/v1/survey-tasks/import-existing",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": ("original-task.ydtask", package_bytes, "application/zip")},
+        )
+        assert imported.status_code == 201, imported.text
+        detail = imported.json()
+        assert detail["task_uid"] == task_uid
+        assert detail["source_channel"] == "desktop_handover"
+        assert detail["source_filename"] == "original-task.ydtask"
+        assert detail["status"] == "downloaded"
+
+        repeated = client.post(
+            "/api/v1/survey-tasks/import-existing",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": ("original-task.ydtask", package_bytes, "application/zip")},
+        )
+        assert repeated.status_code == 201, repeated.text
+        assert repeated.json()["task_uid"] == task_uid
+        assert client.get("/api/v1/survey-tasks").json()["items"][0]["source_channel"] in {
+            "desktop_handover", "web_center"
+        }
+    finally:
+        if task_uid:
+            cleanup_task(task_uid)
+        client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
+        client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(admin.user_uid)
+
+
 def test_issued_task_keeps_master_snapshot_while_new_task_uses_latest_version() -> None:
     token = uuid4().hex[:8]
     admin = create_test_user("admin")

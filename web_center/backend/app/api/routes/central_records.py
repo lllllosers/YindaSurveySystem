@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import csv
+from hashlib import sha256
 import io
+import mimetypes
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import require_permission
 from app.db.session import get_db
 from app.models.auth import User
-from app.models.central_record import CentralEngineeringAsset, CentralSurveyRecord
+from app.models.central_record import CentralEngineeringAsset, CentralSurveyMedia, CentralSurveyRecord
+from app.models.result_submission import ResultSubmission
 from app.schemas.central_record import (
     CentralRecordDetail,
     CentralRecordPage,
@@ -19,6 +26,7 @@ from app.schemas.central_record import (
     CentralRecordSummary,
 )
 from app.services import central_record_service
+from app.services import online_entry_service, result_submission_service
 from app.services.master_data_service import get_snapshot
 
 
@@ -32,6 +40,14 @@ def _csv_cell(value: object) -> object:
     if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
         return "'" + value
     return value
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _name_maps() -> tuple[dict[str, str], dict[str, str]]:
@@ -189,3 +205,61 @@ def get_record(survey_record_uid: str, _: RecordReader, db: DbSession):
         inspections=[item.payload_json for item in inspections],
         media=[item.payload_json for item in media],
     )
+
+
+@router.get("/{survey_record_uid}/media/{media_uid}")
+def open_record_media(survey_record_uid: str, media_uid: str, _: RecordReader, db: DbSession):
+    media = db.scalar(
+        select(CentralSurveyMedia).where(
+            CentralSurveyMedia.survey_record_uid == survey_record_uid,
+            CentralSurveyMedia.media_uid == media_uid,
+        )
+    )
+    if media is None:
+        raise HTTPException(status_code=404, detail="没有找到该调查影像。")
+    payload = media.payload_json if isinstance(media.payload_json, dict) else {}
+    filename = Path(str(payload.get("original_filename") or "survey-media")).name
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    if media.package_path.startswith("online:"):
+        item = {**payload, "storage_relative_path": media.package_path.removeprefix("online:")}
+        try:
+            path = online_entry_service.online_media_path(item)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=410, detail=str(exc)) from exc
+        if _file_sha256(path) != media.file_sha256:
+            raise HTTPException(status_code=409, detail="调查影像完整性检查未通过。")
+        return FileResponse(
+            path,
+            media_type=media_type,
+            filename=filename,
+            content_disposition_type="inline",
+        )
+
+    submission = db.scalar(
+        select(ResultSubmission).where(
+            ResultSubmission.submission_uid == media.current_submission_uid
+        )
+    )
+    if submission is None:
+        raise HTTPException(status_code=410, detail="调查影像对应的成果归档不存在。")
+    try:
+        package_path = result_submission_service.submission_file_path(submission)
+        with zipfile.ZipFile(package_path, "r") as archive:
+            info = archive.getinfo(media.package_path)
+            if info.file_size != media.file_size:
+                raise HTTPException(status_code=409, detail="调查影像大小与入库记录不一致。")
+    except (FileNotFoundError, KeyError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=410, detail="调查影像归档无法读取。") from exc
+
+    def stream_archive_member():
+        with zipfile.ZipFile(package_path, "r") as archive:
+            with archive.open(media.package_path, "r") as source:
+                while chunk := source.read(1024 * 1024):
+                    yield chunk
+
+    headers = {
+        "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+        "Content-Length": str(media.file_size),
+    }
+    return StreamingResponse(stream_archive_member(), media_type=media_type, headers=headers)

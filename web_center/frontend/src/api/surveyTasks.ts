@@ -34,6 +34,8 @@ export interface SurveyTask {
   last_downloaded_at: string | null;
   created_by_username: string;
   created_at: string;
+  source_channel: "web_center" | "desktop_handover";
+  source_filename: string | null;
 }
 
 export interface FrozenScope {
@@ -85,6 +87,13 @@ export async function getSurveyTask(taskUid: string): Promise<SurveyTaskDetail> 
 
 export async function createSurveyTask(payload: SurveyTaskPayload): Promise<SurveyTaskDetail> {
   const response = await api.post<SurveyTaskDetail>("/survey-tasks", payload);
+  return response.data;
+}
+
+export async function importExistingSurveyTask(file: File): Promise<SurveyTaskDetail> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await api.post<SurveyTaskDetail>("/survey-tasks/import-existing", form, { timeout: 0 });
   return response.data;
 }
 

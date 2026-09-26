@@ -110,7 +110,7 @@ function workflowIssueText(issue: ResultSubmission["preflight_issues"][number]) 
     return "成果文件与当前桌面端数据标准不一致，请由桌面端升级到最新版本后重新导出。";
   }
   if (code === "STRUCTURE_CHECK_REQUIRED") return "成果文件检查未通过，请先处理文件问题。";
-  if (code.startsWith("SUBMISSION_TASK_")) return "没有找到本次成果对应的有效调查任务，请核对任务后重新提交。";
+  if (code.startsWith("SUBMISSION_TASK_")) return "Web 尚未登记这项桌面端既有任务。请到“任务下发”使用“接续已有桌面任务”登记原始任务文件，不需要重新建立任务。";
   if (code.includes("PROJECT") || code.includes("BATCH")) return "成果所属项目或调查批次与中心安排不一致，请核对后重新提交。";
   if (code.includes("SCOPE")) return "部分调查记录超出本次安排的调查范围，请在桌面端核对后重新导出。";
   if (code.includes("SOURCE_TASK")) return "部分调查记录缺少正确的任务来源，请在桌面端核对后重新导出。";

@@ -5,14 +5,17 @@ from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 from pathlib import Path
+import shutil
 import sys
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
+
+from fastapi import UploadFile
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
-from app.models.central_record import CentralEngineeringAsset, CentralInspectionResult, CentralSurveyRecord
+from app.models.central_record import CentralEngineeringAsset, CentralInspectionResult, CentralSurveyMedia, CentralSurveyRecord
 from app.models.online_entry import OnlineSurveyEntry
 from app.models.project import Project, SurveyBatch
 from app.models.survey_task import SurveyTask
@@ -21,6 +24,12 @@ from app.services.master_data_service import REPOSITORY_ROOT
 
 
 DESKTOP_SRC = Path(REPOSITORY_ROOT) / "src"
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+ONLINE_MEDIA_ROOT = BACKEND_ROOT / "storage" / "online_media"
+MAX_MEDIA_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+MEDIA_CHUNK_SIZE = 1024 * 1024
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 if str(DESKTOP_SRC) not in sys.path:
     sys.path.insert(0, str(DESKTOP_SRC))
 
@@ -31,6 +40,10 @@ from forms.engineering.registry import (  # noqa: E402
 
 
 class OnlineEntryStateError(ValueError):
+    pass
+
+
+class MediaUploadTooLargeError(ValueError):
     pass
 
 
@@ -133,6 +146,7 @@ def create_entry(db: Session, payload: OnlineEntryPayload, creator: User) -> Onl
         form_data_json=payload.form_data,
         evaluations_json=payload.evaluations,
         conclusion_json=payload.conclusion,
+        media_json=[],
         created_by_user_uid=creator.user_uid,
         created_by_username=creator.username,
     )
@@ -140,6 +154,92 @@ def create_entry(db: Session, payload: OnlineEntryPayload, creator: User) -> Onl
     db.commit()
     db.refresh(row)
     return row
+
+
+def online_media_path(item: dict) -> Path:
+    relative = str(item.get("storage_relative_path") or "")
+    path = (BACKEND_ROOT / relative).resolve()
+    root = ONLINE_MEDIA_ROOT.resolve()
+    if path == root or root not in path.parents:
+        raise RuntimeError("调查影像存储路径越界。")
+    if not path.is_file():
+        raise FileNotFoundError("调查影像文件不存在。")
+    return path
+
+
+async def add_media(
+    db: Session,
+    row: OnlineSurveyEntry,
+    *,
+    upload: UploadFile,
+    media_role: str,
+    part_name: str | None,
+    notes: str | None,
+) -> dict:
+    if row.status not in {"draft", "rejected"}:
+        raise OnlineEntryStateError("调查记录已提交，不能再添加影像。")
+    filename = Path(upload.filename or "media").name.strip()
+    suffix = Path(filename).suffix.lower()
+    if suffix in PHOTO_EXTENSIONS:
+        media_kind = "photo"
+    elif suffix in VIDEO_EXTENSIONS:
+        media_kind = "video"
+    else:
+        raise ValueError("仅支持常用照片和视频文件。")
+    media_uid = uuid4().hex
+    final_dir = ONLINE_MEDIA_ROOT / row.entry_uid / media_uid
+    final_dir.mkdir(parents=True, exist_ok=False)
+    final_path = final_dir / f"media{suffix}"
+    digest = sha256()
+    size = 0
+    try:
+        with final_path.open("wb") as output:
+            while True:
+                chunk = await upload.read(MEDIA_CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_MEDIA_UPLOAD_BYTES:
+                    raise MediaUploadTooLargeError("单个影像文件不能超过 2 GiB。")
+                digest.update(chunk)
+                output.write(chunk)
+        if size == 0:
+            raise ValueError("影像文件为空，请重新选择。")
+        item = {
+            "media_uid": media_uid,
+            "original_filename": filename[:255],
+            "media_kind": media_kind,
+            "media_role": (media_role.strip() or "现场记录")[:80],
+            "part_name": (part_name.strip()[:160] or None) if part_name else None,
+            "notes": (notes.strip()[:500] or None) if notes else None,
+            "file_size": size,
+            "file_sha256": digest.hexdigest(),
+            "storage_relative_path": final_path.relative_to(BACKEND_ROOT).as_posix(),
+            "uploaded_at": datetime.now().astimezone().isoformat(),
+        }
+        row.media_json = [*(row.media_json or []), item]
+        db.commit()
+        db.refresh(row)
+        return item
+    except Exception:
+        db.rollback()
+        shutil.rmtree(final_dir, ignore_errors=True)
+        raise
+    finally:
+        await upload.close()
+
+
+def remove_media(db: Session, row: OnlineSurveyEntry, media_uid: str) -> None:
+    if row.status not in {"draft", "rejected"}:
+        raise OnlineEntryStateError("调查记录已提交，不能删除影像。")
+    items = list(row.media_json or [])
+    item = next((value for value in items if value.get("media_uid") == media_uid), None)
+    if item is None:
+        raise ValueError("没有找到该调查影像。")
+    path = online_media_path(item)
+    row.media_json = [value for value in items if value.get("media_uid") != media_uid]
+    db.commit()
+    shutil.rmtree(path.parent, ignore_errors=True)
 
 
 def update_entry(db: Session, row: OnlineSurveyEntry, payload: OnlineEntryUpdate) -> OnlineSurveyEntry:
@@ -374,6 +474,23 @@ def accept_and_import(db: Session, row: OnlineSurveyEntry, reviewer: User, notes
         db.add(CentralInspectionResult(
             survey_record_uid=record_uid,
             item_code=str(item.get("item_code")),
+            payload_json=payload,
+            current_submission_uid=row.entry_uid,
+        ))
+    for item in row.media_json or []:
+        payload = {
+            key: value for key, value in item.items() if key != "storage_relative_path"
+        }
+        payload.update({
+            "survey_record_uid": record_uid,
+            "source_channel": "web_online_entry",
+        })
+        db.add(CentralSurveyMedia(
+            media_uid=str(item["media_uid"]),
+            survey_record_uid=record_uid,
+            package_path=f"online:{item['storage_relative_path']}",
+            file_sha256=str(item["file_sha256"]),
+            file_size=int(item["file_size"]),
             payload_json=payload,
             current_submission_uid=row.entry_uid,
         ))
