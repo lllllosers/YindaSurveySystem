@@ -75,18 +75,25 @@ def _build_context(payload: SurveyTaskCreate) -> dict:
         target = departments.get(payload.target_master_key)
         if target is None:
             raise ValueError("任务目标管理处不存在于当前正式主数据。")
+        if target.status != "active":
+            raise ValueError("已停用的管理处不能接收新调查任务。")
         department = target
         eligible_office_keys = {
             office.master_key for office in offices.values()
             if office.parent_master_key == department.master_key
+            and office.status == "active"
         }
     else:
         target = offices.get(payload.target_master_key)
         if target is None:
             raise ValueError("任务目标水管所不存在于当前正式主数据。")
+        if target.status != "active":
+            raise ValueError("已停用的管理所不能接收新调查任务。")
         department = departments.get(target.parent_master_key)
         if department is None:
             raise RuntimeError("目标水管所缺少有效所属管理处。")
+        if department.status != "active":
+            raise ValueError("目标管理所所属管理处已停用。")
         eligible_office_keys = {target.master_key}
 
     selected = []
@@ -105,6 +112,8 @@ def _build_context(payload: SurveyTaskCreate) -> dict:
         current = canals.get(scope.canal_master_key)
         visited: set[str] = set()
         while current is not None:
+            if current.status != "active":
+                raise ValueError("调查任务不能包含已停用的渠道。")
             if current.master_key in visited:
                 raise RuntimeError("正式渠系层级存在循环引用。")
             visited.add(current.master_key)

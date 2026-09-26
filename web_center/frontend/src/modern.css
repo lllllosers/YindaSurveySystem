@@ -232,6 +232,23 @@ body {
   gap: 14px;
   margin-bottom: 18px;
 }
+.entry-collaboration-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px 20px;
+  border: 1px solid #dfe8f6;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7faff, #ffffff);
+}
+.entry-collaboration-strip > div { display: flex; flex-direction: column; gap: 5px; }
+.entry-collaboration-strip b { color: #283750; font-size: 13px; }
+.entry-collaboration-strip span { color: #7c899d; font-size: 11px; line-height: 1.55; }
+.entry-collaboration-strip i { color: #93a9c9; font-style: normal; }
+.entry-collaboration-strip .center-truth { padding: 11px 14px; border-radius: 10px; background: #eaf2ff; text-align: center; }
+.entry-collaboration-strip .center-truth b { color: #255eaa; }
 .entry-stat-row > div {
   display: flex;
   align-items: center;
@@ -281,7 +298,23 @@ body {
 @media (max-width: 1240px) {
   .entry-context-grid { grid-template-columns: 1fr; }
   .entry-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .entry-collaboration-strip { grid-template-columns: 1fr; }
+  .entry-collaboration-strip > i { display: none; }
 }
+
+.friendly-missing-page {
+  display: flex;
+  min-height: calc(100vh - 150px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+.missing-mark { display: grid; width: 68px; height: 68px; margin-bottom: 24px; place-items: center; border-radius: 20px; background: linear-gradient(145deg, #3478ed, #215bb8); color: #fff; font-size: 27px; font-weight: 700; box-shadow: 0 14px 32px rgba(37, 99, 235, .22); }
+.friendly-missing-page h1 { margin: 10px 0 12px; color: #1b2942; font-size: 25px; }
+.friendly-missing-page p { max-width: 570px; margin: 0; color: #7c899b; font-size: 13px; line-height: 1.8; }
+.missing-actions { display: flex; gap: 10px; margin-top: 26px; }
 
 .master-header { align-items: center; }
 .header-actions { display: flex; gap: 10px; }

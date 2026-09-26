@@ -20,6 +20,7 @@ export interface Department {
   business_code: string;
   sort_order: number;
   description: string | null;
+  status: "active" | "inactive";
 }
 
 export interface Office extends Department {
@@ -36,6 +37,7 @@ export interface Canal {
   parent_name: string | null;
   sort_order: number;
   description: string | null;
+  status: "active" | "inactive";
 }
 
 export interface ManagementScope {
@@ -66,4 +68,55 @@ export interface MasterDataSnapshot {
 export async function getMasterDataSnapshot(): Promise<MasterDataSnapshot> {
   const response = await api.get<MasterDataSnapshot>("/master-data/snapshot");
   return response.data;
+}
+
+export type MasterKind = "departments" | "offices" | "canals" | "scopes";
+
+export interface DepartmentPayload {
+  name: string;
+  business_code: string;
+  sort_order: number;
+  description: string | null;
+}
+
+export interface OfficePayload extends DepartmentPayload {
+  parent_department_uid: string;
+}
+
+export interface CanalPayload {
+  name: string;
+  canal_level: "01" | "02" | "03" | "04";
+  parent_canal_uid: string | null;
+  sort_order: number;
+  description: string | null;
+}
+
+export interface ScopePayload {
+  canal_uid: string;
+  organization_unit_uid: string;
+  range_mode: "whole" | "segment_known" | "segment_unknown";
+  start_stake_text: string | null;
+  end_stake_text: string | null;
+  sort_order: number;
+  description: string | null;
+}
+
+export async function createMasterItem(kind: MasterKind, payload: DepartmentPayload | OfficePayload | CanalPayload | ScopePayload): Promise<void> {
+  await api.post(`/master-data/${kind}`, payload);
+}
+
+export async function updateMasterItem(kind: MasterKind, uid: string, payload: DepartmentPayload | OfficePayload | CanalPayload | ScopePayload): Promise<void> {
+  await api.put(`/master-data/${kind}/${uid}`, payload);
+}
+
+export async function changeMasterItemStatus(kind: MasterKind, uid: string, status: "active" | "inactive"): Promise<void> {
+  await api.post(`/master-data/${kind}/${uid}/status`, { status });
+}
+
+export async function deleteMasterItem(kind: MasterKind, uid: string): Promise<void> {
+  await api.delete(`/master-data/${kind}/${uid}`);
+}
+
+export function masterDataExportUrl(): string {
+  return `${api.defaults.baseURL}/master-data/export`;
 }

@@ -160,7 +160,7 @@ def update_entry(db: Session, row: OnlineSurveyEntry, payload: OnlineEntryUpdate
     return row
 
 
-def validate_for_submit(row: OnlineSurveyEntry) -> list[str]:
+def validate_for_submit(db: Session, row: OnlineSurveyEntry) -> list[str]:
     definition = get_engineering_form_definition(row.form_code)
     if definition is None:
         return ["调查表定义不存在"]
@@ -206,13 +206,38 @@ def validate_for_submit(row: OnlineSurveyEntry) -> list[str]:
         errors.append("请填写调查人员")
     if not str(conclusion.get("survey_comment") or "").strip():
         errors.append("请填写调查意见与建议")
+    asset_name = str(row.asset_name or "").strip()
+    if asset_name:
+        other_entry = db.scalar(
+            select(OnlineSurveyEntry).where(
+                OnlineSurveyEntry.entry_uid != row.entry_uid,
+                OnlineSurveyEntry.project_uid == row.project_uid,
+                OnlineSurveyEntry.form_code == row.form_code,
+                OnlineSurveyEntry.management_scope_uid == row.management_scope_uid,
+                func.lower(OnlineSurveyEntry.asset_name) == asset_name.lower(),
+                OnlineSurveyEntry.status.in_(("submitted", "accepted", "imported")),
+            )
+        )
+        if other_entry is not None:
+            errors.append("同一任务范围内已有同名调查对象，请先核对，避免重复录入")
+        central_asset = db.scalar(
+            select(CentralEngineeringAsset).where(
+                CentralEngineeringAsset.project_uid == row.project_uid,
+                CentralEngineeringAsset.asset_type == definition.asset_type,
+                CentralEngineeringAsset.organization_unit_uid == row.organization_unit_uid,
+                CentralEngineeringAsset.canal_unit_uid == row.canal_unit_uid,
+                func.lower(CentralEngineeringAsset.asset_name) == asset_name.lower(),
+            )
+        )
+        if central_asset is not None:
+            errors.append("正式成果库中已有同名调查对象，请不要重复新建；如需修订，应从原记录发起")
     return errors
 
 
 def submit_entry(db: Session, row: OnlineSurveyEntry) -> OnlineSurveyEntry:
     if row.status not in {"draft", "rejected"}:
         raise OnlineEntryStateError("只有草稿或退回记录可以提交。")
-    errors = validate_for_submit(row)
+    errors = validate_for_submit(db, row)
     if errors:
         raise ValueError("；".join(errors[:8]))
     row.status = "submitted"

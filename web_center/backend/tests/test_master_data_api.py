@@ -115,3 +115,13 @@ def test_overview_reports_web_and_master_data_status() -> None:
         assert payload["official_scope_count"] == 63
     finally:
         cleanup_test_user(viewer.user_uid)
+
+
+def test_health_reports_api_generation_for_launcher_compatibility() -> None:
+    response = TestClient(app).get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "service": "yinda-web-center-api",
+        "api_generation": "2026.09.26-master-data-v1",
+    }

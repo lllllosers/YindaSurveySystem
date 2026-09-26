@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db.session import SessionLocal
 from app.main import app
 from app.models.survey_task import SurveyTask
+from app.models.master_data import MasterDataState, MasterManagementScope
 from app.services.master_data_service import get_snapshot
 from app.services.survey_task_service import BACKEND_ROOT
 from tests.auth_helpers import cleanup_test_user, create_test_user, login_client
@@ -193,3 +194,92 @@ def test_form_contract_matches_desktop_registry() -> None:
     assert [item["form_number"] for item in items] == [item.form_number for item in desktop]
     assert [item["form_name"] for item in items] == [item.form_name for item in desktop]
     assert [item["asset_type"] for item in items] == [item.asset_type for item in desktop]
+
+
+def test_issued_task_keeps_master_snapshot_while_new_task_uses_latest_version() -> None:
+    token = uuid4().hex[:8]
+    admin = create_test_user("admin")
+    client = TestClient(app)
+    csrf = login_client(client, admin.username)
+    project_uid, batch_uid = create_project_and_batch(client, csrf, token)
+    snapshot = get_snapshot()
+    scope = snapshot.management_scopes[0]
+    office = next(
+        item for item in snapshot.offices
+        if item.master_key == scope.organization_master_key
+    )
+    task_uids: list[str] = []
+    with SessionLocal() as db:
+        state = db.get(MasterDataState, 1)
+        scope_row = db.scalar(
+            select(MasterManagementScope).where(
+                MasterManagementScope.stable_uid == scope.stable_uid
+            )
+        )
+        assert state is not None and scope_row is not None
+        original_revision = state.revision_no
+        original_description = scope_row.description
+
+    def create_named_task(name: str):
+        response = client.post(
+            "/api/v1/survey-tasks",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "project_uid": project_uid,
+                "survey_batch_uid": batch_uid,
+                "task_name": name,
+                "target_unit_type": "water_office",
+                "target_master_key": office.master_key,
+                "selected_management_scope_uids": [scope.stable_uid],
+            },
+        )
+        assert response.status_code == 201, response.text
+        task_uids.append(response.json()["task_uid"])
+        return response.json()
+
+    try:
+        first = create_named_task("资料冻结验证任务一")
+        first_version = first["master_data_version"]
+
+        with SessionLocal() as db:
+            state = db.get(MasterDataState, 1)
+            scope_row = db.scalar(
+                select(MasterManagementScope).where(
+                    MasterManagementScope.stable_uid == scope.stable_uid
+                )
+            )
+            assert state is not None and scope_row is not None
+            scope_row.description = f"自动化版本验证-{token}"
+            state.revision_no += 1
+            db.commit()
+
+        old_detail = client.get(f"/api/v1/survey-tasks/{first['task_uid']}")
+        assert old_detail.status_code == 200
+        assert old_detail.json()["master_data_version"] == first_version
+
+        second = create_named_task("资料冻结验证任务二")
+        assert second["master_data_version"] != first_version
+        assert second["master_data_version"] == get_snapshot().summary.master_data_version
+    finally:
+        for task_uid in task_uids:
+            cleanup_task(task_uid)
+        client.delete(
+            f"/api/v1/survey-batches/{batch_uid}",
+            headers={"X-CSRF-Token": csrf},
+        )
+        client.delete(
+            f"/api/v1/projects/{project_uid}",
+            headers={"X-CSRF-Token": csrf},
+        )
+        with SessionLocal() as db:
+            state = db.get(MasterDataState, 1)
+            scope_row = db.scalar(
+                select(MasterManagementScope).where(
+                    MasterManagementScope.stable_uid == scope.stable_uid
+                )
+            )
+            assert state is not None and scope_row is not None
+            scope_row.description = original_description
+            state.revision_no = original_revision
+            db.commit()
+        cleanup_test_user(admin.user_uid)

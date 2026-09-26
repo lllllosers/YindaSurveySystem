@@ -17,6 +17,7 @@ from app.services.master_data_service import get_snapshot
 
 
 router = APIRouter(tags=["System"])
+API_GENERATION = "2026.09.26-master-data-v1"
 OverviewReader = Annotated[
     User,
     Depends(require_permission("projects.read")),
@@ -29,6 +30,7 @@ def health_check() -> dict[str, str]:
     return {
         "status": "ok",
         "service": "yinda-web-center-api",
+        "api_generation": API_GENERATION,
     }
 
 

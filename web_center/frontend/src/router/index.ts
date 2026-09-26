@@ -74,6 +74,11 @@ export const router = createRouter({
           component: () => import("../views/AuditView.vue"),
           meta: { permission: "audit.read" },
         },
+        {
+          path: ":pathMatch(.*)*",
+          name: "not-found",
+          component: () => import("../views/NotFoundView.vue"),
+        },
       ],
     },
   ],

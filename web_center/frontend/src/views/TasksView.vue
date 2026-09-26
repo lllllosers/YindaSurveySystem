@@ -53,13 +53,14 @@ const activeProjects = computed(() => projects.value.filter((item) => item.statu
 const activeBatches = computed(() => batches.value.filter((item) => item.status === "active"));
 const targetOptions = computed(() => {
   if (!master.value) return [];
-  return form.target_unit_type === "department" ? master.value.departments : master.value.offices;
+  const items = form.target_unit_type === "department" ? master.value.departments : master.value.offices;
+  return items.filter((item) => item.status === "active");
 });
 const eligibleScopes = computed(() => {
   if (!master.value || !form.target_master_key) return [];
   if (form.target_unit_type === "water_office") {
     return master.value.management_scopes.filter(
-      (item) => item.organization_master_key === form.target_master_key,
+      (item) => item.status === "active" && item.organization_master_key === form.target_master_key,
     );
   }
   const officeKeys = new Set(
@@ -67,7 +68,7 @@ const eligibleScopes = computed(() => {
       .filter((item) => item.parent_master_key === form.target_master_key)
       .map((item) => item.master_key),
   );
-  return master.value.management_scopes.filter((item) => officeKeys.has(item.organization_master_key));
+  return master.value.management_scopes.filter((item) => item.status === "active" && officeKeys.has(item.organization_master_key));
 });
 
 const statusLabels: Record<string, string> = {

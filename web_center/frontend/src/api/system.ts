@@ -3,6 +3,7 @@ import { api } from "./http";
 export interface HealthResponse {
   status: string;
   service: string;
+  api_generation: string;
 }
 
 export interface DatabaseHealthResponse {

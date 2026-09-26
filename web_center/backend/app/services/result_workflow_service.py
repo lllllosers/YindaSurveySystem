@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
@@ -18,6 +18,7 @@ from app.models.central_record import (
     CentralSurveyRecord,
 )
 from app.models.result_submission import ResultSubmission
+from app.models.online_entry import OnlineSurveyEntry
 from app.models.survey_task import SurveyTask
 from app.services.master_data_service import REPOSITORY_ROOT
 
@@ -215,6 +216,12 @@ def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> Prefli
     }
     asset_uids = {str(item.get("engineering_asset_uid")) for item in documents.assets}
     record_uids = {str(item.get("survey_record_uid")) for item in documents.records}
+    form_code_by_asset = {
+        str(item.get("engineering_asset_uid") or ""): str(
+            (item.get("form") if isinstance(item.get("form"), dict) else {}).get("form_code") or ""
+        )
+        for item in documents.records
+    }
 
     for record in documents.records:
         uid = str(record.get("survey_record_uid") or "")
@@ -260,6 +267,31 @@ def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> Prefli
         uid = str(item.get("engineering_asset_uid") or "")
         existing = existing_assets.get(uid)
         if existing is None:
+            name = str(item.get("asset_name") or "").strip()
+            duplicate = None
+            if name:
+                duplicate = db.scalar(
+                    select(CentralEngineeringAsset).where(
+                        CentralEngineeringAsset.engineering_asset_uid != uid,
+                        CentralEngineeringAsset.project_uid == str(item.get("project_uid") or ""),
+                        CentralEngineeringAsset.asset_type == item.get("asset_type"),
+                        CentralEngineeringAsset.organization_unit_uid == item.get("organization_unit_uid"),
+                        CentralEngineeringAsset.canal_unit_uid == item.get("canal_unit_uid"),
+                        func.lower(CentralEngineeringAsset.asset_name) == name.lower(),
+                    )
+                )
+                pending_web = db.scalar(
+                    select(OnlineSurveyEntry).where(
+                        OnlineSurveyEntry.project_uid == str(item.get("project_uid") or ""),
+                        OnlineSurveyEntry.organization_unit_uid == item.get("organization_unit_uid"),
+                        OnlineSurveyEntry.canal_unit_uid == item.get("canal_unit_uid"),
+                        OnlineSurveyEntry.form_code == form_code_by_asset.get(uid, ""),
+                        func.lower(OnlineSurveyEntry.asset_name) == name.lower(),
+                        OnlineSurveyEntry.status.in_(("submitted", "accepted")),
+                    )
+                )
+                if duplicate is not None or pending_web is not None:
+                    _issue(issues, "ASSET_POSSIBLE_DUPLICATE", "中心已有相同项目、渠道、单位和名称的调查对象，请核对后再入库，避免 Web 与桌面端重复建档。", entity_uid=uid)
             summary["new_assets"] += 1
             continue
         state = _compare_revision(item, existing.revision_no, existing.content_sha256, kind="asset")

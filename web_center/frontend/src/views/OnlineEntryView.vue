@@ -323,11 +323,28 @@ onMounted(loadAll);
 
   <el-alert
     class="linkage-alert"
-    title="与桌面端使用同一套调查任务、单位渠道和 14 张正式调查表。Web 端适合内业补录；桌面端继续负责离线现场采集，二者审核后统一进入正式成果库。"
+    title="Web 与桌面端不是两套账：二者使用同一任务和基础资料，记录只有审核进入中心正式成果库后才成为正式数据。"
     type="success"
     :closable="false"
     show-icon
   />
+
+  <div class="entry-collaboration-strip">
+    <div>
+      <b>桌面端录入</b>
+      <span>适合现场离线采集，完成后导出成果文件并回传中心审核</span>
+    </div>
+    <i>→</i>
+    <div class="center-truth">
+      <b>中心正式成果库</b>
+      <span>唯一正式依据，统一查重、审核、留痕和汇总</span>
+    </div>
+    <i>←</i>
+    <div>
+      <b>Web 在线录入</b>
+      <span>适合办公室补录，提交后经审核直接进入同一正式成果库</span>
+    </div>
+  </div>
 
   <div class="entry-stat-row">
     <div><span>全部记录</span><strong>{{ entries.length }}</strong></div>

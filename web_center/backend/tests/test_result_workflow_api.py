@@ -20,6 +20,7 @@ from app.models.central_record import (
     CentralSurveyRecord,
 )
 from app.models.result_submission import ResultSubmission
+from app.models.online_entry import OnlineSurveyEntry
 from app.models.survey_task import SurveyTask
 from app.services.master_data_service import get_snapshot
 from app.services.result_submission_service import BACKEND_ROOT as RESULT_BACKEND_ROOT
@@ -299,6 +300,75 @@ def test_formal_result_preflight_review_import_and_query() -> None:
         assert task_detail.status_code == 200
         assert task_detail.json()["status"] == "closed"
     finally:
+        cleanup_workflow(submission_uid, task_uid, record_uid, asset_uid)
+        if batch_uid:
+            client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
+        if project_uid:
+            client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(admin.user_uid)
+
+
+def test_desktop_preflight_blocks_name_already_waiting_for_web_review() -> None:
+    token = uuid4().hex[:8]
+    admin = create_test_user("admin")
+    client = TestClient(app)
+    csrf = login_client(client, admin.username)
+    project_uid = batch_uid = task_uid = submission_uid = None
+    asset_uid = record_uid = None
+    web_entry_uid = uuid4().hex
+    try:
+        project_uid, batch_uid, task, scope = create_project_batch_and_task(client, csrf, token)
+        task_uid = task["task_uid"]
+        package, asset_uid, record_uid = make_formal_result_package(
+            project_uid=project_uid,
+            batch_uid=batch_uid,
+            task_uid=task_uid,
+            scope=scope,
+        )
+        with SessionLocal() as db:
+            db.add(OnlineSurveyEntry(
+                entry_uid=web_entry_uid,
+                task_uid=task_uid,
+                project_uid=project_uid,
+                survey_batch_uid=batch_uid,
+                management_scope_uid=scope["management_scope_uid"],
+                organization_unit_uid=scope["organization_unit_uid"],
+                organization_name=scope["organization_name"],
+                canal_unit_uid=scope["canal_uid"],
+                canal_name=scope["canal_name"],
+                form_code="form_2_1",
+                form_name="防渗衬砌渠道渠段工程状况调查表",
+                asset_name="自动化测试防渗渠段",
+                form_data_json={},
+                evaluations_json=[],
+                conclusion_json={},
+                status="submitted",
+                created_by_user_uid=admin.user_uid,
+                created_by_username=admin.username,
+            ))
+            db.commit()
+
+        uploaded = client.post(
+            "/api/v1/result-submissions/upload",
+            headers={"X-CSRF-Token": csrf},
+            files={"file": ("duplicate.ydresult", package, "application/octet-stream")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        submission_uid = uploaded.json()["submission_uid"]
+        preflight = client.post(
+            f"/api/v1/result-submissions/{submission_uid}/preflight",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert preflight.status_code == 200, preflight.text
+        assert preflight.json()["status"] == "conflict"
+        assert any(
+            item["code"] == "ASSET_POSSIBLE_DUPLICATE"
+            for item in preflight.json()["preflight_issues"]
+        )
+    finally:
+        with SessionLocal() as db:
+            db.execute(delete(OnlineSurveyEntry).where(OnlineSurveyEntry.entry_uid == web_entry_uid))
+            db.commit()
         cleanup_workflow(submission_uid, task_uid, record_uid, asset_uid)
         if batch_uid:
             client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})

@@ -1,4 +1,10 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+
+MasterStatus = Literal["active", "inactive"]
+RangeMode = Literal["whole", "segment_known", "segment_unknown"]
 
 
 class MasterDataSummary(BaseModel):
@@ -20,6 +26,7 @@ class DepartmentRead(BaseModel):
     business_code: str
     sort_order: int
     description: str | None = None
+    status: MasterStatus = "active"
 
 
 class OfficeRead(DepartmentRead):
@@ -36,6 +43,7 @@ class CanalRead(BaseModel):
     parent_name: str | None = None
     sort_order: int
     description: str | None = None
+    status: MasterStatus = "active"
 
 
 class ManagementScopeRead(BaseModel):
@@ -61,3 +69,61 @@ class MasterDataSnapshot(BaseModel):
     offices: list[OfficeRead]
     canals: list[CanalRead]
     management_scopes: list[ManagementScopeRead]
+
+
+class DepartmentWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    business_code: str = Field(min_length=1, max_length=40)
+    sort_order: int = 0
+    description: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def normalize(self):
+        self.name = self.name.strip()
+        self.business_code = self.business_code.strip()
+        self.description = self.description.strip() if self.description else None
+        return self
+
+
+class OfficeWrite(DepartmentWrite):
+    parent_department_uid: str = Field(min_length=32, max_length=32)
+
+
+class CanalWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    canal_level: Literal["01", "02", "03", "04"]
+    parent_canal_uid: str | None = Field(default=None, min_length=32, max_length=32)
+    sort_order: int = 0
+    description: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def normalize(self):
+        self.name = self.name.strip()
+        self.description = self.description.strip() if self.description else None
+        return self
+
+
+class ManagementScopeWrite(BaseModel):
+    canal_uid: str = Field(min_length=32, max_length=32)
+    organization_unit_uid: str = Field(min_length=32, max_length=32)
+    range_mode: RangeMode
+    start_stake_text: str | None = Field(default=None, max_length=40)
+    end_stake_text: str | None = Field(default=None, max_length=40)
+    sort_order: int = 0
+    description: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def normalize(self):
+        self.start_stake_text = self.start_stake_text.strip() if self.start_stake_text else None
+        self.end_stake_text = self.end_stake_text.strip() if self.end_stake_text else None
+        self.description = self.description.strip() if self.description else None
+        if self.range_mode == "segment_known" and (not self.start_stake_text or not self.end_stake_text):
+            raise ValueError("已知分段必须填写起止桩号")
+        if self.range_mode != "segment_known":
+            self.start_stake_text = None
+            self.end_stake_text = None
+        return self
+
+
+class MasterStatusUpdate(BaseModel):
+    status: MasterStatus

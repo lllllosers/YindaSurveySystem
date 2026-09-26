@@ -9,6 +9,13 @@ from app.models.central_record import (
 )
 from app.models.project import Project, SurveyBatch
 from app.models.online_entry import OnlineSurveyEntry
+from app.models.master_data import (
+    MasterCanal,
+    MasterDataState,
+    MasterDepartment,
+    MasterManagementScope,
+    MasterOffice,
+)
 from app.models.result_submission import ResultSubmission
 from app.models.survey_task import SurveyTask
 
@@ -27,4 +34,9 @@ __all__ = [
     "ResultSubmission",
     "SurveyTask",
     "OnlineSurveyEntry",
+    "MasterDataState",
+    "MasterDepartment",
+    "MasterOffice",
+    "MasterCanal",
+    "MasterManagementScope",
 ]

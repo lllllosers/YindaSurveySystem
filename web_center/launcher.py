@@ -24,6 +24,7 @@ NPM_EXE = "npm.cmd"
 LOG_DIR = WEB_ROOT / ".runtime" / "logs"
 API_URL = "http://127.0.0.1:8000"
 WEB_URL = "http://127.0.0.1:8848"
+EXPECTED_API_GENERATION = "2026.09.26-master-data-v1"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -109,14 +110,14 @@ class ServiceLauncher:
         ).pack(anchor="w")
         tk.Label(
             title_box,
-            text="WEB CENTER · LOCAL SERVICE CONSOLE",
+            text="统一调查 · 审核 · 成果管理",
             bg="#081225",
             fg="#6f86a8",
             font=("Segoe UI", 8),
         ).pack(anchor="w", pady=(3, 0))
         tk.Label(
             header,
-            text="V1.2.0  PREVIEW",
+            text="V1.2.0  业务预览版",
             bg="#112443",
             fg="#87b8ff",
             padx=12,
@@ -139,8 +140,8 @@ class ServiceLauncher:
         cards.pack(fill="x")
         services = [
             ("database", "PostgreSQL", "127.0.0.1 : 5432"),
-            ("backend", "FastAPI 后端", "127.0.0.1 : 8000"),
-            ("frontend", "Vue 前端", "127.0.0.1 : 8848"),
+            ("backend", "业务后台", "127.0.0.1 : 8000"),
+            ("frontend", "网页服务", "127.0.0.1 : 8848"),
         ]
         for index, (key, title, detail) in enumerate(services):
             cards.grid_columnconfigure(index, weight=1)
@@ -166,7 +167,7 @@ class ServiceLauncher:
         self.start_button.pack(side="left")
         ttk.Button(actions, text="停止本次服务", style="Danger.TButton", command=self.stop_all).pack(side="left", padx=(10, 0))
         ttk.Button(actions, text="打开 Web 页面", style="Secondary.TButton", command=lambda: webbrowser.open(WEB_URL)).pack(side="left", padx=(10, 0))
-        ttk.Button(actions, text="打开 API 文档", style="Secondary.TButton", command=lambda: webbrowser.open(f"{API_URL}/docs")).pack(side="left", padx=(10, 0))
+        ttk.Button(actions, text="打开系统接口", style="Secondary.TButton", command=lambda: webbrowser.open(f"{API_URL}/docs")).pack(side="left", padx=(10, 0))
         ttk.Button(actions, text="立即检测", style="Secondary.TButton", command=self._refresh_status).pack(side="right")
 
         log_panel = tk.Frame(body, bg="#101d33", padx=18, pady=15)
@@ -241,6 +242,23 @@ class ServiceLauncher:
             return False
 
     @staticmethod
+    def _api_generation() -> str | None:
+        try:
+            with urlopen(f"{API_URL}/api/v1/health", timeout=1.2) as response:
+                if not 200 <= response.status < 400:
+                    return None
+                payload = json.loads(response.read().decode("utf-8"))
+                if payload.get("status") != "ok":
+                    return None
+                return str(payload.get("api_generation") or "")
+        except (OSError, URLError, ValueError, json.JSONDecodeError):
+            return None
+
+    @classmethod
+    def _api_current(cls) -> bool:
+        return cls._api_generation() == EXPECTED_API_GENERATION
+
+    @staticmethod
     def _port_open(port: int) -> bool:
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.8):
@@ -256,7 +274,7 @@ class ServiceLauncher:
         def check() -> None:
             values = {
                 "database": self._port_open(5432),
-                "backend": self._http_ok(f"{API_URL}/api/v1/health"),
+                "backend": self._api_current(),
                 "frontend": self._http_ok(WEB_URL),
             }
             self.events.put(("__status__", (values, reschedule)))
@@ -295,28 +313,37 @@ class ServiceLauncher:
             if not self._port_open(5432):
                 self._emit("PostgreSQL 端口未响应，请先启动数据库服务。", "error")
                 return
-            if not self._http_ok(f"{API_URL}/api/v1/health"):
-                self._emit("正在检查并升级数据库结构…")
-                migration = subprocess.run(
-                    [str(PYTHON_EXE), "-m", "alembic", "upgrade", "head"],
-                    cwd=BACKEND_DIR,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=CREATE_NO_WINDOW,
-                )
-                if migration.returncode != 0:
-                    self._emit("数据库迁移失败：" + self._last_output(migration.stdout, migration.stderr), "error")
-                    return
-                self._emit("数据库结构已就绪。", "ok")
+            self._emit("正在检查并升级数据库结构…")
+            migration = subprocess.run(
+                [str(PYTHON_EXE), "-m", "alembic", "upgrade", "head"],
+                cwd=BACKEND_DIR,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=CREATE_NO_WINDOW,
+            )
+            if migration.returncode != 0:
+                self._emit("数据库迁移失败：" + self._last_output(migration.stdout, migration.stderr), "error")
+                return
+            self._emit("数据库结构已就绪。", "ok")
+
+            api_port_open = self._port_open(8000)
+            running_generation = self._api_generation()
+            if running_generation is not None and running_generation != EXPECTED_API_GENERATION:
+                self._emit("检测到旧版后台服务仍占用 8000 端口。请关闭旧服务窗口后，再点击“启动全部服务”。", "error")
+                return
+            if api_port_open and running_generation is None:
+                self._emit("8000 端口已被其他程序占用，无法启动业务后台。请关闭占用该端口的程序后重试。", "error")
+                return
+            if running_generation is None:
                 self._start_process(
                     "backend",
                     [str(PYTHON_EXE), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
                     BACKEND_DIR,
                 )
             else:
-                self._emit("后端服务已在运行，本控制台不会重复启动。", "ok")
+                self._emit("当前版本的后端服务已在运行，本控制台不会重复启动。", "ok")
             if not self._http_ok(WEB_URL):
                 self._start_process("frontend", [NPM_EXE, "run", "dev"], FRONTEND_DIR)
             else:
@@ -324,7 +351,7 @@ class ServiceLauncher:
 
             deadline = time.time() + 30
             while time.time() < deadline:
-                if self._http_ok(f"{API_URL}/api/v1/health") and self._http_ok(WEB_URL):
+                if self._api_current() and self._http_ok(WEB_URL):
                     self._emit("前后端服务均已就绪，可以打开 Web 页面验收。", "ok")
                     self.events.put(("__open_web__", WEB_URL))
                     return

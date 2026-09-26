@@ -26,6 +26,7 @@ def test_online_entry_draft_submit_review_and_import() -> None:
     office = next(item for item in snapshot.offices if item.master_key == scope.organization_master_key)
     task_uid: str | None = None
     entry_uid: str | None = None
+    duplicate_entry_uid: str | None = None
 
     try:
         task_response = client.post(
@@ -108,7 +109,37 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         assert detail["asset_name"] == "Web在线录入测试对象"
         assert detail["record_payload"]["source_channel"] == "web_online_entry"
         assert len(detail["inspections"]) == len(evaluations)
+
+        duplicate_response = client.post(
+            "/api/v1/online-entries",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "task_uid": task_uid,
+                "management_scope_uid": scope.stable_uid,
+                "form_code": definition["form_code"],
+                "form_data": form_data,
+                "evaluations": evaluations,
+                "conclusion": {
+                    "survey_date": "2026-09-26",
+                    "overall_grade": definition["grade_options"][0],
+                    "surveyor_signatures": "测试人员",
+                    "survey_comment": "重复记录验证",
+                },
+            },
+        )
+        assert duplicate_response.status_code == 201, duplicate_response.text
+        duplicate_entry_uid = duplicate_response.json()["entry_uid"]
+        duplicate_submit = client.post(
+            f"/api/v1/online-entries/{duplicate_entry_uid}/submit",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert duplicate_submit.status_code == 400
+        assert "正式成果库中已有同名调查对象" in duplicate_submit.json()["detail"]
     finally:
+        if duplicate_entry_uid:
+            with SessionLocal() as db:
+                db.execute(delete(OnlineSurveyEntry).where(OnlineSurveyEntry.entry_uid == duplicate_entry_uid))
+                db.commit()
         if entry_uid:
             asset_uid = uuid5(NAMESPACE_URL, f"yinda:web-entry:asset:{entry_uid}").hex
             record_uid = uuid5(NAMESPACE_URL, f"yinda:web-entry:record:{entry_uid}").hex
