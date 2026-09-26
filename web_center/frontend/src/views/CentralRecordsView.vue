@@ -134,6 +134,7 @@ onMounted(async () => {
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">唯一正式数据来源</div>
       <h1>正式成果库</h1>
       <p>集中查询已经审核入库的调查成果，按工程、单位、渠道和调查表快速筛选汇总。</p>
     </div>

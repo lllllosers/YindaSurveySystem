@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { Delete, Download, Edit, Plus, Refresh, Search, SwitchButton } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
@@ -31,6 +31,8 @@ const editingKind = ref<MasterKind>("canals");
 const keyword = ref("");
 const showInactive = ref(true);
 const canalView = ref<"all" | "backbone" | "unassigned">("all");
+const canalPage = ref(1);
+const canalPageSize = 10;
 const dialogVisible = ref(false);
 const scopeDrawerVisible = ref(false);
 const selectedCanal = ref<Canal | null>(null);
@@ -85,6 +87,16 @@ const canals = computed(() => visible(allCanals.value).filter((item) => {
   if (canalView.value === "unassigned") return ["01", "02"].includes(item.canal_level) && activeScopesFor(item).length === 0;
   return true;
 }));
+const pagedCanals = computed(() => {
+  const start = (canalPage.value - 1) * canalPageSize;
+  return canals.value.slice(start, start + canalPageSize);
+});
+const canalPageRange = computed(() => {
+  if (!canals.value.length) return "当前没有符合条件的渠道";
+  const start = (canalPage.value - 1) * canalPageSize + 1;
+  const end = Math.min(canalPage.value * canalPageSize, canals.value.length);
+  return `显示第 ${start}–${end} 条，共 ${canals.value.length} 条`;
+});
 const selectedScopes = computed(() => {
   if (!selectedCanal.value) return [];
   return visible(scopesByCanal.value.get(selectedCanal.value.master_key) ?? []);
@@ -180,6 +192,11 @@ function showUnassignedBackbones() {
   activeSection.value = "canals";
   canalView.value = "unassigned";
 }
+
+watch([keyword, showInactive, canalView], () => { canalPage.value = 1; });
+watch(() => canals.value.length, (total) => {
+  canalPage.value = Math.min(canalPage.value, Math.max(1, Math.ceil(total / canalPageSize)));
+});
 
 function payload() {
   const common = { sort_order: form.sort_order, description: form.description.trim() || null };
@@ -299,13 +316,17 @@ onMounted(loadData);
             <el-segmented v-model="canalView" :options="[{ label: '全部渠道', value: 'all' }, { label: '干渠与分干渠', value: 'backbone' }, { label: `待设置分管（${unassignedBackboneCanals.length}）`, value: 'unassigned' }]" />
             <span>干渠、分干渠、支渠都可以由多个管理所分段负责。</span>
           </div>
-          <el-table :data="canals" stripe height="510">
+          <el-table :data="pagedCanals" stripe>
             <el-table-column label="渠道" min-width="180"><template #default="{ row }"><div class="canal-name-cell"><strong>{{ row.name }}</strong><span>{{ row.parent_name ? `上级：${row.parent_name}` : "骨干渠道" }}</span></div></template></el-table-column>
             <el-table-column label="类型" width="105"><template #default="{ row }"><el-tag size="small" effect="plain">{{ levelLabel(row.canal_level) }}</el-tag></template></el-table-column>
             <el-table-column label="分管所与区段" min-width="260"><template #default="{ row }"><button class="scope-summary-button" :class="{ missing: activeScopesFor(row).length === 0 }" type="button" @click="openScopeManager(row)"><strong>{{ scopeSummary(row) }}</strong><span>{{ activeScopesFor(row).length ? '查看或调整分管段' : '现在设置' }}</span></button></template></el-table-column>
             <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.status === 'active' ? 'success' : 'info'">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="操作" width="270" fixed="right"><template #default="{ row }"><el-button type="primary" link @click="openScopeManager(row)">管理分管所</el-button><template v-if="canWrite"><el-button link :icon="Edit" @click="openEdit('canals', row)">修改渠道</el-button><el-dropdown trigger="click"><el-button link>更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item @click="toggleStatus('canals', row)">{{ row.status === 'active' ? '停用渠道' : '启用渠道' }}</el-dropdown-item><el-dropdown-item v-if="row.status === 'inactive'" divided @click="remove('canals', row)">删除渠道</el-dropdown-item></el-dropdown-menu></template></el-dropdown></template></template></el-table-column>
           </el-table>
+          <div class="master-pagination">
+            <span>{{ canalPageRange }}</span>
+            <el-pagination v-model:current-page="canalPage" background layout="prev, pager, next" :page-size="canalPageSize" :total="canals.length" hide-on-single-page />
+          </div>
         </template>
       </el-card>
     </div>

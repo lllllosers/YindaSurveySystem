@@ -16,6 +16,7 @@ import {
 import aqueductHero from "../assets/zhuanglang-aqueduct-hero.png";
 
 type ServiceState = "checking" | "online" | "offline";
+interface WorkPrompt { title: string; description: string; path: string; action: string; tone: "blue" | "amber" | "green"; }
 
 const apiState = ref<ServiceState>("checking");
 const dbState = ref<ServiceState>("checking");
@@ -24,6 +25,27 @@ const checking = ref(false);
 const heroStyle = {
   backgroundImage: `linear-gradient(90deg, rgba(5, 21, 49, .94) 0%, rgba(8, 39, 78, .80) 48%, rgba(7, 34, 67, .26) 100%), url(${aqueductHero})`,
 };
+const workPrompts = computed<WorkPrompt[]>(() => {
+  const data = overview.value;
+  if (!data) return [];
+  const items: WorkPrompt[] = [];
+  if (data.active_batch_count === 0) {
+    items.push({ title: "建立进行中的调查批次", description: "任务必须归入一个进行中的批次，项目、任务和成果才能对应起来。", path: "/projects", action: "前往项目批次", tone: "blue" });
+  }
+  if (data.unassigned_backbone_canal_count > 0) {
+    items.push({ title: `补齐 ${data.unassigned_backbone_canal_count} 条骨干渠分管`, description: "给干渠和分干渠按管理所、桩号区段设置负责范围，之后才能准确下发任务。", path: "/master-data", action: "前往单位与渠系", tone: "amber" });
+  }
+  if (data.active_batch_count > 0 && data.survey_task_count === 0) {
+    items.push({ title: "下发第一项调查任务", description: "选择调查单位和分管范围，生成桌面端任务文件，也可供 Web 在线录入使用。", path: "/tasks", action: "前往任务中心", tone: "blue" });
+  }
+  if (data.pending_review_count > 0) {
+    items.push({ title: `处理 ${data.pending_review_count} 项待审核成果`, description: "核对调查内容和任务范围，通过后进入唯一的正式成果库。", path: "/results", action: "前往成果审核", tone: "amber" });
+  }
+  if (!items.length) {
+    items.push({ title: "当前准备工作已完成", description: "可以继续录入调查记录，或到正式成果库查询和汇总已经审核的数据。", path: "/central-records", action: "查看正式成果", tone: "green" });
+  }
+  return items;
+});
 
 const apiStatusType = computed(() =>
   apiState.value === "online"
@@ -114,6 +136,20 @@ onMounted(checkServices);
       <div><span>调查任务</span><strong>{{ overview?.survey_task_count ?? "—" }}</strong><small>中心已安排的调查工作</small></div>
     </div>
   </div>
+
+  <section class="work-prompts" aria-label="当前建议办理事项">
+    <div class="work-prompts-heading">
+      <div><span class="eyebrow">按业务顺序推进</span><h2>当前建议先做</h2></div>
+      <span>系统根据现有项目、资料、任务和成果自动提示</span>
+    </div>
+    <div class="work-prompt-grid">
+      <router-link v-for="item in workPrompts" :key="`${item.path}-${item.title}`" :to="item.path" class="work-prompt-card" :class="item.tone">
+        <span class="work-prompt-dot"></span>
+        <div><strong>{{ item.title }}</strong><p>{{ item.description }}</p></div>
+        <b>{{ item.action }} →</b>
+      </router-link>
+    </div>
+  </section>
 
   <el-card shadow="never" class="business-card collaboration-card">
     <template #header>

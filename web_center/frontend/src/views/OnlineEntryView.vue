@@ -357,7 +357,7 @@ onMounted(loadAll);
     <template #header>
       <div class="card-header"><span>在线调查记录</span><small>草稿自动与调查任务关联</small></div>
     </template>
-    <el-table v-loading="loading" :data="entries" stripe empty-text="尚未创建在线调查记录">
+    <el-table v-loading="loading" :data="entries" stripe>
       <el-table-column label="调查对象" min-width="220">
         <template #default="{ row }">
           <div class="task-name">{{ row.asset_name || "尚未填写名称" }}</div>
@@ -395,6 +395,18 @@ onMounted(loadAll);
           </template>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="business-empty compact">
+          <div class="business-empty-mark">录</div>
+          <h3>还没有在线调查记录</h3>
+          <p v-if="activeTasks.length">可以从已下发任务中选择渠道和调查表开始录入；现场无网络时仍使用桌面端采集。</p>
+          <p v-else>在线录入必须关联已经下发的调查任务，请先到任务中心建立任务。</p>
+          <div class="empty-actions">
+            <el-button v-if="canWrite && activeTasks.length" type="primary" :icon="Plus" @click="openCreate">新建调查记录</el-button>
+            <el-button v-else type="primary" @click="$router.push('/tasks')">前往任务中心</el-button>
+          </div>
+        </div>
+      </template>
     </el-table>
   </el-card>
 

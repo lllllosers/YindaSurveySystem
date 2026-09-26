@@ -167,6 +167,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">人员与职责</div>
       <h1>用户与权限</h1>
       <p>为中心管理、任务安排、成果审核和成果查询人员分配合适权限。</p>
     </div>

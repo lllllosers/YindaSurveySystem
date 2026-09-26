@@ -274,6 +274,7 @@ onMounted(() => refreshProjects());
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">调查准备第一步</div>
       <h1>项目与调查批次</h1>
       <p>
         先建立调查项目和批次，后续任务下发、成果回收和统计都将归入对应批次。
@@ -337,12 +338,17 @@ onMounted(() => refreshProjects());
           </el-button>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="business-empty compact">
+          <div class="business-empty-mark">项</div>
+          <h3>还没有调查项目</h3>
+          <p>先建立项目，再在项目下创建本年度或本轮调查批次。后续任务和成果都会自动归入对应批次。</p>
+          <div v-if="auth.hasPermission('projects.write')" class="empty-actions">
+            <el-button type="primary" @click="openCreateProject">新建项目</el-button>
+          </div>
+        </div>
+      </template>
     </el-table>
-
-    <el-empty
-      v-if="!loadingProjects && projects.length === 0"
-      description="尚未创建项目"
-    />
   </el-card>
 
   <el-card shadow="never" class="business-card batches-card">
@@ -355,6 +361,7 @@ onMounted(() => refreshProjects());
           </span>
         </div>
         <el-button
+          v-if="auth.hasPermission('batches.write')"
           type="primary"
           plain
           :disabled="!selectedProject"
@@ -403,15 +410,21 @@ onMounted(() => refreshProjects());
           </el-button>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="business-empty compact">
+          <div class="business-empty-mark">批</div>
+          <h3>当前项目还没有调查批次</h3>
+          <p>创建批次并将状态设为“进行中”后，任务中心才能基于该批次下发调查工作。</p>
+          <div v-if="auth.hasPermission('batches.write')" class="empty-actions">
+            <el-button type="primary" @click="openCreateBatch">新建调查批次</el-button>
+          </div>
+        </div>
+      </template>
     </el-table>
 
     <el-empty
       v-if="!selectedProject"
       description="请先创建并选择一个项目"
-    />
-    <el-empty
-      v-else-if="!loadingBatches && batches.length === 0"
-      description="该项目尚未创建调查批次"
     />
   </el-card>
 

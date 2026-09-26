@@ -96,6 +96,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">全过程留痕</div>
       <h1>操作记录</h1>
       <p>
         自动记录重要业务操作，便于了解谁在什么时间进行了哪些处理，历史记录不可修改。

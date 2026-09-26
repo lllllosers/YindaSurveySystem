@@ -177,6 +177,33 @@ body {
   gap: 16px;
   margin-bottom: 18px;
 }
+.work-prompts { margin-bottom: 18px; }
+.work-prompts-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 11px; }
+.work-prompts-heading h2 { margin: 2px 0 0; color: #22324d; font-size: 19px; }
+.work-prompts-heading > span { color: #7b8799; font-size: 13px; }
+.work-prompt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.work-prompt-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 92px;
+  padding: 16px 18px;
+  border: 1px solid #dfe6f0;
+  border-radius: 13px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.work-prompt-card:hover { transform: translateY(-1px); border-color: #bdd1ef; box-shadow: 0 9px 24px rgba(25, 58, 110, .08); }
+.work-prompt-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.work-prompt-card .work-prompt-dot { width: 11px; height: 11px; border-radius: 50%; background: #3375dc; box-shadow: 0 0 0 6px #e9f1ff; }
+.work-prompt-card.amber .work-prompt-dot { background: #e99a25; box-shadow: 0 0 0 6px #fff1d9; }
+.work-prompt-card.green .work-prompt-dot { background: #20a878; box-shadow: 0 0 0 6px #e2f6ef; }
+.work-prompt-card strong { color: #26364f; font-size: 15px; }
+.work-prompt-card p { margin: 5px 0 0; color: #718096; font-size: 13px; line-height: 1.55; }
+.work-prompt-card b { color: #2f68c3; font-size: 13px; white-space: nowrap; }
 .collaboration-card { margin-bottom: 18px; }
 .collaboration-flow { display: flex; align-items: stretch; gap: 10px; }
 .collaboration-flow > div { flex: 1; min-width: 0; padding: 15px; border: 1px solid #e5eaf2; border-radius: 12px; background: linear-gradient(145deg, #fff, #f8faff); }
@@ -540,6 +567,7 @@ body {
 
 @media (max-width: 1180px) {
   .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+  .work-prompt-grid { grid-template-columns: 1fr; }
   .dashboard-lower { grid-template-columns: 1fr; }
   .hero-version { min-width: 220px; }
   .collaboration-flow { display: grid; grid-template-columns: repeat(2, 1fr); }
@@ -549,4 +577,153 @@ body {
   .master-status-strip > :last-child { grid-column: 1 / -1; }
   .master-workspace { grid-template-columns: 180px minmax(0, 1fr); }
   .canal-view-filter { align-items: flex-start; flex-direction: column; }
+}
+
+/* Readability pass: keep business screens comfortable at normal Windows scaling. */
+:root {
+  --el-font-size-base: 14px;
+  --el-font-size-small: 13px;
+  --el-font-size-extra-small: 12px;
+}
+
+body { font-size: 14px; line-height: 1.55; }
+.brand-title { font-size: 16px; }
+.brand-subtitle { color: #9aabc3; font-size: 12px; letter-spacing: .8px; }
+.side-menu .el-menu-item { height: 48px; font-size: 14px; }
+.side-menu .el-menu-item-group__title { padding-top: 15px !important; }
+.menu-group-title { color: #8293ad; font-size: 11px; letter-spacing: 1.2px; }
+.page-title { font-size: 16px; }
+.page-subtitle { color: #738097; font-size: 13px; }
+.eyebrow { font-size: 12px; letter-spacing: 1.25px; }
+.intro p,
+.module-header p { max-width: 780px; font-size: 15px; line-height: 1.65; }
+.el-button { font-size: 14px; }
+.el-input,
+.el-select,
+.el-textarea,
+.el-form-item__label,
+.el-checkbox,
+.el-radio,
+.el-segmented { font-size: 14px; }
+.el-table { color: #334155; font-size: 14px; }
+.el-table th.el-table__cell { color: #536177; font-size: 14px; font-weight: 700; }
+.el-table .cell { line-height: 1.5; }
+.el-tag { font-size: 13px; }
+.el-alert__title { font-size: 14px; line-height: 1.65; }
+.business-card .el-card__header { font-size: 15px; }
+.card-header small,
+.card-header a { font-size: 13px; }
+
+.hero-badge,
+.hero-version span,
+.hero-version small,
+.metric-card small,
+.collaboration-flow span,
+.collaboration-benefits span,
+.master-attention,
+.service-detail span,
+.master-numbers span,
+.version-line,
+.entry-collaboration-strip span,
+.grade-standard,
+.entry-drawer-footer > span,
+.master-status-strip span,
+.master-section-nav button small,
+.master-section-nav .nav-help,
+.canal-view-filter > span,
+.canal-name-cell span,
+.table-subtext,
+.scope-summary-button span,
+.scope-guidance span,
+.scope-drawer-toolbar,
+.contract-label,
+.scope-picker-toolbar span,
+.scope-option span,
+.task-detail-hero p,
+.frozen-scope-row span,
+.task-hash,
+.visual-kicker,
+.visual-flow,
+.login-subtitle,
+.login-footer {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.collaboration-flow strong,
+.service-detail strong,
+.entry-collaboration-strip b,
+.entry-field label,
+.master-status-strip strong,
+.master-section-nav button strong,
+.scope-option strong,
+.frozen-scope-row strong { font-size: 14px; }
+.metric-card span,
+.entry-stat-row span,
+.task-stat-row span,
+.summary-tile span { font-size: 13px; }
+.master-section-nav button > b { width: 30px; height: 30px; font-size: 13px; }
+.master-workspace { grid-template-columns: 224px minmax(0, 1fr); }
+.canal-name-cell,
+.scope-summary-button { gap: 5px; }
+
+.master-pagination {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 4px 0;
+  color: #6b778b;
+  font-size: 13px;
+}
+
+.task-readiness-alert {
+  margin: 0 0 16px;
+}
+
+.task-readiness-alert a {
+  color: #245fae;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.form-guidance {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.form-guidance.warning {
+  color: #b56d0c;
+}
+
+.business-empty {
+  display: flex;
+  min-height: 230px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+}
+.business-empty.compact { min-height: 175px; }
+.business-empty-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 15px;
+  place-items: center;
+  border-radius: 15px;
+  background: #eaf2ff;
+  color: #2b67cc;
+  font-size: 23px;
+  font-weight: 750;
+}
+.business-empty h3 { margin: 0; color: #26364f; font-size: 17px; }
+.business-empty p { max-width: 540px; margin: 8px 0 0; color: #748196; font-size: 13px; line-height: 1.7; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+
+@media (max-width: 1180px) {
+  .master-workspace { grid-template-columns: 194px minmax(0, 1fr); }
 }

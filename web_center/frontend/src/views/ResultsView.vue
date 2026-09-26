@@ -183,6 +183,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">桌面端成果回收</div>
       <h1>成果接收与审核</h1>
       <p>
         上传桌面端导出的调查成果，系统自动核对任务范围，审核通过后统一进入成果库。
@@ -427,11 +428,13 @@ onMounted(refresh);
           </el-button>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="business-empty compact">
+          <div class="business-empty-mark">审</div>
+          <h3>还没有待审核成果</h3>
+          <p>现场人员在桌面端完成调查后，从“成果提交”导出成果文件；中心人员在上方选择文件上传，系统会自动核对任务范围和重复记录。</p>
+        </div>
+      </template>
     </el-table>
-
-    <el-empty
-      v-if="!loading && rows.length === 0"
-      description="尚无成果提交"
-    />
   </el-card>
 </template>

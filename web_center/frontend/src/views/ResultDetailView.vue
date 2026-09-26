@@ -257,6 +257,7 @@ onMounted(refresh);
 <template>
   <div class="module-header">
     <div>
+      <div class="eyebrow">成果质量核验</div>
       <h1>成果审核详情</h1>
       <p>
         核对成果来源和调查范围，审核通过后纳入正式成果库。

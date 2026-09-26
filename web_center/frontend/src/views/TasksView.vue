@@ -223,7 +223,7 @@ onMounted(loadAll);
   </div>
 
   <el-card shadow="never" class="business-card task-list-card" v-loading="loading">
-    <el-table :data="tasks" stripe height="570" empty-text="尚未下发调查任务">
+    <el-table :data="tasks" stripe height="570">
       <el-table-column prop="task_name" label="任务" min-width="210">
         <template #default="scope">
           <div class="task-name">{{ scope.row.task_name }}</div>
@@ -251,11 +251,29 @@ onMounted(loadAll);
           <el-button v-if="canWrite && ['issued', 'downloaded'].includes(scope.row.status)" link type="danger" @click="cancel(scope.row)">取消</el-button>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="business-empty">
+          <div class="business-empty-mark">任</div>
+          <h3>还没有下发调查任务</h3>
+          <p>先确认项目批次已进入“进行中”，并在单位与渠系中设置好调查范围，再把任务交给桌面端或用于 Web 在线录入。</p>
+          <div class="empty-actions">
+            <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建调查任务</el-button>
+            <el-button @click="$router.push('/projects')">检查项目批次</el-button>
+            <el-button @click="$router.push('/master-data')">检查单位与渠系</el-button>
+          </div>
+        </div>
+      </template>
     </el-table>
   </el-card>
 
   <el-dialog v-model="dialogVisible" title="新建调查任务" width="760px" destroy-on-close>
     <el-alert title="任务生成后，本次调查的单位、渠道和范围将固定保存，后续基础资料调整不会影响已经开展的调查。" type="info" :closable="false" show-icon />
+    <el-alert v-if="!activeProjects.length" class="task-readiness-alert" type="warning" :closable="false" show-icon>
+      <template #title>目前没有启用的调查项目，请先到 <router-link to="/projects" @click="dialogVisible = false">项目批次</router-link> 建立项目。</template>
+    </el-alert>
+    <el-alert v-else-if="master && !master.management_scopes.some((item) => item.status === 'active')" class="task-readiness-alert" type="warning" :closable="false" show-icon>
+      <template #title>目前没有可下发的分管范围，请先到 <router-link to="/master-data" @click="dialogVisible = false">单位与渠系</router-link> 设置渠道分管所。</template>
+    </el-alert>
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="task-create-form">
       <div class="two-column-form">
         <el-form-item label="项目" prop="project_uid">
@@ -267,6 +285,7 @@ onMounted(loadAll);
           <el-select v-model="form.survey_batch_uid" placeholder="先选择项目" filterable>
             <el-option v-for="item in activeBatches" :key="item.survey_batch_uid" :label="`${item.batch_name}（${item.batch_code}）`" :value="item.survey_batch_uid" />
           </el-select>
+          <div v-if="form.project_uid && !activeBatches.length" class="form-guidance warning">所选项目暂无“进行中”的调查批次，请先到项目批次页面调整。</div>
         </el-form-item>
         <el-form-item label="任务名称" prop="task_name">
           <el-input v-model="form.task_name" placeholder="例如：2026年度总干渠处现状调查" maxlength="240" />
