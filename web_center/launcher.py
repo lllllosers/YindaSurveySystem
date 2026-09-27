@@ -1,449 +1,329 @@
+"""Yinda Web production server console. The Web process outlives this GUI."""
+
 from __future__ import annotations
 
-import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
-import queue
-import re
-import socket
-import subprocess
-import threading
-import time
-import tkinter as tk
-from tkinter import messagebox, ttk
-from urllib.error import URLError
-from urllib.request import urlopen
 import webbrowser
 
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QColor, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (
+    QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QMainWindow, QMenu, QMessageBox, QPushButton, QSystemTrayIcon,
+    QTextEdit, QVBoxLayout, QWidget,
+)
 
-WEB_ROOT = Path(__file__).resolve().parent
-BACKEND_DIR = WEB_ROOT / "backend"
-FRONTEND_DIR = WEB_ROOT / "frontend"
-PYTHON_EXE = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"
-NPM_EXE = "npm.cmd"
-LOG_DIR = WEB_ROOT / ".runtime" / "logs"
-API_URL = "http://127.0.0.1:8000"
-WEB_URL = "http://127.0.0.1:8848"
-EXPECTED_API_GENERATION = "2026.09.27-deployment-cleanup-v6"
-ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+from server_console_core import ConsolePaths, LOCAL_URL, ServerManager, tail
 
 
-class ServiceLauncher:
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
-        self.root.title("引大调查数据中心 · 服务控制台")
-        self.root.geometry("1020x700")
-        self.root.minsize(900, 620)
-        self.root.configure(bg="#081225")
+class Bridge(QObject):
+    status = Signal(dict)
+    result = Signal(str)
+    error = Signal(str)
+    logs = Signal(str)
 
-        self.events: queue.Queue[tuple[str, object]] = queue.Queue()
-        self.processes: dict[str, subprocess.Popen[str]] = {}
-        self.starting = False
-        self.closing = False
-        self.status_vars = {
-            "database": tk.StringVar(value="检测中"),
-            "backend": tk.StringVar(value="检测中"),
-            "frontend": tk.StringVar(value="检测中"),
-        }
-        self.dot_labels: dict[str, tk.Label] = {}
 
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        self._configure_style()
-        self._build_ui()
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.root.after(100, self._drain_events)
-        self.root.after(300, lambda: self._refresh_status(reschedule=True))
-        self.root.after(650, self.start_all)
+def icon() -> QIcon:
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(QColor("#295ccc"))
+    painter = QPainter(pixmap)
+    painter.setPen(QColor("white"))
+    font = painter.font()
+    font.setFamily("Microsoft YaHei UI")
+    font.setPixelSize(39)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignCenter, "引")
+    painter.end()
+    return QIcon(pixmap)
 
-    def _configure_style(self) -> None:
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("TFrame", background="#081225")
-        style.configure(
-            "Primary.TButton",
-            background="#3478f6",
-            foreground="#ffffff",
-            borderwidth=0,
-            padding=(18, 10),
-            font=("Microsoft YaHei UI", 10, "bold"),
-        )
-        style.map("Primary.TButton", background=[("active", "#4b8aff")])
-        style.configure(
-            "Secondary.TButton",
-            background="#172844",
-            foreground="#c8d8ef",
-            borderwidth=0,
-            padding=(15, 9),
-            font=("Microsoft YaHei UI", 9),
-        )
-        style.map("Secondary.TButton", background=[("active", "#203657")])
-        style.configure(
-            "Danger.TButton",
-            background="#402138",
-            foreground="#ffb7c5",
-            borderwidth=0,
-            padding=(15, 9),
-            font=("Microsoft YaHei UI", 9),
-        )
-        style.map("Danger.TButton", background=[("active", "#593047")])
 
-    def _build_ui(self) -> None:
-        header = tk.Frame(self.root, bg="#081225", padx=28, pady=22)
-        header.pack(fill="x")
-        tk.Label(
-            header,
-            text="引",
-            width=3,
-            bg="#3478f6",
-            fg="white",
-            font=("Microsoft YaHei UI", 17, "bold"),
-        ).pack(side="left", padx=(0, 14))
-        title_box = tk.Frame(header, bg="#081225")
-        title_box.pack(side="left")
-        tk.Label(
-            title_box,
-            text="引大调查数据中心",
-            bg="#081225",
-            fg="#f5f8ff",
-            font=("Microsoft YaHei UI", 17, "bold"),
-        ).pack(anchor="w")
-        tk.Label(
-            title_box,
-            text="统一调查 · 审核 · 成果管理",
-            bg="#081225",
-            fg="#6f86a8",
-            font=("Segoe UI", 8),
-        ).pack(anchor="w", pady=(3, 0))
-        tk.Label(
-            header,
-            text="V1.2.0  业务预览版",
-            bg="#112443",
-            fg="#87b8ff",
-            padx=12,
-            pady=6,
-            font=("Segoe UI", 8, "bold"),
-        ).pack(side="right")
+class StatusCard(QFrame):
+    def __init__(self, title: str, detail: str):
+        super().__init__()
+        self.setObjectName("statusCard")
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        heading = QLabel(title)
+        heading.setObjectName("cardHeading")
+        self.value = QLabel("正在检查…")
+        self.value.setObjectName("cardValue")
+        self.detail = QLabel(detail)
+        self.detail.setObjectName("cardDetail")
+        self.detail.setWordWrap(True)
+        layout.addWidget(heading)
+        layout.addWidget(self.value)
+        layout.addWidget(self.detail)
 
-        body = tk.Frame(self.root, bg="#081225", padx=28)
-        body.pack(fill="both", expand=True)
-        status_panel = tk.Frame(body, bg="#101d33", padx=18, pady=16)
-        status_panel.pack(fill="x")
-        tk.Label(
-            status_panel,
-            text="服务状态",
-            bg="#101d33",
-            fg="#e8f0fd",
-            font=("Microsoft YaHei UI", 11, "bold"),
-        ).pack(anchor="w", pady=(0, 13))
-        cards = tk.Frame(status_panel, bg="#101d33")
-        cards.pack(fill="x")
-        services = [
-            ("database", "PostgreSQL", "127.0.0.1 : 5432"),
-            ("backend", "业务后台", "127.0.0.1 : 8000"),
-            ("frontend", "网页服务", "127.0.0.1 : 8848"),
-        ]
-        for index, (key, title, detail) in enumerate(services):
-            cards.grid_columnconfigure(index, weight=1)
-            card = tk.Frame(cards, bg="#14243d", padx=16, pady=13)
-            card.grid(
-                row=0,
-                column=index,
-                sticky="nsew",
-                padx=(0 if index == 0 else 6, 0 if index == 2 else 6),
-            )
-            top = tk.Frame(card, bg="#14243d")
-            top.pack(fill="x")
-            dot = tk.Label(top, text="●", bg="#14243d", fg="#e5a93a", font=("Segoe UI", 12))
-            dot.pack(side="left", padx=(0, 8))
-            self.dot_labels[key] = dot
-            tk.Label(top, text=title, bg="#14243d", fg="#eaf2ff", font=("Microsoft YaHei UI", 10, "bold")).pack(side="left")
-            tk.Label(top, textvariable=self.status_vars[key], bg="#14243d", fg="#88a0c2", font=("Microsoft YaHei UI", 9)).pack(side="right")
-            tk.Label(card, text=detail, bg="#14243d", fg="#7187a7", font=("Consolas", 9)).pack(anchor="w", pady=(9, 0))
+    def update_state(self, value: str, detail: str | None = None):
+        self.value.setText("●  " + value)
+        color = "#56d6a1" if value in {"运行正常", "正常", "连接正常"} else "#f1bd66" if value.startswith(("未配置", "已停止")) else "#f17d85"
+        self.value.setStyleSheet(f"color: {color};")
+        if detail is not None:
+            self.detail.setText(detail)
 
-        actions = tk.Frame(body, bg="#081225", pady=16)
-        actions.pack(fill="x")
-        self.start_button = ttk.Button(actions, text="启动全部服务", style="Primary.TButton", command=self.start_all)
-        self.start_button.pack(side="left")
-        ttk.Button(actions, text="停止本次服务", style="Danger.TButton", command=self.stop_all).pack(side="left", padx=(10, 0))
-        ttk.Button(actions, text="打开 Web 页面", style="Secondary.TButton", command=lambda: webbrowser.open(WEB_URL)).pack(side="left", padx=(10, 0))
-        ttk.Button(actions, text="打开系统接口", style="Secondary.TButton", command=lambda: webbrowser.open(f"{API_URL}/docs")).pack(side="left", padx=(10, 0))
-        ttk.Button(actions, text="立即检测", style="Secondary.TButton", command=self._refresh_status).pack(side="right")
 
-        log_panel = tk.Frame(body, bg="#101d33", padx=18, pady=15)
-        log_panel.pack(fill="both", expand=True, pady=(0, 20))
-        log_header = tk.Frame(log_panel, bg="#101d33")
-        log_header.pack(fill="x", pady=(0, 10))
-        tk.Label(log_header, text="运行日志", bg="#101d33", fg="#e8f0fd", font=("Microsoft YaHei UI", 10, "bold")).pack(side="left")
-        tk.Label(log_header, text="启动器会持续监测服务，本窗口可最小化", bg="#101d33", fg="#647b9e", font=("Microsoft YaHei UI", 8)).pack(side="right")
-        self.log_text = tk.Text(
-            log_panel,
-            bg="#091426",
-            fg="#9fb4d2",
-            insertbackground="#ffffff",
-            relief="flat",
-            borderwidth=0,
-            padx=13,
-            pady=11,
-            font=("Consolas", 9),
-            wrap="word",
-            state="disabled",
-        )
-        self.log_text.pack(fill="both", expand=True)
-        self.log_text.tag_configure("time", foreground="#516b91")
-        self.log_text.tag_configure("ok", foreground="#5ee2a0")
-        self.log_text.tag_configure("error", foreground="#ff8398")
-        self.log_text.tag_configure("info", foreground="#9fb4d2")
-        self._write_log("服务控制台已启动，正在检查本地环境。")
+class ServerConsole(QMainWindow):
+    def __init__(self, manager: ServerManager | None = None):
+        super().__init__()
+        self.manager = manager or ServerManager()
+        self.paths = self.manager.paths
+        self.bridge = Bridge()
+        self.pool = ThreadPoolExecutor(max_workers=2)
+        self.refreshing = False
+        self.busy = False
+        self.exiting = False
+        self.setWindowTitle("引大调查 Web 中心服务")
+        self.setWindowIcon(icon())
+        self.resize(1120, 760)
+        self.setMinimumSize(960, 670)
+        self._build()
+        self._tray()
+        self.bridge.status.connect(self._show_status)
+        self.bridge.result.connect(self._show_result)
+        self.bridge.error.connect(self._show_error)
+        self.bridge.logs.connect(self.log_view.setPlainText)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(15000)
+        self.refresh()
 
-    def _write_log(self, message: str, level: str = "info") -> None:
-        timestamp = time.strftime("%H:%M:%S")
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"[{timestamp}] ", "time")
-        self.log_text.insert("end", f"{message}\n", level)
-        self.log_text.see("end")
-        self.log_text.configure(state="disabled")
+    def _build(self):
+        body = QWidget()
+        self.setCentralWidget(body)
+        outer = QVBoxLayout(body)
+        outer.setContentsMargins(32, 26, 32, 25)
+        outer.setSpacing(18)
 
-    def _emit(self, message: str, level: str = "info") -> None:
-        self.events.put((level, message))
+        header = QHBoxLayout()
+        titles = QVBoxLayout()
+        title = QLabel("引大调查 Web 中心服务")
+        title.setObjectName("title")
+        subtitle = QLabel("数据中心运行与维护控制台  ·  Production")
+        subtitle.setObjectName("muted")
+        titles.addWidget(title)
+        titles.addWidget(subtitle)
+        header.addLayout(titles)
+        header.addStretch()
+        self.overall = QLabel("● 正在检查")
+        self.overall.setObjectName("overall")
+        header.addWidget(self.overall)
+        outer.addLayout(header)
 
-    def _drain_events(self) -> None:
-        while True:
-            try:
-                level, payload = self.events.get_nowait()
-            except queue.Empty:
-                break
-            if level == "__status__":
-                values, reschedule = payload
-                for key, value in values.items():
-                    self._set_status(key, value)
-                if reschedule and not self.closing:
-                    self.root.after(2500, lambda: self._refresh_status(reschedule=True))
-            elif level == "__start_done__":
-                self.start_button.configure(state="normal", text="启动全部服务")
-                self._refresh_status()
-            elif level == "__open_web__":
-                webbrowser.open(str(payload))
-            else:
-                self._write_log(str(payload), level)
-        if not self.closing:
-            self.root.after(120, self._drain_events)
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
+        self.database_card = StatusCard("PostgreSQL", "本机数据库连接")
+        self.web_card = StatusCard("Web 服务", "127.0.0.1:8000 · /api/v1/health")
+        self.public_card = StatusCard("公网访问", "PUBLIC_BASE_URL")
+        for card in (self.database_card, self.web_card, self.public_card):
+            cards.addWidget(card, 1)
+        outer.addLayout(cards)
 
-    @staticmethod
-    def _http_ok(url: str) -> bool:
-        try:
-            with urlopen(url, timeout=1.2) as response:
-                if not 200 <= response.status < 400:
-                    return False
-                if url.endswith("/health"):
-                    return json.loads(response.read().decode("utf-8")).get("status") == "ok"
-                return True
-        except (OSError, URLError, ValueError, json.JSONDecodeError):
-            return False
-
-    @staticmethod
-    def _api_generation() -> str | None:
-        try:
-            with urlopen(f"{API_URL}/api/v1/health", timeout=1.2) as response:
-                if not 200 <= response.status < 400:
-                    return None
-                payload = json.loads(response.read().decode("utf-8"))
-                if payload.get("status") != "ok":
-                    return None
-                return str(payload.get("api_generation") or "")
-        except (OSError, URLError, ValueError, json.JSONDecodeError):
-            return None
-
-    @classmethod
-    def _api_current(cls) -> bool:
-        return cls._api_generation() == EXPECTED_API_GENERATION
-
-    @staticmethod
-    def _port_open(port: int) -> bool:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.8):
-                return True
-        except OSError:
-            return False
-
-    def _set_status(self, key: str, online: bool) -> None:
-        self.status_vars[key].set("运行正常" if online else "未运行")
-        self.dot_labels[key].configure(fg="#39d98a" if online else "#ff617d")
-
-    def _refresh_status(self, reschedule: bool = False) -> None:
-        def check() -> None:
-            values = {
-                "database": self._port_open(5432),
-                "backend": self._api_current(),
-                "frontend": self._http_ok(WEB_URL),
-            }
-            self.events.put(("__status__", (values, reschedule)))
-
-        threading.Thread(target=check, daemon=True).start()
-
-    def _check_environment(self) -> list[str]:
-        missing: list[str] = []
-        if not PYTHON_EXE.exists():
-            missing.append("后端虚拟环境不存在：web_center/backend/.venv")
-        if not (BACKEND_DIR / ".env").exists():
-            missing.append("后端配置不存在：web_center/backend/.env")
-        if not (FRONTEND_DIR / "node_modules").exists():
-            missing.append("前端依赖不存在：请先在 frontend 目录执行 npm install")
-        try:
-            subprocess.run([NPM_EXE, "--version"], capture_output=True, check=True, creationflags=CREATE_NO_WINDOW)
-        except (OSError, subprocess.CalledProcessError):
-            missing.append("未找到 Node.js / npm")
-        return missing
-
-    def start_all(self) -> None:
-        if self.starting:
-            return
-        missing = self._check_environment()
-        if missing:
-            message = "\n".join(missing)
-            self._write_log(message, "error")
-            messagebox.showerror("无法启动", message)
-            return
-        self.starting = True
-        self.start_button.configure(state="disabled", text="正在启动…")
-        threading.Thread(target=self._start_worker, daemon=True).start()
-
-    def _start_worker(self) -> None:
-        try:
-            if not self._port_open(5432):
-                self._emit("PostgreSQL 端口未响应，请先启动数据库服务。", "error")
-                return
-            self._emit("正在检查并升级数据库结构…")
-            migration = subprocess.run(
-                [str(PYTHON_EXE), "-m", "alembic", "upgrade", "head"],
-                cwd=BACKEND_DIR,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=CREATE_NO_WINDOW,
-            )
-            if migration.returncode != 0:
-                self._emit("数据库迁移失败：" + self._last_output(migration.stdout, migration.stderr), "error")
-                return
-            self._emit("数据库结构已就绪。", "ok")
-
-            api_port_open = self._port_open(8000)
-            running_generation = self._api_generation()
-            if running_generation is not None and running_generation != EXPECTED_API_GENERATION:
-                self._emit("检测到旧版后台服务仍占用 8000 端口。请关闭旧服务窗口后，再点击“启动全部服务”。", "error")
-                return
-            if api_port_open and running_generation is None:
-                self._emit("8000 端口已被其他程序占用，无法启动业务后台。请关闭占用该端口的程序后重试。", "error")
-                return
-            if running_generation is None:
-                self._start_process(
-                    "backend",
-                    [str(PYTHON_EXE), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-                    BACKEND_DIR,
-                )
-            else:
-                self._emit("当前版本的后端服务已在运行，本控制台不会重复启动。", "ok")
-            if not self._http_ok(WEB_URL):
-                self._start_process("frontend", [NPM_EXE, "run", "dev"], FRONTEND_DIR)
-            else:
-                self._emit("前端服务已在运行，本控制台不会重复启动。", "ok")
-
-            deadline = time.time() + 30
-            while time.time() < deadline:
-                if self._api_current() and self._http_ok(WEB_URL):
-                    self._emit("前后端服务均已就绪，可以打开 Web 页面验收。", "ok")
-                    self.events.put(("__open_web__", WEB_URL))
-                    return
-                time.sleep(0.6)
-            self._emit("启动等待超时，请查看下方日志定位问题。", "error")
-        except Exception as exc:
-            self._emit(f"启动失败：{exc}", "error")
-        finally:
-            self.starting = False
-            self.events.put(("__start_done__", ""))
-
-    @staticmethod
-    def _last_output(stdout: str, stderr: str) -> str:
-        lines = [line.strip() for line in (stdout + "\n" + stderr).splitlines() if line.strip()]
-        return lines[-1] if lines else "无详细信息"
-
-    def _start_process(self, name: str, command: list[str], cwd: Path) -> None:
-        env = os.environ.copy()
-        env.update({"PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "NO_COLOR": "1", "FORCE_COLOR": "0"})
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            creationflags=CREATE_NO_WINDOW,
-        )
-        self.processes[name] = process
-        label = "后端" if name == "backend" else "前端"
-        self._emit(f"已启动{label}服务（PID {process.pid}）。", "ok")
-        threading.Thread(target=self._capture_output, args=(name, process), daemon=True).start()
-
-    def _capture_output(self, name: str, process: subprocess.Popen[str]) -> None:
-        log_path = LOG_DIR / f"{name}.log"
-        with log_path.open("a", encoding="utf-8") as log_file:
-            if process.stdout:
-                for raw_line in process.stdout:
-                    line = ANSI_ESCAPE.sub("", raw_line.rstrip())
-                    if not line:
-                        continue
-                    log_file.write(line + "\n")
-                    log_file.flush()
-                    self._emit(f"[{name}] {line}")
-        code = process.wait()
-        self.processes.pop(name, None)
-        if not self.closing:
-            self._emit(f"{name} 服务已退出（代码 {code}）。", "error" if code else "info")
-
-    def stop_all(self, silent: bool = False) -> None:
-        owned = list(self.processes.items())
-        if not owned:
-            if not silent:
-                self._write_log("当前没有由本控制台启动的服务。")
-            return
-        for name, process in owned:
-            if process.poll() is not None:
-                continue
-            try:
-                if os.name == "nt":
-                    subprocess.run(
-                        ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                        capture_output=True,
-                        creationflags=CREATE_NO_WINDOW,
-                    )
-                else:
-                    process.terminate()
-                if not silent:
-                    self._write_log(f"已停止 {name} 服务。")
-            except OSError as exc:
-                if not silent:
-                    self._write_log(f"停止 {name} 失败：{exc}", "error")
-        self.processes.clear()
-        self.root.after(500, self._refresh_status)
-
-    def _on_close(self) -> None:
-        if self.processes and not messagebox.askyesno(
-            "退出控制台",
-            "关闭控制台会同时停止本次启动的前后端服务。确认退出吗？",
+        actions = QHBoxLayout()
+        self.buttons = []
+        for label, command, kind in (
+            ("启动 Web 服务", "start", "primary"),
+            ("停止 Web 服务", "stop", "danger"),
+            ("重启 Web 服务", "restart", "normal"),
+            ("打开管理端", "open", "normal"),
+            ("生产环境预检", "preflight", "normal"),
+            ("立即备份", "backup", "normal"),
+            ("设置开机自启", "autostart", "normal"),
         ):
+            button = QPushButton(label)
+            button.setObjectName(kind)
+            button.clicked.connect(lambda checked=False, name=command: self.action(name))
+            actions.addWidget(button)
+            self.buttons.append(button)
+        outer.addLayout(actions)
+
+        diagnostics = QFrame()
+        diagnostics.setObjectName("panel")
+        grid = QGridLayout(diagnostics)
+        grid.setHorizontalSpacing(28)
+        grid.setVerticalSpacing(11)
+        fields = [
+            ("数据库连接", "database"), ("PostgreSQL 服务", "postgres_service"),
+            ("数据库结构", "alembic"), ("生产预检", "preflight"),
+            ("APP_ENV", "app_env"), ("管理页面", "frontend"),
+            ("storage", "storage"), ("backups", "backups"),
+            ("剩余磁盘空间", "disk"), ("最近检查", "checked_at"),
+        ]
+        self.fields = {}
+        for index, (label, key) in enumerate(fields):
+            row, pair = divmod(index, 2)
+            caption = QLabel(label)
+            caption.setObjectName("muted")
+            value = QLabel("—")
+            value.setObjectName("fieldValue")
+            grid.addWidget(caption, row, pair * 2)
+            grid.addWidget(value, row, pair * 2 + 1)
+            self.fields[key] = value
+        outer.addWidget(diagnostics)
+
+        log_panel = QFrame()
+        log_panel.setObjectName("panel")
+        log_layout = QVBoxLayout(log_panel)
+        log_header = QHBoxLayout()
+        log_header.addWidget(QLabel("运行日志"))
+        log_header.addStretch()
+        self.log_choice = QComboBox()
+        for label, name in (("Web 服务", "server"), ("控制台操作", "operations"), ("备份", "backup"), ("生产预检", "preflight")):
+            self.log_choice.addItem(label, name)
+        self.log_choice.currentIndexChanged.connect(self.refresh_logs)
+        log_header.addWidget(self.log_choice)
+        log_button = QPushButton("查看运行日志")
+        log_button.clicked.connect(self.refresh_logs)
+        log_header.addWidget(log_button)
+        log_layout.addLayout(log_header)
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setPlaceholderText("仅显示最近 100 行日志。")
+        log_layout.addWidget(self.log_view)
+        outer.addWidget(log_panel, 1)
+
+        foot = QLabel("关闭控制台仅收起窗口；Web 服务持续运行。请使用“停止 Web 服务”明确停服。")
+        foot.setObjectName("muted")
+        outer.addWidget(foot)
+        self.setStyleSheet("""
+            QMainWindow, QWidget { background: #101826; color: #e9edf5; font-family: 'Microsoft YaHei UI'; font-size: 13px; }
+            QLabel { background: transparent; }
+            QLabel#title { font-size: 25px; font-weight: 700; }
+            QLabel#muted, QLabel#cardDetail { color: #91a1b8; }
+            QLabel#overall { font-size: 17px; font-weight: 700; color: #f1bd66; }
+            QFrame#statusCard, QFrame#panel { background: #1b2739; border: 1px solid #304159; border-radius: 12px; }
+            QFrame#statusCard { min-height: 110px; }
+            QLabel#cardHeading { font-size: 15px; font-weight: 650; }
+            QLabel#cardValue { font-size: 20px; font-weight: 700; }
+            QLabel#fieldValue { font-weight: 600; }
+            QPushButton { background: #293950; color: #e9edf5; border: 1px solid #40536e; border-radius: 8px; padding: 9px 12px; }
+            QPushButton:hover { background: #3b4d67; }
+            QPushButton#primary { background: #3563c6; border-color: #3563c6; }
+            QPushButton#danger { background: #52323a; border-color: #65434d; }
+            QPushButton:disabled { color: #7b899b; background: #253246; }
+            QTextEdit { background: #121c2a; border: 1px solid #304159; border-radius: 7px; font-family: Consolas; }
+            QComboBox { background: #293950; padding: 5px 10px; border: 1px solid #40536e; border-radius: 6px; }
+        """)
+
+    def _tray(self):
+        self.tray = QSystemTrayIcon(icon(), self)
+        self.tray.setToolTip("引大调查 Web 中心服务")
+        menu = QMenu()
+        for label, command in (
+            ("打开控制台", "show"), ("打开管理端", "open"),
+            ("启动 Web", "start"), ("重启 Web", "restart"),
+            ("停止 Web", "stop"), ("退出控制台", "exit"),
+        ):
+            item = QAction(label, menu)
+            item.triggered.connect(lambda checked=False, name=command: self.action(name))
+            menu.addAction(item)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(lambda reason: self.showNormal() if reason == QSystemTrayIcon.DoubleClick else None)
+        self.tray.show()
+
+    def refresh(self):
+        if self.refreshing:
             return
-        self.closing = True
-        self.stop_all(silent=True)
-        self.root.destroy()
+        self.refreshing = True
+        def work():
+            try:
+                self.bridge.status.emit(self.manager.status())
+            except Exception:
+                self.bridge.error.emit("状态检查失败，请查看运行日志。")
+            finally:
+                self.refreshing = False
+        self.pool.submit(work)
+        self.refresh_logs()
+
+    def _show_status(self, status: dict):
+        self.database_card.update_state(status["database"], f"localhost:{status['db_port']} · {status['postgres_service']}")
+        self.web_card.update_state(status["web"], f"127.0.0.1:8000 · PID {status['pid']}")
+        self.public_card.update_state(status["public"], status["public_url"] or "未配置公网访问地址")
+        for key, label in self.fields.items():
+            label.setText(status.get(key, "—"))
+        if status["web"] == "运行正常" and status["postgresql"] == "连接端口正常" and status["database"] == "连接正常" and status["public"] in {"正常", "未配置公网访问地址"}:
+            self.overall.setText("● 正常")
+            self.overall.setStyleSheet("color: #56d6a1;")
+        elif status["web"] == "已停止":
+            self.overall.setText("● 已停止")
+            self.overall.setStyleSheet("color: #91a1b8;")
+        else:
+            self.overall.setText("● 部分异常")
+            self.overall.setStyleSheet("color: #f1bd66;")
+
+    def refresh_logs(self):
+        name = self.log_choice.currentData()
+        self.bridge.logs.emit(tail(self.paths.runtime / "logs" / f"{name}.log"))
+
+    def _show_result(self, message: str):
+        self.busy = False
+        for button in self.buttons:
+            button.setEnabled(True)
+        self.refresh()
+        QMessageBox.information(self, "操作完成", message)
+
+    def _show_error(self, message: str):
+        self.busy = False
+        for button in self.buttons:
+            button.setEnabled(True)
+        QMessageBox.warning(self, "操作未完成", message)
+
+    def action(self, command: str):
+        if command == "show":
+            self.showNormal()
+            self.activateWindow()
+            return
+        if command == "exit":
+            self.exiting = True
+            self.tray.hide()
+            QApplication.instance().quit()
+            return
+        if command == "open":
+            webbrowser.open(LOCAL_URL)
+            return
+        if self.busy:
+            return
+        self.busy = True
+        for button in self.buttons:
+            button.setEnabled(False)
+        def work():
+            try:
+                if command == "preflight":
+                    ok, detail = self.manager.preflight()
+                    if not ok:
+                        raise RuntimeError(detail)
+                    message = "生产环境预检通过。\n" + detail
+                elif command == "autostart":
+                    message = self.manager.install_autostart()
+                else:
+                    message = getattr(self.manager, command)()
+                self.bridge.result.emit(message)
+            except RuntimeError as exc:
+                self.bridge.error.emit(str(exc))
+            except Exception:
+                self.bridge.error.emit("操作失败，请查看运行日志并检查服务器配置。")
+        self.pool.submit(work)
+
+    def closeEvent(self, event):
+        if not self.exiting and self.tray.isVisible():
+            self.hide()
+            self.tray.showMessage("引大调查 Web 中心服务", "控制台已收起，Web 服务继续运行。")
+            event.ignore()
+            return
+        event.accept()
 
 
-def main() -> None:
-    root = tk.Tk()
-    ServiceLauncher(root)
-    root.mainloop()
+def main():
+    app = QApplication([])
+    font_path = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / "msyh.ttc"
+    if font_path.is_file():
+        QFontDatabase.addApplicationFont(str(font_path))
+    app.setQuitOnLastWindowClosed(not QSystemTrayIcon.isSystemTrayAvailable())
+    window = ServerConsole()
+    window.show()
+    raise SystemExit(app.exec())
 
 
 if __name__ == "__main__":

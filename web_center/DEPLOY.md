@@ -1,6 +1,8 @@
 # Web 中心部署与数据初始化
 
-部署包由 `web_center/build_deploy_bundle.py` 生成，只包含 Web 后端、编译后的页面、共享协议、正式主数据契约及在线表单所需的规则文件。桌面 GUI、完整桌面源码、测试、`.venv`、`node_modules`、本地账号、上传文件和数据库备份均不进入部署包。
+部署包由 `web_center/build_deploy_bundle.py` 生成，包含 Web 后端、编译后的页面、共享协议、正式主数据契约、在线表单规则、正式原表 Excel 模板和服务控制台。桌面调查 GUI、完整桌面源码、测试、`.venv`、`node_modules`、本地账号、上传文件和数据库备份均不进入部署包。
+
+正式成果库的“导出查询结果”下载 CSV 汇总；每条记录的“导出原表”下载使用正式模板的 Excel 附表 2.1～2.14。两端共享 `EngineeringFormDefinition`、`OriginalFormExportDefinition` 和原表渲染函数；Web 从中央 PostgreSQL 正式记录及中央主数据快照取值，不读取桌面 SQLite。
 
 ## Windows 验收便携包
 
@@ -36,9 +38,13 @@ MAX_ZIP_SINGLE_FILE_BYTES=2147483648
 MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES=8589934592
 MAX_ZIP_JSON_BYTES=268435456
 MIN_FREE_DISK_BYTES=5368709120
+PUBLIC_BASE_URL=https://example.com
+POSTGRES_SERVICE_NAME=postgresql-x64-17
 ```
 
 `ALLOWED_HOSTS` 只填主机名，不填 `https://`、路径或端口，不使用 `*`。公网 Host 改变时只需修改 `.env` 并重启 Web 服务。生产启动会拒绝不安全 Cookie、示例数据库密码和空白/通配 Host。生产 API 文档关闭，开发环境仍有 `/docs`。前端与 API 同源，生产不开放开发 CORS。Element Plus 页面使用动态行内样式，因此生产 CSP 对样式保留 `'unsafe-inline'`；脚本仍限制为同源。HSTS 默认关闭，只有确认长期使用稳定 HTTPS Host 时再设 `ENABLE_HSTS=true`。
+
+`PUBLIC_BASE_URL` 和 `POSTGRES_SERVICE_NAME` 是控制台可选配置。前者只填写 HTTPS 站点根地址，控制台检查其 `/api/v1/health`；未配置时显示“未配置公网访问地址”。后者填写 Windows PostgreSQL 服务名，仅用于状态显示；留空时显示“未指定”。控制台不存放数据库密码或隧道 Token。PostgreSQL 仍由 Windows Service 管理，不得暴露 5432（或便携包 55432）到公网。
 
 ASGI 入口在 multipart 解析前限制请求体：有 `Content-Length` 时立即检查，没有时按接收流累计检查；普通 API、成果包、在线影像和两类桌面任务导入分别使用相应上限。上传前还会检查 storage 与系统临时目录所在磁盘的保留空间，业务落盘时再检查一次。若测试成果确需更大上限，先确认验收电脑内存和磁盘，再仅调整 `.env` 中相应数值。
 
@@ -58,15 +64,20 @@ ASGI 入口在 multipart 解析前限制请求体：有 `Content-Length` 时立�
 
 在仓库根目录运行：
 
+控制台建议使用独立的 Windows x64 Python 3.12 虚拟环境构建，避免 Conda 等环境中的 Qt DLL 冲突。
+
 ```powershell
 cd web_center/frontend
 npm ci
 npm run build
 cd ..
+python -m venv build/console-venv
+build/console-venv/Scripts/python.exe -m pip install -r console-requirements.txt
+build/console-venv/Scripts/python.exe build_server_console.py
 python build_deploy_bundle.py
 ```
 
-生成的 ZIP 位于 `web_center/release/`。桌面端继续使用现有 `.ydtask V3 / .ydresult 2.2`，不要单独修改部署包里的 `shared/` 或表单规则。
+生成的 `YindaWebServerConsole.exe` 和 ZIP 位于 `web_center/release/`。先构建 EXE 再打 ZIP，部署包会包含 EXE；没有 EXE 时仅包含控制台源码，服务器不能直接双击运行。控制台构建依赖不进入 Web 后端 requirements。桌面端继续使用现有 `.ydtask V3 / .ydresult 2.2`，不要单独修改部署包里的 `shared/` 或表单规则。
 
 ## 2. 在服务器首次安装
 
@@ -86,7 +97,11 @@ Copy-Item .env.example .env
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
-同一个后端服务提供 `/api/v1` 与编译后的网页。让 HTTPS 反向代理将网站根路径转发到 `127.0.0.1:8000`，并保持请求路径与 Cookie；外部访问只开放 HTTPS 入口。`/api/v1/health` 和 `/api/v1/health/database` 可用于检查服务与数据库。以上启动命令用于首次确认，长期运行时应交给服务器的服务管理器，并设置开机启动及失败重启。
+同一个后端服务提供 `/api/v1` 与编译后的网页。让 HTTPS 反向代理将网站根路径转发到 `127.0.0.1:8000`，并保持请求路径与 Cookie；外部访问只开放 HTTPS 入口。`/api/v1/health` 和 `/api/v1/health/database` 可用于检查服务与数据库。以上命令可用于首次确认；长期运行请双击 `web_center/YindaWebServerConsole.exe`，点击“生产环境预检”与“启动 Web 服务”。生产预检有 BLOCKER 时，启动被阻止，需先修复原因。后端始终只绑定 `127.0.0.1:8000`，不运行 Vite 8848。
+
+控制台使用隐藏的独立 `pythonw.exe` 进程运行 Web；`web_center/.runtime/` 保存 PID、单实例锁和分开的 server、operations、preflight、backup 日志。GUI 通过 PID、可执行文件路径与进程创建时间核验身份，不会停止其他程序占用的 8000 端口。关闭窗口会收起到托盘；“退出控制台”仅退出 GUI，Web 持续运行。“停止 Web 服务”才停服。控制台可查看最近 100 行日志，点击“立即备份”会调用现有 `app.cli.backup_web_center`。
+
+以管理员身份运行控制台并点击“设置开机自启”，会注册 Windows 任务计划程序 `YindaWebCenter`，以本机 SYSTEM 账户在开机时运行同一个隐藏服务入口。请确认该账户有部署目录、`.env`、storage 和 backups 的必要权限，并在任务计划程序中核对任务状态。PostgreSQL Windows Service 应设为自动启动；服务入口会短暂等待本机数据库端口，再执行生产预检。移动部署目录后须重新设置开机自启。当前实现不依赖 NSSM 等第三方服务程序。
 
 ## 3. 升级与恢复
 
@@ -95,6 +110,18 @@ Copy-Item .env.example .env
 ```powershell
 .venv\Scripts\python.exe -m app.cli.backup_web_center
 ```
+
+已有 `D:\YindaWeb` 测试部署可按此顺序升级：先在旧服务窗口停服并确认 `127.0.0.1:8000` 已释放；在旧版 `D:\YindaWeb\web_center\backend` 执行上述完整备份，并复制备份到独立磁盘；再将新的 `yinda-web-center.zip` 解压覆盖到 `D:\YindaWeb`。ZIP 不含 `.env`、storage、backups 或数据库，不要删除这些本机目录。随后执行：
+
+```powershell
+cd D:\YindaWeb\web_center\backend
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\alembic.exe upgrade head
+```
+
+最后双击 `D:\YindaWeb\web_center\YindaWebServerConsole.exe`，运行生产预检并启动 Web；需要开机自启时，以管理员身份点击相应按钮。检查本机及公网 `/api/v1/health`、正式成果库的 Excel 导出。若 8000 仍由旧服务占用，控制台会拒绝接管，请先人工核实旧进程。
+
+若该目录来自便携包且没有后端 `.venv`，应在开发机构建包含新依赖的完整便携包，再覆盖程序文件；确认 `runtime/python/Lib/site-packages` 已包含 `openpyxl`，并用 `D:\YindaWeb\runtime\python\python.exe -m alembic upgrade head` 迁移。服务控制台会从便携运行时解析 `pythonw.exe`。
 
 把完整备份移到独立磁盘。替换程序文件时保留服务器自己的 `.env`、`storage/` 和备份目录；运行 `alembic upgrade head` 后重启服务。恢复时停止服务，将同一次备份中的 PostgreSQL 自定义格式数据库文件和 `storage/` 成套恢复，再按备份对应的程序版本启动。不要只恢复数据库而丢失成果文件。
 

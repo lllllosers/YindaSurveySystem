@@ -35,7 +35,7 @@ def main() -> None:
     for name in ("alembic.ini", "requirements.txt", ".env.example"):
         copy_file(WEB_ROOT / "backend" / name, bundle / "web_center" / "backend" / name)
     shutil.copytree(dist, bundle / "web_center" / "frontend" / "dist")
-    shutil.copytree(REPO_ROOT / "shared", bundle / "shared", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(REPO_ROOT / "shared", bundle / "shared", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".env", ".venv", "node_modules", "storage", "backups", ".runtime"))
 
     form_source = REPO_ROOT / "src" / "forms" / "engineering"
     form_target = bundle / "src" / "forms" / "engineering"
@@ -55,7 +55,18 @@ def main() -> None:
             raise FileNotFoundError("正式原表模板不完整。")
         copy_file(template, bundle / "templates" / "excel" / template.name)
 
+    for name in ("launcher.py", "server_console_core.py", "server_worker.py", "build_server_console.py", "console-requirements.txt"):
+        copy_file(WEB_ROOT / name, bundle / "web_center" / name)
+    console_exe = OUTPUT_ROOT / "YindaWebServerConsole.exe"
+    if console_exe.is_file():
+        copy_file(console_exe, bundle / "web_center" / console_exe.name)
+
     copy_file(WEB_ROOT / "DEPLOY.md", bundle / "DEPLOY.md")
+    forbidden_parts = {".env", ".venv", "node_modules", "storage", "backups", ".runtime", ".git", ".pytest_cache"}
+    forbidden_suffixes = {".key", ".pem", ".p12", ".token"}
+    for file in bundle.rglob("*"):
+        if file.is_file() and (forbidden_parts.intersection(file.relative_to(bundle).parts) or file.suffix.lower() in forbidden_suffixes):
+            raise RuntimeError(f"部署包包含运行时或敏感文件：{file.relative_to(bundle)}")
     archive = shutil.make_archive(str(OUTPUT_ROOT / "yinda-web-center"), "zip", bundle)
     shutil.rmtree(bundle)
     print(f"部署包：{archive}")
