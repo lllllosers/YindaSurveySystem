@@ -9,7 +9,7 @@ from typing import Annotated
 from urllib.parse import quote
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,7 +26,8 @@ from app.schemas.central_record import (
     CentralRecordSummary,
 )
 from app.services import access_scope, central_record_service
-from app.services import online_entry_service, result_submission_service
+from app.services.audit_service import AuditActor, record_event_safely
+from app.services import online_entry_service, original_form_export, result_submission_service
 from app.services.master_data_service import get_snapshot
 
 
@@ -210,6 +211,33 @@ def get_record(survey_record_uid: str, user: RecordReader, db: DbSession):
         asset_payload=asset.payload_json,
         inspections=[item.payload_json for item in inspections],
         media=[item.payload_json for item in media],
+    )
+
+
+@router.get("/{survey_record_uid}/original-form.xlsx")
+def export_original_form(survey_record_uid: str, user: RecordReader, db: DbSession, request: Request):
+    result = central_record_service.get_record(db, survey_record_uid)
+    if result is None:
+        raise HTTPException(status_code=404, detail="调查记录不存在。")
+    record, asset, inspections, _ = result
+    access_scope.require_office(user, record.organization_unit_uid)
+    try:
+        content, filename = original_form_export.export_central_original_form(record, asset, inspections)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="正式原表模板缺失，请联系系统管理员。") from exc
+    record_event_safely(
+        actor=AuditActor(user_id=user.id, user_uid=user.user_uid, username=user.username, role=user.role),
+        method="GET", path=request.url.path, status_code=200,
+        client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        summary="导出正式原表",
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 

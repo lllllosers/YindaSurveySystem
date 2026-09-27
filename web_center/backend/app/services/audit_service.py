@@ -33,6 +33,9 @@ def classify_action(method: str, path: str) -> str:
     method = method.upper()
     resource = classify_resource(path)
 
+    if method == "GET" and resource == "central-records" and path.endswith("/original-form.xlsx"):
+        return "central-records.export_original_form"
+
     if resource == "auth":
         if path.endswith("/login"):
             return "auth.login"

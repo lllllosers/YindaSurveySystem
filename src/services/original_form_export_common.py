@@ -1,8 +1,3 @@
-from database import (
-    get_canal_lineage,
-)
-
-
 def strip_trailing_suffix(
     value,
     suffix,
@@ -47,6 +42,7 @@ def fill_original_form_ownership_header(
     asset,
     canal_id,
     business_code,
+    canal_lineage=None,
 ):
     """
     填写工程调查正式原表共有的顶部归属信息：
@@ -92,7 +88,9 @@ def fill_original_form_ownership_header(
     main_canal_name = ""
     branch_canal_name = ""
 
-    canal_lineage = get_canal_lineage(canal_id)
+    if canal_lineage is None:
+        from database import get_canal_lineage
+        canal_lineage = get_canal_lineage(canal_id)
 
     for canal in canal_lineage:
         canal_level = canal["canal_level"]

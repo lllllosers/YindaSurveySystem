@@ -47,6 +47,13 @@ def main() -> None:
     copy_file(REPO_ROOT / "src" / "services" / "__init__.py", bundle / "src" / "services" / "__init__.py")
     for file in (REPO_ROOT / "src" / "services").glob("*_evaluation.py"):
         copy_file(file, bundle / "src" / "services" / file.name)
+    for name in ("original_form_export_common.py", "original_form_renderer.py"):
+        copy_file(REPO_ROOT / "src" / "services" / name, bundle / "src" / "services" / name)
+    for definition in form_source.glob("form_2_*.py"):
+        template = REPO_ROOT / "templates" / "excel" / f"{definition.stem}_V1.xlsx"
+        if not template.is_file():
+            raise FileNotFoundError("正式原表模板不完整。")
+        copy_file(template, bundle / "templates" / "excel" / template.name)
 
     copy_file(WEB_ROOT / "DEPLOY.md", bundle / "DEPLOY.md")
     archive = shutil.make_archive(str(OUTPUT_ROOT / "yinda-web-center"), "zip", bundle)

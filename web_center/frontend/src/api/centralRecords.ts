@@ -81,3 +81,21 @@ export function centralRecordExportUrl(filters: CentralRecordFilters = {}): stri
   const query = params.toString();
   return `/api/v1/central-records/export.csv${query ? `?${query}` : ""}`;
 }
+
+export async function downloadCentralOriginalForm(uid: string): Promise<void> {
+  const response = await api.get<Blob>(
+    `/central-records/${encodeURIComponent(uid)}/original-form.xlsx`,
+    { responseType: "blob", timeout: 60000 },
+  );
+  const disposition = String(response.headers["content-disposition"] || "");
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const filename = encoded ? decodeURIComponent(encoded) : "正式原表.xlsx";
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

@@ -6,6 +6,7 @@ import { ElMessage } from "element-plus";
 import {
   centralRecordExportUrl,
   centralRecordMediaUrl,
+  downloadCentralOriginalForm,
   getCentralRecord,
   getCentralRecordSummary,
   listCentralRecords,
@@ -28,6 +29,7 @@ const canalUid = ref("");
 const summary = ref<CentralRecordSummary | null>(null);
 const detail = ref<CentralRecordDetail | null>(null);
 const drawerVisible = ref(false);
+const exportingUid = ref("");
 
 const filters = computed(() => ({
   search: search.value || undefined,
@@ -101,6 +103,17 @@ async function openDetail(row: CentralRecord) {
 
 function exportCsv() {
   window.open(centralRecordExportUrl(filters.value), "_blank");
+}
+
+async function exportOriginalForm(uid: string) {
+  exportingUid.value = uid;
+  try {
+    await downloadCentralOriginalForm(uid);
+  } catch {
+    ElMessage.error("导出原表失败，请稍后重试；如问题持续，请联系系统管理员");
+  } finally {
+    exportingUid.value = "";
+  }
 }
 
 function barWidth(item: NamedCount) {
@@ -206,9 +219,10 @@ onMounted(async () => {
         <el-table-column label="入库时间" width="180">
           <template #default="{ row }">{{ formatTime(row.imported_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button link type="primary" :loading="exportingUid === row.survey_record_uid" @click="exportOriginalForm(row.survey_record_uid)">导出原表</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -238,6 +252,7 @@ onMounted(async () => {
   <el-drawer v-model="drawerVisible" title="调查记录详情" size="58%">
     <div v-loading="detailLoading">
       <template v-if="detail">
+        <el-button type="primary" :icon="Download" :loading="exportingUid === detail.survey_record_uid" style="margin-bottom: 16px" @click="exportOriginalForm(detail.survey_record_uid)">导出原表</el-button>
         <el-descriptions :column="2" border>
           <el-descriptions-item label="工程名称">{{ detail.asset_name || "—" }}</el-descriptions-item>
           <el-descriptions-item label="业务编号">{{ detail.business_code || "—" }}</el-descriptions-item>
