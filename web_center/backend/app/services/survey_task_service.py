@@ -1122,10 +1122,13 @@ def list_tasks(
     status: str | None = None,
     source_channel: str | None = None,
     keyword: str | None = None,
+    office_scope_uid: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[tuple[SurveyTask, Project, SurveyBatch]], int, dict[str, int]]:
     context_filters = []
+    if office_scope_uid:
+        context_filters.extend((SurveyTask.target_unit_type == "water_office", SurveyTask.organization_unit_uid == office_scope_uid))
     if project_uid:
         context_filters.append(Project.project_uid == project_uid)
     if survey_batch_uid:

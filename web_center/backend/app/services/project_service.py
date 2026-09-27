@@ -2,13 +2,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.central_record import CentralEngineeringAsset, CentralSurveyRecord
+from app.models.online_entry import OnlineSurveyEntry
 from app.models.project import Project, SurveyBatch
+from app.models.result_submission import ResultSubmission
+from app.models.survey_task import SurveyTask
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
     SurveyBatchCreate,
     SurveyBatchUpdate,
 )
+from app.services.access_scope import visible_batch_ids, visible_project_ids
 
 
 class DuplicateBatchCodeError(ValueError):
@@ -19,10 +24,21 @@ class ProjectHasBatchesError(ValueError):
     pass
 
 
-def list_projects(db: Session) -> list[Project]:
+class ProjectInUseError(ValueError):
+    pass
+
+
+class BatchInUseError(ValueError):
+    pass
+
+
+def list_projects(db: Session, office_scope_uid: str | None = None) -> list[Project]:
+    query = select(Project)
+    if office_scope_uid:
+        query = query.where(Project.id.in_(visible_project_ids(office_scope_uid)))
     return list(
         db.scalars(
-            select(Project).order_by(
+            query.order_by(
                 Project.created_at.desc(),
                 Project.id.desc(),
             )
@@ -76,18 +92,30 @@ def delete_project(db: Session, project: Project) -> None:
     )
     if has_batch is not None:
         raise ProjectHasBatchesError(
-            "Project cannot be deleted while survey batches exist."
+            "项目下仍有调查批次，请先处理批次。"
         )
 
+    if any((
+        db.scalar(select(model.id).where(model.project_uid == project.project_uid).limit(1)) is not None
+        for model in (ResultSubmission, OnlineSurveyEntry, CentralSurveyRecord, CentralEngineeringAsset)
+    )):
+        raise ProjectInUseError("项目已有成果包、在线记录或正式成果，不能删除；可将项目归档。")
+
     db.delete(project)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ProjectInUseError("项目仍被业务资料引用，不能删除；可将项目归档。") from exc
 
 
-def list_batches(db: Session, project: Project) -> list[SurveyBatch]:
+def list_batches(db: Session, project: Project, office_scope_uid: str | None = None) -> list[SurveyBatch]:
+    query = select(SurveyBatch).where(SurveyBatch.project_id == project.id)
+    if office_scope_uid:
+        query = query.where(SurveyBatch.id.in_(visible_batch_ids(office_scope_uid)))
     return list(
         db.scalars(
-            select(SurveyBatch)
-            .where(SurveyBatch.project_id == project.id)
+            query
             .order_by(
                 SurveyBatch.created_at.desc(),
                 SurveyBatch.id.desc(),
@@ -168,5 +196,19 @@ def update_batch(
 
 
 def delete_batch(db: Session, batch: SurveyBatch) -> None:
+    if any((
+        db.scalar(select(model.id).where(condition).limit(1)) is not None
+        for model, condition in (
+            (SurveyTask, SurveyTask.survey_batch_id == batch.id),
+            (ResultSubmission, ResultSubmission.survey_batch_uid == batch.survey_batch_uid),
+            (OnlineSurveyEntry, OnlineSurveyEntry.survey_batch_uid == batch.survey_batch_uid),
+            (CentralSurveyRecord, CentralSurveyRecord.survey_batch_uid == batch.survey_batch_uid),
+        )
+    )):
+        raise BatchInUseError("批次已有调查任务或成果记录，不能删除；可将批次设为已结束。")
     db.delete(batch)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise BatchInUseError("批次仍被业务资料引用，不能删除；可将批次设为已结束。") from exc

@@ -219,7 +219,7 @@ async function save() {
   try {
     if (editingUid.value) await updateMasterItem(editingKind.value, editingUid.value, payload());
     else await createMasterItem(editingKind.value, payload());
-    ElMessage.success(`${kindNames[editingKind.value]}已保存，新的正式版本已生效`);
+    ElMessage.success(`${kindNames[editingKind.value]}已保存`);
     dialogVisible.value = false;
     await loadData();
   } catch (error) { ElMessage.error(errorMessage(error, "保存失败，请检查填写内容")); }
@@ -256,7 +256,7 @@ onMounted(loadData);
     <div>
       <div class="eyebrow">调查工作共同使用的一套资料</div>
       <h1>单位与渠系</h1>
-      <p>先维护管理处和管理所，再为每条渠道设置负责单位；Web 与桌面端下发任务时共同使用这里的正式版本。</p>
+      <p>先维护管理处和管理所，再为每条渠道设置负责单位；新下发任务会自动记录当时的资料快照。</p>
     </div>
     <div class="header-actions">
       <el-input v-model="keyword" :prefix-icon="Search" clearable placeholder="搜索名称、编码或管理所" class="master-search" />
@@ -265,12 +265,12 @@ onMounted(loadData);
     </div>
   </div>
 
-  <el-alert class="linkage-alert" title="这里是 Web 与桌面端共同使用的正式资料。已下发任务保留原版本，资料调整后需要新建或重新下发任务，避免调查过程中口径变化。" type="success" :closable="false" show-icon />
+  <el-alert class="linkage-alert" title="这里是 Web 与桌面端共同使用的正式资料。已下发任务保留原快照；资料调整后，新任务自动使用调整后的内容。修订号仅用于追溯，不需要人工发布。" type="success" :closable="false" show-icon />
   <el-skeleton v-if="loading && !snapshot" :rows="8" animated />
 
   <template v-else-if="snapshot">
     <div class="master-status-strip">
-      <div><span>当前正式版本</span><strong>{{ snapshot.summary.master_data_version }}</strong></div>
+      <div><span>内部资料修订号</span><strong>{{ snapshot.summary.master_data_version }}</strong></div>
       <div><span>资料规模</span><strong>{{ snapshot.summary.department_count }} 个管理处 · {{ snapshot.summary.office_count }} 个管理所 · {{ snapshot.summary.canal_count }} 条渠道</strong></div>
       <button v-if="unassignedBackboneCanals.length" class="backbone-warning" type="button" @click="showUnassignedBackbones">
         <b>{{ unassignedBackboneCanals.length }}</b><span>条骨干渠待设置分管所</span>

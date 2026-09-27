@@ -1,6 +1,6 @@
 from app.db.base_class import Base
 from app.models.audit import AuditEvent
-from app.models.auth import AuthSession, User
+from app.models.auth import AuthSession, RegistrationInvite, User
 from app.models.central_record import (
     CentralEngineeringAsset,
     CentralInspectionResult,
@@ -26,6 +26,7 @@ __all__ = [
     "SurveyBatch",
     "User",
     "AuthSession",
+    "RegistrationInvite",
     "AuditEvent",
     "CentralEngineeringAsset",
     "CentralSurveyRecord",

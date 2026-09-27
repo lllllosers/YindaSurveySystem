@@ -26,6 +26,7 @@ from app.schemas.auth import (
     CsrfResponse,
     LoginRequest,
     LoginResponse,
+    RegisterRequest,
 )
 from app.services import auth_service
 from app.services.security import (
@@ -62,6 +63,7 @@ def user_payload(
         display_name=user.display_name,
         role=user.role,
         is_active=user.is_active,
+        office_scope_uid=user.office_scope_uid,
         last_login_at=user.last_login_at,
         created_at=user.created_at,
         permissions=sorted(
@@ -166,6 +168,33 @@ def login(
         user=user_payload(user),
         csrf_token=csrf_token,
     )
+
+
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+)
+def register(
+    payload: RegisterRequest,
+    request: Request,
+    db: DbSession,
+):
+    try:
+        user = auth_service.register_user(db, payload)
+    except auth_service.DuplicateUsernameError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already exists.",
+        ) from exc
+    except auth_service.InvalidInviteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    request.state.audit_summary = "受邀用户注册并启用" if user.is_active else "新用户提交注册申请"
+    request.state.audit_details = {"username": user.username, "invited": user.is_active}
+    return {
+        "active": user.is_active,
+        "message": "注册成功，可直接登录。" if user.is_active else "注册申请已提交，请等待管理员审核后登录。",
+    }
 
 
 @router.get(

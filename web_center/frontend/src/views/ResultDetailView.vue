@@ -45,6 +45,9 @@ const canPreflight = computed(
 const canReview = computed(
   () => auth.hasPermission("results.review"),
 );
+const canReviewThis = computed(
+  () => canReview.value && (auth.isAdmin || row.value?.uploader_user_uid !== auth.user?.user_uid),
+);
 const canImport = computed(
   () => auth.hasPermission("results.import"),
 );
@@ -194,13 +197,14 @@ async function review(decision: "accepted" | "rejected") {
   try {
     const action = decision === "accepted" ? "接收" : "退回";
     const result = await ElMessageBox.prompt(
-      `请填写${action}意见（可以留空）`,
+      decision === "rejected" ? "请写明退回原因，方便上传人员处理。" : "可以填写接收意见（可留空）。",
       `审核${action}`,
       {
         confirmButtonText: `确认${action}`,
         cancelButtonText: "取消",
         inputType: "textarea",
         inputPlaceholder: "审核意见",
+        inputValidator: decision === "rejected" ? (value: string) => Boolean(value.trim()) || "请填写退回原因" : undefined,
       },
     );
     notes = result.value?.trim() || null;
@@ -248,7 +252,9 @@ function download() {
 }
 
 function back() {
-  void router.push("/results");
+  const queue = typeof route.query.queue === "string" ? route.query.queue : "";
+  const status = typeof route.query.status === "string" ? route.query.status : "";
+  void router.push({ path: "/results", query: queue ? { queue } : status ? { status } : {} });
 }
 
 onMounted(refresh);
@@ -291,7 +297,7 @@ onMounted(refresh);
       </el-button>
 
       <el-button
-        v-if="canReview && row?.status === 'preflight_passed'"
+        v-if="canReviewThis && row?.status === 'preflight_passed'"
         type="success"
         :loading="workflowBusy"
         @click="review('accepted')"
@@ -300,7 +306,7 @@ onMounted(refresh);
       </el-button>
 
       <el-button
-        v-if="canReview && row && !['imported', 'rejected'].includes(row.status)"
+        v-if="canReviewThis && row && !['imported', 'rejected'].includes(row.status)"
         type="danger"
         plain
         :loading="workflowBusy"
@@ -319,6 +325,15 @@ onMounted(refresh);
       </el-button>
     </div>
   </div>
+
+  <el-alert
+    v-if="canReview && !canReviewThis && row && !['imported', 'rejected'].includes(row.status)"
+    class="linkage-alert"
+    type="warning"
+    title="本人上传的成果包需由其他审核人员处理。"
+    :closable="false"
+    show-icon
+  />
 
   <div v-loading="loading">
     <template v-if="row">

@@ -125,5 +125,5 @@ def test_health_reports_api_generation_for_launcher_compatibility() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "yinda-web-center-api",
-            "api_generation": "2026.09.27-shared-protocol-v1",
+        "api_generation": "2026.09.27-deployment-cleanup-v6",
     }

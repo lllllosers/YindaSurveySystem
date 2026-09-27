@@ -369,7 +369,7 @@ onMounted(loadAll);
     <div>
       <div class="eyebrow">调查工作安排</div>
       <h1>调查任务中心</h1>
-      <p>在中心确定调查单位和范围，下载任务文件后交给基层人员在桌面端开展调查。</p>
+      <p>{{ canWrite ? "在中心确定调查单位和范围，下载任务文件后交给基层人员在桌面端开展调查。" : "查看调查任务、负责单位和执行进度。" }}</p>
     </div>
     <div class="header-actions">
       <el-button :icon="Refresh" :loading="loading" @click="refreshTasks">刷新</el-button>
@@ -382,6 +382,7 @@ onMounted(loadAll);
   </div>
 
   <el-alert
+    v-if="canWrite"
     class="linkage-alert"
     title="与桌面端联动：中心下发任务文件 → 基层桌面端“任务接收”导入 → 完成现场调查后由桌面端导出成果文件 → 回到成果中心上传。"
     type="success"
@@ -390,6 +391,7 @@ onMounted(loadAll);
   />
 
   <el-alert
+    v-if="canWrite"
     class="task-handover-alert"
     title="已经由桌面端下发、仍在执行或需要回收历史成果的任务，不用重建。有原始任务文件时可批量接续；文件不全时，由系统管理员从桌面中心数据库备份接续正式下发历史。"
     type="info"

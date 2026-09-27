@@ -137,7 +137,7 @@ def get_record(
     return record, asset, inspections, media
 
 
-def summary(db: Session) -> dict:
+def summary(db: Session, office_scope_uid: str | None = None) -> dict:
     snapshot = get_snapshot()
     organization_names = {
         item.stable_uid: item.name
@@ -146,21 +146,33 @@ def summary(db: Session) -> dict:
     canal_names = {item.stable_uid: item.name for item in snapshot.canals}
 
     def grouped(column) -> list[tuple[str, int]]:
+        query = select(column, func.count()).select_from(CentralSurveyRecord)
+        if office_scope_uid:
+            query = query.where(CentralSurveyRecord.organization_unit_uid == office_scope_uid)
         return [
             (str(key), int(count))
             for key, count in db.execute(
-                select(column, func.count())
-                .select_from(CentralSurveyRecord)
-                .group_by(column)
-                .order_by(func.count().desc(), column)
+                query.group_by(column).order_by(func.count().desc(), column)
             ).all()
         ]
 
+    if office_scope_uid:
+        record_filter = CentralSurveyRecord.organization_unit_uid == office_scope_uid
+        asset_count = int(db.scalar(select(func.count(func.distinct(CentralSurveyRecord.engineering_asset_uid))).where(record_filter)) or 0)
+        record_count = int(db.scalar(select(func.count()).select_from(CentralSurveyRecord).where(record_filter)) or 0)
+        inspection_count = int(db.scalar(select(func.count()).select_from(CentralInspectionResult).join(CentralSurveyRecord, CentralSurveyRecord.survey_record_uid == CentralInspectionResult.survey_record_uid).where(record_filter)) or 0)
+        media_count = int(db.scalar(select(func.count()).select_from(CentralSurveyMedia).join(CentralSurveyRecord, CentralSurveyRecord.survey_record_uid == CentralSurveyMedia.survey_record_uid).where(record_filter)) or 0)
+    else:
+        asset_count = int(db.scalar(select(func.count()).select_from(CentralEngineeringAsset)) or 0)
+        record_count = int(db.scalar(select(func.count()).select_from(CentralSurveyRecord)) or 0)
+        inspection_count = int(db.scalar(select(func.count()).select_from(CentralInspectionResult)) or 0)
+        media_count = int(db.scalar(select(func.count()).select_from(CentralSurveyMedia)) or 0)
+
     return {
-        "asset_count": int(db.scalar(select(func.count()).select_from(CentralEngineeringAsset)) or 0),
-        "record_count": int(db.scalar(select(func.count()).select_from(CentralSurveyRecord)) or 0),
-        "inspection_count": int(db.scalar(select(func.count()).select_from(CentralInspectionResult)) or 0),
-        "media_count": int(db.scalar(select(func.count()).select_from(CentralSurveyMedia)) or 0),
+        "asset_count": asset_count,
+        "record_count": record_count,
+        "inspection_count": inspection_count,
+        "media_count": media_count,
         "by_form": [
             {"key": key, "name": key, "count": count}
             for key, count in grouped(CentralSurveyRecord.form_code)

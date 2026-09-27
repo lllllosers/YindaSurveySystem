@@ -25,7 +25,7 @@ from app.schemas.central_record import (
     CentralRecordRead,
     CentralRecordSummary,
 )
-from app.services import central_record_service
+from app.services import access_scope, central_record_service
 from app.services import online_entry_service, result_submission_service
 from app.services.master_data_service import get_snapshot
 
@@ -90,6 +90,7 @@ def to_read(
 
 def _query(
     db: Session,
+    user: User,
     *,
     project_uid: str | None,
     survey_batch_uid: str | None,
@@ -100,12 +101,14 @@ def _query(
     limit: int,
     offset: int,
 ):
+    if organization_unit_uid:
+        access_scope.require_office(user, organization_unit_uid)
     return central_record_service.list_records(
         db,
         project_uid=project_uid,
         survey_batch_uid=survey_batch_uid,
         form_code=form_code,
-        organization_unit_uid=organization_unit_uid,
+        organization_unit_uid=access_scope.office_scope(user) or organization_unit_uid,
         canal_unit_uid=canal_unit_uid,
         search=search,
         limit=limit,
@@ -114,13 +117,13 @@ def _query(
 
 
 @router.get("/summary", response_model=CentralRecordSummary)
-def get_summary(_: RecordReader, db: DbSession):
-    return central_record_service.summary(db)
+def get_summary(user: RecordReader, db: DbSession):
+    return central_record_service.summary(db, access_scope.office_scope(user))
 
 
 @router.get("/export.csv")
 def export_records(
-    _: RecordReader,
+    user: RecordReader,
     db: DbSession,
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
@@ -131,6 +134,7 @@ def export_records(
 ):
     rows, _ = _query(
         db,
+        user,
         project_uid=project_uid,
         survey_batch_uid=survey_batch_uid,
         form_code=form_code,
@@ -162,7 +166,7 @@ def export_records(
 
 @router.get("", response_model=CentralRecordPage)
 def get_records(
-    _: RecordReader,
+    user: RecordReader,
     db: DbSession,
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
@@ -175,6 +179,7 @@ def get_records(
 ):
     rows, total = _query(
         db,
+        user,
         project_uid=project_uid,
         survey_batch_uid=survey_batch_uid,
         form_code=form_code,
@@ -193,11 +198,12 @@ def get_records(
 
 
 @router.get("/{survey_record_uid}", response_model=CentralRecordDetail)
-def get_record(survey_record_uid: str, _: RecordReader, db: DbSession):
+def get_record(survey_record_uid: str, user: RecordReader, db: DbSession):
     result = central_record_service.get_record(db, survey_record_uid)
     if result is None:
         raise HTTPException(status_code=404, detail="Central record not found.")
     record, asset, inspections, media = result
+    access_scope.require_office(user, record.organization_unit_uid)
     return CentralRecordDetail(
         **to_read(record, asset).model_dump(),
         record_payload=record.payload_json,
@@ -208,7 +214,11 @@ def get_record(survey_record_uid: str, _: RecordReader, db: DbSession):
 
 
 @router.get("/{survey_record_uid}/media/{media_uid}")
-def open_record_media(survey_record_uid: str, media_uid: str, _: RecordReader, db: DbSession):
+def open_record_media(survey_record_uid: str, media_uid: str, user: RecordReader, db: DbSession):
+    record = db.scalar(select(CentralSurveyRecord).where(CentralSurveyRecord.survey_record_uid == survey_record_uid))
+    if record is None:
+        raise HTTPException(status_code=404, detail="调查记录不存在。")
+    access_scope.require_office(user, record.organization_unit_uid)
     media = db.scalar(
         select(CentralSurveyMedia).where(
             CentralSurveyMedia.survey_record_uid == survey_record_uid,

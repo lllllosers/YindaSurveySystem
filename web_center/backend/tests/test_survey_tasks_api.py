@@ -56,6 +56,61 @@ def create_project_and_batch(client: TestClient, csrf: str, token: str) -> tuple
     return project_uid, batch.json()["survey_batch_uid"]
 
 
+def test_scoped_viewer_only_sees_own_office_tasks() -> None:
+    token = uuid4().hex[:8]
+    admin = create_test_user("admin")
+    viewer = create_test_user("viewer")
+    admin_client = TestClient(app)
+    viewer_client = TestClient(app)
+    csrf = login_client(admin_client, admin.username)
+    login_client(viewer_client, viewer.username)
+    project_uid, batch_uid = create_project_and_batch(admin_client, csrf, token)
+    scopes = get_snapshot().management_scopes
+    first = scopes[0]
+    second = next(item for item in scopes if item.organization_master_key != first.organization_master_key)
+    offices = {item.master_key: item for item in get_snapshot().offices}
+    first_office = offices[first.organization_master_key]
+    task_uids: list[str] = []
+    try:
+        assigned = admin_client.patch(
+            f"/api/v1/users/{viewer.user_uid}",
+            headers={"X-CSRF-Token": csrf},
+            json={"office_scope_uid": first_office.stable_uid},
+        )
+        assert assigned.status_code == 200, assigned.text
+        assert assigned.json()["office_scope_uid"] == first_office.stable_uid
+        for scope in (first, second):
+            office = offices[scope.organization_master_key]
+            response = admin_client.post(
+                "/api/v1/survey-tasks",
+                headers={"X-CSRF-Token": csrf},
+                json={
+                    "project_uid": project_uid,
+                    "survey_batch_uid": batch_uid,
+                    "task_name": f"范围权限测试-{token}",
+                    "target_unit_type": "water_office",
+                    "target_master_key": office.master_key,
+                    "selected_management_scope_uids": [scope.stable_uid],
+                },
+            )
+            assert response.status_code == 201, response.text
+            task_uids.append(response.json()["task_uid"])
+        listed = viewer_client.get("/api/v1/survey-tasks", params={"keyword": token})
+        assert listed.status_code == 200, listed.text
+        assert [row["task_uid"] for row in listed.json()["items"]] == [task_uids[0]]
+        assert viewer_client.get(f"/api/v1/survey-tasks/{task_uids[0]}").status_code == 200
+        assert viewer_client.get(f"/api/v1/survey-tasks/{task_uids[1]}").status_code == 404
+        assert viewer_client.get(f"/api/v1/survey-tasks/{task_uids[1]}/download").status_code == 403
+        assert viewer_client.get("/api/v1/overview").json()["survey_task_count"] >= 1
+    finally:
+        for task_uid in task_uids:
+            cleanup_task(task_uid)
+        admin_client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
+        admin_client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(viewer.user_uid)
+        cleanup_test_user(admin.user_uid)
+
+
 def test_create_download_and_validate_desktop_v3_task_package(tmp_path: Path) -> None:
     from services.survey_task_package_reader import inspect_survey_task_package
 

@@ -88,6 +88,7 @@ export interface OnlineEntryPage {
   total: number;
   limit: number;
   offset: number;
+  summary: Record<OnlineEntryStatus, number>;
 }
 
 export interface EntryContent {
@@ -100,8 +101,16 @@ export async function getOnlineFormDefinitions(): Promise<OnlineFormDefinition[]
   return (await api.get<OnlineFormDefinition[]>("/online-entries/form-definitions")).data;
 }
 
-export async function listOnlineEntries(params?: { status?: string; mine?: boolean }): Promise<OnlineEntryPage> {
+export async function listOnlineEntries(params?: { status?: string; mine?: boolean; limit?: number; offset?: number }): Promise<OnlineEntryPage> {
   return (await api.get<OnlineEntryPage>("/online-entries", { params })).data;
+}
+
+export async function getOnlineEntry(entryUid: string): Promise<OnlineEntry> {
+  return (await api.get<OnlineEntry>(`/online-entries/${entryUid}`)).data;
+}
+
+export async function deleteOnlineEntry(entryUid: string): Promise<void> {
+  await api.delete(`/online-entries/${entryUid}`);
 }
 
 export async function createOnlineEntry(

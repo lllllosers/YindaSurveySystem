@@ -19,8 +19,11 @@ from tests.test_survey_tasks_api import create_project_and_batch
 def test_online_entry_draft_submit_review_and_import() -> None:
     token = uuid4().hex[:8]
     admin = create_test_user("admin")
+    manager = create_test_user("manager")
     client = TestClient(app)
     csrf = login_client(client, admin.username)
+    manager_client = TestClient(app)
+    manager_csrf = login_client(manager_client, manager.username)
     project_uid, batch_uid = create_project_and_batch(client, csrf, token)
     snapshot = get_snapshot()
     scope = snapshot.management_scopes[0]
@@ -67,9 +70,9 @@ def test_online_entry_draft_submit_review_and_import() -> None:
             }
             for item in definition["evaluation_items"]
         ]
-        create_response = client.post(
+        create_response = manager_client.post(
             "/api/v1/online-entries",
-            headers={"X-CSRF-Token": csrf},
+            headers={"X-CSRF-Token": manager_csrf},
             json={
                 "task_uid": task_uid,
                 "management_scope_uid": scope.stable_uid,
@@ -88,9 +91,9 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         entry_uid = create_response.json()["entry_uid"]
         assert create_response.json()["status"] == "draft"
 
-        media_response = client.post(
+        media_response = manager_client.post(
             f"/api/v1/online-entries/{entry_uid}/media",
-            headers={"X-CSRF-Token": csrf},
+            headers={"X-CSRF-Token": manager_csrf},
             files={"file": ("现场全貌.jpg", b"test-photo-bytes", "image/jpeg")},
             data={"media_role": "现场全貌", "part_name": "进口段"},
         )
@@ -98,12 +101,25 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         media_uid = media_response.json()["media_uid"]
         assert media_response.json()["media_kind"] == "photo"
 
-        submit_response = client.post(
+        submit_response = manager_client.post(
             f"/api/v1/online-entries/{entry_uid}/submit",
-            headers={"X-CSRF-Token": csrf},
+            headers={"X-CSRF-Token": manager_csrf},
         )
         assert submit_response.status_code == 200, submit_response.text
         assert submit_response.json()["status"] == "submitted"
+
+        pending_page = client.get("/api/v1/online-entries", params={"status": "submitted", "limit": 1})
+        assert pending_page.status_code == 200, pending_page.text
+        assert pending_page.json()["total"] >= 1
+        assert len(pending_page.json()["items"]) == 1
+        assert pending_page.json()["summary"]["submitted"] >= 1
+
+        self_review = manager_client.post(
+            f"/api/v1/online-entries/{entry_uid}/review",
+            headers={"X-CSRF-Token": manager_csrf},
+            json={"decision": "accept", "notes": None},
+        )
+        assert self_review.status_code == 403
 
         review_response = client.post(
             f"/api/v1/online-entries/{entry_uid}/review",
@@ -177,3 +193,4 @@ def test_online_entry_draft_submit_review_and_import() -> None:
         client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
         client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
         cleanup_test_user(admin.user_uid)
+        cleanup_test_user(manager.user_uid)

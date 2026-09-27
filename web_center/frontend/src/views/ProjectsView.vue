@@ -87,6 +87,11 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
 
+function serverMessage(error: unknown, fallback: string): string {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof detail === "string" && detail ? detail : fallback;
+}
+
 async function refreshProjects(preferredUid?: string) {
   loadingProjects.value = true;
   try {
@@ -172,7 +177,7 @@ async function saveProject() {
 async function removeProject(project: Project) {
   try {
     await ElMessageBox.confirm(
-      `确认删除项目“${project.name}”？只有不存在调查批次时才允许删除。`,
+      `确认删除项目“${project.name}”？有调查批次、成果包或正式成果的项目应使用归档。`,
       "删除项目",
       {
         confirmButtonText: "删除",
@@ -186,7 +191,7 @@ async function removeProject(project: Project) {
   } catch (error) {
     if (error === "cancel" || error === "close") return;
     console.error(error);
-    ElMessage.error("删除失败；请确认项目下不存在调查批次");
+    ElMessage.error(serverMessage(error, "项目删除失败"));
   }
 }
 
@@ -250,7 +255,7 @@ async function saveBatch() {
 async function removeBatch(batch: SurveyBatch) {
   try {
     await ElMessageBox.confirm(
-      `确认删除调查批次“${batch.batch_name}”？`,
+      `确认删除调查批次“${batch.batch_name}”？已有任务或成果的批次应设置为已结束。`,
       "删除调查批次",
       {
         confirmButtonText: "删除",
@@ -264,7 +269,7 @@ async function removeBatch(batch: SurveyBatch) {
   } catch (error) {
     if (error === "cancel" || error === "close") return;
     console.error(error);
-    ElMessage.error("调查批次删除失败");
+    ElMessage.error(serverMessage(error, "调查批次删除失败"));
   }
 }
 
@@ -277,7 +282,7 @@ onMounted(() => refreshProjects());
       <div class="eyebrow">调查准备第一步</div>
       <h1>项目与调查批次</h1>
       <p>
-        先建立调查项目和批次，后续任务下发、成果回收和统计都将归入对应批次。
+        {{ auth.hasPermission("projects.write") ? "先建立调查项目和批次，后续任务下发、成果回收和统计都将归入对应批次。" : "查看调查项目和批次，了解任务与成果所属的调查轮次。" }}
       </p>
     </div>
     <el-button v-if="auth.hasPermission('projects.write')" type="primary" @click="openCreateProject">
@@ -286,6 +291,7 @@ onMounted(() => refreshProjects());
   </div>
 
   <el-alert
+    v-if="auth.hasPermission('projects.write')"
     class="linkage-alert"
     title="这是调查工作的第一步。批次设为“进行中”后，才能在任务中心向管理处或水管所安排调查；桌面端接收任务时会自动带入项目和批次，不需要基层重复填写。"
     type="success"
@@ -424,7 +430,7 @@ onMounted(() => refreshProjects());
 
     <el-empty
       v-if="!selectedProject"
-      description="请先创建并选择一个项目"
+      :description="auth.hasPermission('projects.write') ? '请先创建并选择一个项目' : '暂无可查看的调查项目'"
     />
   </el-card>
 

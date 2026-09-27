@@ -24,6 +24,9 @@ export interface OverviewResponse {
   survey_task_count: number;
   central_record_count: number;
   pending_review_count: number;
+  pending_package_review_count: number;
+  pending_online_review_count: number;
+  pending_user_count: number;
   active_user_count: number;
   official_department_count: number;
   official_office_count: number;

@@ -293,6 +293,47 @@ select {
   margin-top: 4px;
 }
 
+.register-switch {
+  margin-top: 15px;
+  text-align: center;
+  color: #7a8592;
+  font-size: 13px;
+}
+
+.entry-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 8px 4px;
+}
+
+.user-batch-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 16px;
+}
+
+.user-batch-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.batch-approval-note {
+  color: #7a8592;
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.online-review-section {
+  margin-top: 26px;
+}
+
+.online-review-section h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
 .login-security-note {
   margin-top: 20px;
   color: #9aa3ad;

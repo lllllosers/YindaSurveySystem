@@ -11,7 +11,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
+from app.models.central_record import CentralEngineeringAsset, CentralSurveyRecord
 from app.models.result_submission import ResultSubmission
+from app.models.survey_task import SurveyTask
 from app.services.result_package_inspection import inspect_result_package
 
 
@@ -33,6 +35,10 @@ class DuplicatePackageConflictError(ValueError):
 
 
 class DuplicateResultError(ValueError):
+    pass
+
+
+class SubmissionDeleteError(ValueError):
     pass
 
 
@@ -65,17 +71,45 @@ def get_submission(db: Session, submission_uid: str) -> ResultSubmission | None:
     )
 
 
+def delete_unprocessed_submission(db: Session, row: ResultSubmission) -> None:
+    if row.status not in {"uploaded", "inspected", "invalid", "conflict"}:
+        raise SubmissionDeleteError("已进入审核或正式入库流程的成果包不能删除，请保留历史记录。")
+    if any(db.scalar(select(model.id).where(model.current_submission_uid == row.submission_uid).limit(1)) is not None
+           for model in (CentralEngineeringAsset, CentralSurveyRecord)):
+        raise SubmissionDeleteError("成果包已被正式成果引用，不能删除。")
+    path = (BACKEND_ROOT / row.stored_relative_path).resolve()
+    root = SUBMISSIONS_DIR.resolve()
+    if root not in path.parents or path.name != "package.ydresult":
+        raise SubmissionDeleteError("成果包存储路径异常，拒绝删除。")
+    db.delete(row)
+    db.commit()
+    path.unlink(missing_ok=True)
+    try:
+        path.parent.rmdir()
+    except OSError:
+        pass
+
+
 def list_submissions(
     db: Session,
     *,
     status: str | None,
+    queue: str | None = None,
     project_uid: str | None,
     survey_batch_uid: str | None,
     keyword: str | None,
+    office_scope_uid: str | None = None,
     limit: int,
     offset: int,
 ) -> tuple[list[ResultSubmission], int, dict[str, int]]:
     context_filters = []
+    if office_scope_uid:
+        scoped_task = select(SurveyTask.id).where(
+            SurveyTask.task_uid == ResultSubmission.submission_task_uid,
+            SurveyTask.target_unit_type == "water_office",
+            SurveyTask.organization_unit_uid == office_scope_uid,
+        ).exists()
+        context_filters.append(scoped_task)
     if project_uid:
         context_filters.append(ResultSubmission.project_uid == project_uid)
     if survey_batch_uid:
@@ -91,7 +125,15 @@ def list_submissions(
             )
         )
     filters = list(context_filters)
-    if status:
+    queue_statuses = {
+        "check": ("uploaded", "inspected"),
+        "review": ("preflight_passed", "reviewing"),
+        "import": ("accepted",),
+        "attention": ("invalid", "conflict", "rejected"),
+    }
+    if queue:
+        filters.append(ResultSubmission.status.in_(queue_statuses[queue]))
+    elif status:
         filters.append(ResultSubmission.status == status)
 
     total = int(

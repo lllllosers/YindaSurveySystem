@@ -43,6 +43,10 @@ class OnlineEntryStateError(ValueError):
     pass
 
 
+class SelfReviewError(PermissionError):
+    pass
+
+
 class MediaUploadTooLargeError(ValueError):
     pass
 
@@ -242,16 +246,37 @@ def remove_media(db: Session, row: OnlineSurveyEntry, media_uid: str) -> None:
     shutil.rmtree(path.parent, ignore_errors=True)
 
 
+def delete_draft(db: Session, row: OnlineSurveyEntry) -> None:
+    if row.status != "draft":
+        raise OnlineEntryStateError("只有从未提交审核的草稿可以删除；已提交记录需保留审核历史。")
+    media_dir = (ONLINE_MEDIA_ROOT / row.entry_uid).resolve()
+    if media_dir.parent != ONLINE_MEDIA_ROOT.resolve():
+        raise RuntimeError("草稿影像目录越界，拒绝删除。")
+    db.delete(row)
+    db.commit()
+    if media_dir.exists():
+        shutil.rmtree(media_dir)
+
+
 def update_entry(db: Session, row: OnlineSurveyEntry, payload: OnlineEntryUpdate) -> OnlineSurveyEntry:
     if row.status not in {"draft", "rejected"}:
         raise OnlineEntryStateError("该记录已经提交，不能再修改。")
     definition = get_engineering_form_definition(row.form_code)
     if definition is None:
         raise RuntimeError("调查表定义不存在。")
+    next_asset_name = _asset_name(definition, payload.form_data)
+    if (
+        row.status == "draft"
+        and row.form_data_json == payload.form_data
+        and row.evaluations_json == payload.evaluations
+        and row.conclusion_json == payload.conclusion
+        and row.asset_name == next_asset_name
+    ):
+        return row
     row.form_data_json = payload.form_data
     row.evaluations_json = payload.evaluations
     row.conclusion_json = payload.conclusion
-    row.asset_name = _asset_name(definition, payload.form_data)
+    row.asset_name = next_asset_name
     row.status = "draft"
     row.review_notes = None
     row.revision_no += 1
@@ -350,7 +375,7 @@ def submit_entry(db: Session, row: OnlineSurveyEntry) -> OnlineSurveyEntry:
 
 def list_entries(
     db: Session, *, status: str | None, task_uid: str | None, creator_uid: str | None,
-    limit: int, offset: int,
+    limit: int, offset: int, office_scope_uid: str | None = None,
 ) -> tuple[list[tuple[OnlineSurveyEntry, SurveyTask, Project, SurveyBatch]], int]:
     base = (
         select(OnlineSurveyEntry, SurveyTask, Project, SurveyBatch)
@@ -364,6 +389,7 @@ def list_entries(
         OnlineSurveyEntry.status == status if status else None,
         OnlineSurveyEntry.task_uid == task_uid if task_uid else None,
         OnlineSurveyEntry.created_by_user_uid == creator_uid if creator_uid else None,
+        OnlineSurveyEntry.organization_unit_uid == office_scope_uid if office_scope_uid else None,
     ):
         if condition is not None:
             base = base.where(condition)
@@ -384,6 +410,8 @@ def _hash(payload: dict) -> str:
 
 
 def accept_and_import(db: Session, row: OnlineSurveyEntry, reviewer: User, notes: str | None) -> None:
+    if reviewer.role != "admin" and row.created_by_user_uid == reviewer.user_uid:
+        raise SelfReviewError("不能审核本人录入的调查记录。")
     if row.status != "submitted":
         raise OnlineEntryStateError("只有待审核记录可以审核。")
     definition = get_engineering_form_definition(row.form_code)
@@ -504,6 +532,8 @@ def accept_and_import(db: Session, row: OnlineSurveyEntry, reviewer: User, notes
 
 
 def reject_entry(db: Session, row: OnlineSurveyEntry, reviewer: User, notes: str) -> None:
+    if reviewer.role != "admin" and row.created_by_user_uid == reviewer.user_uid:
+        raise SelfReviewError("不能审核本人录入的调查记录。")
     if row.status != "submitted":
         raise OnlineEntryStateError("只有待审核记录可以审核。")
     row.status = "rejected"

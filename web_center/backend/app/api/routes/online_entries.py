@@ -1,9 +1,9 @@
 import mimetypes
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import require_permission
@@ -21,7 +21,7 @@ from app.schemas.online_entry import (
     OnlineFormDefinitionRead,
     OnlineMediaRead,
 )
-from app.services import online_entry_service
+from app.services import access_scope, online_entry_service
 
 
 router = APIRouter(prefix="/online-entries", tags=["Online Survey Entries"])
@@ -83,6 +83,17 @@ def require_entry(db: Session, entry_uid: str) -> OnlineSurveyEntry:
     return row
 
 
+def require_entry_for_update(db: Session, entry_uid: str) -> OnlineSurveyEntry:
+    row = db.scalar(
+        select(OnlineSurveyEntry)
+        .where(OnlineSurveyEntry.entry_uid == entry_uid)
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="调查记录不存在。")
+    return row
+
+
 def require_owner(row: OnlineSurveyEntry, user: User) -> None:
     if user.role != "admin" and row.created_by_user_uid != user.user_uid:
         raise HTTPException(status_code=403, detail="只能修改本人创建的调查记录。")
@@ -108,14 +119,24 @@ def get_entries(
         status=status_filter,
         task_uid=task_uid,
         creator_uid=current_user.user_uid if mine else None,
+        office_scope_uid=access_scope.office_scope(current_user),
         limit=limit,
         offset=offset,
     )
+    summary = {status: 0 for status in ("draft", "submitted", "accepted", "rejected", "imported")}
+    summary_query = select(OnlineSurveyEntry.status, func.count()).group_by(OnlineSurveyEntry.status)
+    if mine:
+        summary_query = summary_query.where(OnlineSurveyEntry.created_by_user_uid == current_user.user_uid)
+    if access_scope.office_scope(current_user):
+        summary_query = summary_query.where(OnlineSurveyEntry.organization_unit_uid == access_scope.office_scope(current_user))
+    for entry_status, count in db.execute(summary_query):
+        summary[entry_status] = int(count)
     return OnlineEntryPage(
         items=[to_read(row, task, project, batch) for row, task, project, batch in rows],
         total=total,
         limit=limit,
         offset=offset,
+        summary=summary,
     )
 
 
@@ -131,9 +152,23 @@ def post_entry(payload: OnlineEntryPayload, request: Request, creator: EntryWrit
 
 
 @router.get("/{entry_uid}", response_model=OnlineEntryRead)
-def get_entry(entry_uid: str, _: EntryReader, db: DbSession):
+def get_entry(entry_uid: str, user: EntryReader, db: DbSession):
     row = require_entry(db, entry_uid)
+    access_scope.require_office(user, row.organization_unit_uid)
     return to_read(row, *_context(db, row))
+
+
+@router.delete("/{entry_uid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_entry(entry_uid: str, request: Request, user: EntryWriter, db: DbSession):
+    row = require_entry_for_update(db, entry_uid)
+    require_owner(row, user)
+    try:
+        online_entry_service.delete_draft(db, row)
+    except online_entry_service.OnlineEntryStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    request.state.audit_summary = "删除未提交的在线调查草稿"
+    request.state.audit_details = {"entry_uid": entry_uid}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{entry_uid}/media", response_model=OnlineMediaRead, status_code=status.HTTP_201_CREATED)
@@ -147,7 +182,7 @@ async def upload_entry_media(
     part_name: str | None = Form(default=None),
     notes: str | None = Form(default=None),
 ):
-    row = require_entry(db, entry_uid)
+    row = require_entry_for_update(db, entry_uid)
     require_owner(row, user)
     try:
         item = await online_entry_service.add_media(
@@ -175,8 +210,9 @@ async def upload_entry_media(
 
 
 @router.get("/{entry_uid}/media/{media_uid}")
-def download_entry_media(entry_uid: str, media_uid: str, _: EntryReader, db: DbSession):
+def download_entry_media(entry_uid: str, media_uid: str, user: EntryReader, db: DbSession):
     row = require_entry(db, entry_uid)
+    access_scope.require_office(user, row.organization_unit_uid)
     item = next(
         (value for value in (row.media_json or []) if value.get("media_uid") == media_uid),
         None,
@@ -204,7 +240,7 @@ def delete_entry_media(
     user: EntryWriter,
     db: DbSession,
 ):
-    row = require_entry(db, entry_uid)
+    row = require_entry_for_update(db, entry_uid)
     require_owner(row, user)
     try:
         online_entry_service.remove_media(db, row, media_uid)
@@ -220,7 +256,7 @@ def delete_entry_media(
 def put_entry(
     entry_uid: str, payload: OnlineEntryUpdate, request: Request, user: EntryWriter, db: DbSession
 ):
-    row = require_entry(db, entry_uid)
+    row = require_entry_for_update(db, entry_uid)
     require_owner(row, user)
     try:
         online_entry_service.update_entry(db, row, payload)
@@ -233,7 +269,7 @@ def put_entry(
 
 @router.post("/{entry_uid}/submit", response_model=OnlineEntryRead)
 def submit_entry(entry_uid: str, request: Request, user: EntryWriter, db: DbSession):
-    row = require_entry(db, entry_uid)
+    row = require_entry_for_update(db, entry_uid)
     require_owner(row, user)
     try:
         online_entry_service.submit_entry(db, row)
@@ -250,7 +286,8 @@ def submit_entry(entry_uid: str, request: Request, user: EntryWriter, db: DbSess
 def review_entry(
     entry_uid: str, payload: OnlineEntryReview, request: Request, reviewer: EntryReviewer, db: DbSession
 ):
-    row = require_entry(db, entry_uid)
+    row = require_entry_for_update(db, entry_uid)
+    access_scope.require_office(reviewer, row.organization_unit_uid)
     try:
         if payload.decision == "accept":
             online_entry_service.accept_and_import(db, row, reviewer, payload.notes)
@@ -258,6 +295,8 @@ def review_entry(
         else:
             online_entry_service.reject_entry(db, row, reviewer, payload.notes or "")
             summary = "退回在线调查记录"
+    except online_entry_service.SelfReviewError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except online_entry_service.OnlineEntryStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     request.state.audit_summary = summary

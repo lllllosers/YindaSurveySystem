@@ -1,6 +1,10 @@
 backend/.venv/
 backend/.env
 backend/storage/
+backend/backups/
 frontend/node_modules/
 frontend/dist/
+release/
+.runtime/
+__pycache__/
 frontend/.env.local

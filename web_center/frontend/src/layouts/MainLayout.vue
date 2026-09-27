@@ -73,18 +73,22 @@ async function logout() {
           <template #title><span class="menu-group-title">调查执行</span></template>
           <el-menu-item v-if="auth.hasPermission('tasks.read')" index="/tasks">
             <el-icon><Document /></el-icon>
-            <span>任务下发</span>
+            <span>{{ auth.hasPermission("tasks.write") ? "任务下发" : "调查任务" }}</span>
           </el-menu-item>
           <el-menu-item v-if="auth.hasPermission('online_entries.read')" index="/online-entry">
             <el-icon><EditPen /></el-icon>
-            <span>在线录入</span>
+            <span>{{ auth.hasPermission("online_entries.write") ? "在线录入" : "在线记录" }}</span>
           </el-menu-item>
         </el-menu-item-group>
         <el-menu-item-group>
           <template #title><span class="menu-group-title">成果管理</span></template>
+          <el-menu-item v-if="auth.hasPermission('online_entries.review')" index="/online-reviews">
+            <el-icon><Tickets /></el-icon>
+            <span>在线记录审核</span>
+          </el-menu-item>
           <el-menu-item v-if="auth.hasPermission('results.read')" index="/results">
             <el-icon><Files /></el-icon>
-            <span>成果审核</span>
+            <span>{{ auth.hasPermission("results.review") ? "成果包审核" : "成果包台账" }}</span>
           </el-menu-item>
           <el-menu-item v-if="auth.hasPermission('central_records.read')" index="/central-records">
             <el-icon><Coin /></el-icon>

@@ -13,7 +13,7 @@ from app.schemas.project import (
     SurveyBatchCreate,
     SurveyBatchRead,
 )
-from app.services import project_service
+from app.services import access_scope, project_service
 
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -32,8 +32,8 @@ def require_project(db: Session, project_uid: str):
 
 
 @router.get("", response_model=list[ProjectRead])
-def get_projects(_: ProjectReader, db: DbSession):
-    return project_service.list_projects(db)
+def get_projects(user: ProjectReader, db: DbSession):
+    return project_service.list_projects(db, access_scope.office_scope(user))
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
@@ -42,8 +42,10 @@ def post_project(payload: ProjectCreate, _: ProjectWriter, db: DbSession):
 
 
 @router.get("/{project_uid}", response_model=ProjectRead)
-def get_project(project_uid: str, _: ProjectReader, db: DbSession):
-    return require_project(db, project_uid)
+def get_project(project_uid: str, user: ProjectReader, db: DbSession):
+    project = require_project(db, project_uid)
+    access_scope.require_project(db, user, project.id)
+    return project
 
 
 @router.patch("/{project_uid}", response_model=ProjectRead)
@@ -62,15 +64,16 @@ def delete_project(project_uid: str, _: ProjectWriter, db: DbSession):
     project = require_project(db, project_uid)
     try:
         project_service.delete_project(db, project)
-    except project_service.ProjectHasBatchesError as exc:
+    except (project_service.ProjectHasBatchesError, project_service.ProjectInUseError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{project_uid}/batches", response_model=list[SurveyBatchRead])
-def get_batches(project_uid: str, _: BatchReader, db: DbSession):
+def get_batches(project_uid: str, user: BatchReader, db: DbSession):
     project = require_project(db, project_uid)
-    return project_service.list_batches(db, project)
+    access_scope.require_project(db, user, project.id)
+    return project_service.list_batches(db, project, access_scope.office_scope(user))
 
 
 @router.post(

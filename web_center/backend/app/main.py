@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.audit import AuditMiddleware
 
@@ -26,3 +29,17 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_web_frontend(full_path: str):
+    """Serve a built SPA from the same origin as the API in deployments."""
+    dist = (Path(__file__).resolve().parents[2] / "frontend" / "dist").resolve()
+    if not dist.is_dir() or full_path.startswith("api/"):
+        raise HTTPException(status_code=404)
+    target = (dist / full_path).resolve()
+    if target.is_file() and (target == dist or dist in target.parents):
+        return FileResponse(target)
+    if Path(full_path).suffix or (target != dist and dist not in target.parents):
+        raise HTTPException(status_code=404)
+    return FileResponse(dist / "index.html")

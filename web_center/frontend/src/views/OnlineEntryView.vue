@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { Check, Edit, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
+import { useRoute } from "vue-router";
+import { Edit, Plus, Refresh, UploadFilled, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import {
   createOnlineEntry,
+  deleteOnlineEntry,
   deleteOnlineMedia,
   getOnlineFormDefinitions,
   listOnlineEntries,
   onlineMediaUrl,
-  reviewOnlineEntry,
   submitOnlineEntry,
   updateOnlineEntry,
   uploadOnlineMedia,
   type FormField,
   type OnlineEntry,
+  type OnlineEntryStatus,
   type OnlineFormDefinition,
 } from "../api/onlineEntries";
 import { getSurveyTask, listSurveyTasks, type FrozenScope, type SurveyTask, type SurveyTaskDetail } from "../api/surveyTasks";
@@ -30,11 +32,20 @@ interface EntryEvaluation {
 }
 
 const auth = useAuthStore();
+const route = useRoute();
 const loading = ref(false);
 const saving = ref(false);
 const drawerVisible = ref(false);
 const detailVisible = ref(false);
 const entries = ref<OnlineEntry[]>([]);
+const mineOnly = ref(auth.hasPermission("online_entries.write"));
+const allowedStatuses: OnlineEntryStatus[] = ["draft", "submitted", "accepted", "rejected", "imported"];
+const initialStatus = typeof route.query.status === "string" ? route.query.status : "";
+const statusFilter = ref(allowedStatuses.includes(initialStatus as OnlineEntryStatus) ? initialStatus : "");
+const pageNumber = ref(1);
+const pageSize = 20;
+const total = ref(0);
+const summary = ref<Record<OnlineEntryStatus, number>>({ draft: 0, submitted: 0, accepted: 0, rejected: 0, imported: 0 });
 const tasks = ref<SurveyTask[]>([]);
 const taskDetail = ref<SurveyTaskDetail | null>(null);
 const definitions = ref<OnlineFormDefinition[]>([]);
@@ -56,7 +67,6 @@ const conclusion = reactive({
 });
 
 const canWrite = computed(() => auth.hasPermission("online_entries.write"));
-const canReview = computed(() => auth.hasPermission("online_entries.review"));
 const activeTasks = computed(() => tasks.value.filter((item) => !["cancelled", "closed"].includes(item.status)));
 const selectedDefinition = computed(() => definitions.value.find((item) => item.form_code === selector.form_code) ?? null);
 const fieldMap = computed(() => new Map(selectedDefinition.value?.fields.map((item) => [item.key, item]) ?? []));
@@ -111,12 +121,18 @@ function selectedStandard(item: EntryEvaluation): string {
 async function loadAll() {
   loading.value = true;
   try {
-    const [entryPage, taskPage, formDefinitions] = await Promise.all([
-      listOnlineEntries(),
+    let [entryPage, taskPage, formDefinitions] = await Promise.all([
+      listOnlineEntries({ status: statusFilter.value || undefined, mine: mineOnly.value, limit: pageSize, offset: (pageNumber.value - 1) * pageSize }),
       listSurveyTasks({ limit: 200 }),
       getOnlineFormDefinitions(),
     ]);
+    if (pageNumber.value > 1 && entryPage.items.length === 0) {
+      pageNumber.value = Math.max(1, Math.ceil(entryPage.total / pageSize));
+      entryPage = await listOnlineEntries({ status: statusFilter.value || undefined, mine: mineOnly.value, limit: pageSize, offset: (pageNumber.value - 1) * pageSize });
+    }
     entries.value = entryPage.items;
+    total.value = entryPage.total;
+    summary.value = entryPage.summary;
     tasks.value = taskPage.items;
     definitions.value = formDefinitions;
   } catch (error) {
@@ -124,6 +140,16 @@ async function loadAll() {
   } finally {
     loading.value = false;
   }
+}
+
+async function changeStatus() {
+  pageNumber.value = 1;
+  await loadAll();
+}
+
+async function changePage(page: number) {
+  pageNumber.value = page;
+  await loadAll();
 }
 
 function resetContent() {
@@ -290,6 +316,17 @@ async function removeMedia(mediaUid: string) {
   }
 }
 
+async function removeDraft(row: OnlineEntry) {
+  try {
+    await ElMessageBox.confirm(`删除“${row.asset_name || row.form_name}”的未提交草稿及影像？`, "删除草稿", { type: "warning", confirmButtonText: "删除" });
+    await deleteOnlineEntry(row.entry_uid);
+    ElMessage.success("草稿已删除");
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(errorMessage(error, "草稿删除失败"));
+  }
+}
+
 function localSubmitError(): string | null {
   const definition = selectedDefinition.value;
   if (!definition) return "请先选择调查表";
@@ -341,32 +378,6 @@ function openDetail(row: OnlineEntry) {
   detailVisible.value = true;
 }
 
-async function review(row: OnlineEntry, decision: "accept" | "reject") {
-  try {
-    let notes: string | null = null;
-    if (decision === "reject") {
-      const result = await ElMessageBox.prompt(
-        "请明确写出需要补充或修改的内容，录入人员将按此意见重新提交。",
-        "退回修改",
-        { inputPlaceholder: "填写修改意见", inputValidator: (value) => Boolean(value.trim()) || "请填写修改意见" },
-      );
-      notes = result.value;
-    } else {
-      await ElMessageBox.confirm(
-        "审核通过后，本条记录将立即进入正式成果库。请确认内容真实、完整。",
-        "审核通过并入库",
-        { type: "success", confirmButtonText: "通过并入库" },
-      );
-    }
-    await reviewOnlineEntry(row.entry_uid, decision, notes);
-    ElMessage.success(decision === "accept" ? "审核完成，记录已进入正式成果库" : "记录已退回修改");
-    await loadAll();
-  } catch (error) {
-    if (error === "cancel" || error === "close") return;
-    ElMessage.error(errorMessage(error, "审核操作失败，请稍后重试"));
-  }
-}
-
 onMounted(loadAll);
 </script>
 
@@ -374,12 +385,13 @@ onMounted(loadAll);
   <div class="module-header online-entry-header">
     <div>
       <div class="eyebrow">在线补录与内业填报</div>
-      <h1>调查数据录入</h1>
-      <p>在办公室或有网络的环境中直接填写调查记录；现场离线调查仍使用桌面端。</p>
+      <h1>{{ canWrite ? "调查数据录入" : "在线调查记录" }}</h1>
+      <p>{{ canWrite ? "在办公室或有网络的环境中直接填写调查记录；现场离线调查仍使用桌面端。" : "查看在线调查记录及其审核状态。" }}</p>
     </div>
     <div class="header-actions">
       <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建调查记录</el-button>
+      <el-button v-if="auth.hasPermission('online_entries.review')" @click="$router.push('/online-reviews')">前往在线审核</el-button>
     </div>
   </div>
 
@@ -409,15 +421,21 @@ onMounted(loadAll);
   </div>
 
   <div class="entry-stat-row">
-    <div><span>全部记录</span><strong>{{ entries.length }}</strong></div>
-    <div><span>正在填写</span><strong>{{ entries.filter((item) => ['draft', 'rejected'].includes(item.status)).length }}</strong></div>
-    <div><span>等待审核</span><strong>{{ entries.filter((item) => item.status === 'submitted').length }}</strong></div>
-    <div><span>已入正式库</span><strong>{{ entries.filter((item) => item.status === 'imported').length }}</strong></div>
+    <div><span>全部记录</span><strong>{{ Object.values(summary).reduce((sum, count) => sum + count, 0) }}</strong></div>
+    <div><span>正在填写</span><strong>{{ summary.draft + summary.rejected }}</strong></div>
+    <div><span>等待审核</span><strong>{{ summary.submitted }}</strong></div>
+    <div><span>已入正式库</span><strong>{{ summary.imported }}</strong></div>
   </div>
 
   <el-card shadow="never" class="business-card entry-list-card">
     <template #header>
-      <div class="card-header"><span>在线调查记录</span><small>草稿自动与调查任务关联</small></div>
+      <div class="card-header">
+        <span>在线调查记录</span>
+        <el-switch v-if="canWrite" v-model="mineOnly" active-text="只看我录入" inactive-text="全部记录" @change="changeStatus" />
+        <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width: 150px" @change="changeStatus">
+          <el-option v-for="status in allowedStatuses" :key="status" :label="statusLabels[status]" :value="status" />
+        </el-select>
+      </div>
     </template>
     <el-table v-loading="loading" :data="entries" stripe>
       <el-table-column label="调查对象" min-width="220">
@@ -444,17 +462,14 @@ onMounted(loadAll);
       <el-table-column label="最近更新" width="175">
         <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="310" fixed="right">
         <template #default="{ row }">
           <el-button link :icon="View" @click="openDetail(row)">查看</el-button>
           <el-button
             v-if="canWrite && ['draft', 'rejected'].includes(row.status) && (auth.isAdmin || row.created_by_username === auth.user?.username)"
             link type="primary" :icon="Edit" @click="openEdit(row)"
           >继续填写</el-button>
-          <template v-if="canReview && row.status === 'submitted'">
-            <el-button link type="success" :icon="Check" @click="review(row, 'accept')">通过入库</el-button>
-            <el-button link type="danger" @click="review(row, 'reject')">退回</el-button>
-          </template>
+          <el-button v-if="canWrite && row.status === 'draft' && (auth.isAdmin || row.created_by_username === auth.user?.username)" link type="danger" @click="removeDraft(row)">删除草稿</el-button>
         </template>
       </el-table-column>
       <template #empty>
@@ -470,6 +485,15 @@ onMounted(loadAll);
         </div>
       </template>
     </el-table>
+    <el-pagination
+      v-if="total > pageSize"
+      v-model:current-page="pageNumber"
+      :page-size="pageSize"
+      :total="total"
+      layout="total, prev, pager, next"
+      class="entry-pagination"
+      @current-change="changePage"
+    />
   </el-card>
 
   <el-drawer v-model="drawerVisible" :title="editingUid ? '填写调查记录' : '新建调查记录'" size="78%" destroy-on-close>

@@ -23,6 +23,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer", server_default="viewer")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    office_scope_uid: Mapped[str | None] = mapped_column(String(32), index=True)
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -52,3 +54,27 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class RegistrationInvite(Base):
+    __tablename__ = "registration_invites"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    invite_uid: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, default=new_uid)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    code_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    office_scope_uid: Mapped[str | None] = mapped_column(String(32))
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False)
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_username: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("role IN ('manager','reviewer','viewer')", name="ck_registration_invites_role"),
+        CheckConstraint("max_uses >= 1 AND max_uses <= 200", name="ck_registration_invites_max_uses"),
+        CheckConstraint("used_count >= 0 AND used_count <= max_uses", name="ck_registration_invites_used_count"),
+    )

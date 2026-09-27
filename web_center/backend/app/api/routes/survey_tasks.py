@@ -20,6 +20,7 @@ from app.schemas.survey_task import (
     SurveyTaskSummary,
 )
 from app.services import survey_task_service
+from app.services import access_scope
 
 
 router = APIRouter(prefix="/survey-tasks", tags=["Survey Tasks"])
@@ -86,7 +87,7 @@ def require_task(db: Session, task_uid: str) -> tuple[SurveyTask, Project, Surve
 
 @router.get("", response_model=SurveyTaskPage)
 def get_tasks(
-    _: TaskReader,
+    user: TaskReader,
     db: DbSession,
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
@@ -105,6 +106,7 @@ def get_tasks(
         status=status_filter,
         source_channel=source_channel,
         keyword=keyword,
+        office_scope_uid=access_scope.office_scope(user),
         limit=limit,
         offset=offset,
     )
@@ -211,14 +213,16 @@ def to_detail(row: SurveyTask, project: Project, batch: SurveyBatch) -> SurveyTa
 
 
 @router.get("/{task_uid}", response_model=SurveyTaskDetail)
-def get_task(task_uid: str, _: TaskReader, db: DbSession):
+def get_task(task_uid: str, user: TaskReader, db: DbSession):
     row, project, batch = require_task(db, task_uid)
+    access_scope.require_task(user, row)
     return to_detail(row, project, batch)
 
 
 @router.get("/{task_uid}/download")
-def download_task(task_uid: str, request: Request, _: TaskDownloader, db: DbSession):
+def download_task(task_uid: str, request: Request, user: TaskDownloader, db: DbSession):
     row, _project, batch = require_task(db, task_uid)
+    access_scope.require_task(user, row)
     if row.status == "cancelled":
         raise HTTPException(status_code=409, detail="Cancelled task cannot be downloaded.")
     try:

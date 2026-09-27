@@ -2,7 +2,7 @@ from datetime import datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PackageIssueRead(BaseModel):
@@ -21,6 +21,13 @@ class WorkflowIssueRead(BaseModel):
 class ResultReviewRequest(BaseModel):
     decision: Literal["accepted", "rejected"]
     notes: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def require_rejection_reason(self) -> "ResultReviewRequest":
+        self.notes = self.notes.strip() if self.notes else None
+        if self.decision == "rejected" and not self.notes:
+            raise ValueError("退回成果包时请填写处理意见")
+        return self
 
 
 class ResultImportRead(BaseModel):

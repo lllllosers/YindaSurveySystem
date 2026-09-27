@@ -81,6 +81,7 @@ class OnlineEntryPage(BaseModel):
     total: int
     limit: int
     offset: int
+    summary: dict[str, int]
 
 
 class FormFieldRead(BaseModel):

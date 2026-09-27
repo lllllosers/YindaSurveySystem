@@ -244,8 +244,11 @@ def cleanup_workflow(submission_uid: str | None, task_uid: str | None, record_ui
 def test_formal_result_preflight_review_import_and_query() -> None:
     token = uuid4().hex[:8]
     admin = create_test_user("admin")
+    manager = create_test_user("manager")
     client = TestClient(app)
     csrf = login_client(client, admin.username)
+    manager_client = TestClient(app)
+    manager_csrf = login_client(manager_client, manager.username)
     project_uid = batch_uid = task_uid = submission_uid = None
     asset_uid = record_uid = None
     try:
@@ -257,9 +260,9 @@ def test_formal_result_preflight_review_import_and_query() -> None:
             task_uid=task_uid,
             scope=scope,
         )
-        uploaded = client.post(
+        uploaded = manager_client.post(
             "/api/v1/result-submissions/upload",
-            headers={"X-CSRF-Token": csrf},
+            headers={"X-CSRF-Token": manager_csrf},
             files={"file": ("formal.ydresult", package, "application/octet-stream")},
         )
         assert uploaded.status_code == 201, uploaded.text
@@ -273,6 +276,13 @@ def test_formal_result_preflight_review_import_and_query() -> None:
         assert preflight.status_code == 200, preflight.text
         assert preflight.json()["status"] == "preflight_passed"
         assert preflight.json()["preflight_summary"]["new_records"] == 1
+
+        self_review = manager_client.post(
+            f"/api/v1/result-submissions/{submission_uid}/review",
+            headers={"X-CSRF-Token": manager_csrf},
+            json={"decision": "accepted", "notes": "不能审核自己上传的成果包"},
+        )
+        assert self_review.status_code == 403
 
         reviewed = client.post(
             f"/api/v1/result-submissions/{submission_uid}/review",
@@ -305,6 +315,7 @@ def test_formal_result_preflight_review_import_and_query() -> None:
             client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
         if project_uid:
             client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(manager.user_uid)
         cleanup_test_user(admin.user_uid)
 
 

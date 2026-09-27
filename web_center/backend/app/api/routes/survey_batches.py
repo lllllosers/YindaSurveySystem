@@ -43,5 +43,8 @@ def delete_batch(
     db: DbSession,
 ):
     batch = require_batch(db, survey_batch_uid)
-    project_service.delete_batch(db, batch)
+    try:
+        project_service.delete_batch(db, batch)
+    except project_service.BatchInUseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

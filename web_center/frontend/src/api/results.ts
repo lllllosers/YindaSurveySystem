@@ -81,6 +81,7 @@ export interface ResultSubmissionPage {
 
 export interface ResultSubmissionQuery {
   status?: string;
+  queue?: "check" | "review" | "import" | "attention";
   project_uid?: string;
   survey_batch_uid?: string;
   keyword?: string;
@@ -121,6 +122,10 @@ export async function getResultSubmission(
     `/result-submissions/${submissionUid}`,
   );
   return response.data;
+}
+
+export async function deleteResultSubmission(submissionUid: string): Promise<void> {
+  await api.delete(`/result-submissions/${submissionUid}`);
 }
 
 export async function uploadResultPackage(

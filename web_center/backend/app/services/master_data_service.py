@@ -185,6 +185,15 @@ def _bump(db: Session, username: str) -> None:
     state.updated_by_username = username
 
 
+def _apply_changes(row, values: dict) -> bool:
+    changed = False
+    for key, value in values.items():
+        if getattr(row, key) != value:
+            setattr(row, key, value)
+            changed = True
+    return changed
+
+
 def _new_key(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:12].upper()}"
 
@@ -221,8 +230,9 @@ def update_department(db: Session, uid: str, payload: DepartmentWrite, username:
     _duplicate(db, MasterDepartment, name=payload.name, exclude_uid=uid)
     if db.scalar(select(MasterDepartment).where(MasterDepartment.business_code == payload.business_code, MasterDepartment.stable_uid != uid)):
         raise ValueError("管理处业务编码已存在。")
-    for key, value in payload.model_dump().items(): setattr(row, key, value)
-    _bump(db, username); db.commit(); db.refresh(row); return row
+    if _apply_changes(row, payload.model_dump()):
+        _bump(db, username); db.commit(); db.refresh(row)
+    return row
 
 
 def create_office(db: Session, payload: OfficeWrite, username: str) -> MasterOffice:
@@ -238,8 +248,9 @@ def update_office(db: Session, uid: str, payload: OfficeWrite, username: str) ->
     parent = _require(db, MasterDepartment, payload.parent_department_uid, "所属管理处")
     if parent.status != "active": raise ValueError("所属管理处已停用。")
     _duplicate(db, MasterOffice, name=payload.name, exclude_uid=uid, extra=MasterOffice.parent_department_uid == parent.stable_uid)
-    for key, value in payload.model_dump().items(): setattr(row, key, value)
-    _bump(db, username); db.commit(); db.refresh(row); return row
+    if _apply_changes(row, payload.model_dump()):
+        _bump(db, username); db.commit(); db.refresh(row)
+    return row
 
 
 def _assert_no_canal_cycle(db: Session, uid: str | None, parent_uid: str | None) -> None:
@@ -269,8 +280,9 @@ def update_canal(db: Session, uid: str, payload: CanalWrite, username: str) -> M
         if parent.status != "active": raise ValueError("上级渠道已停用。")
     _assert_no_canal_cycle(db, uid, payload.parent_canal_uid)
     _duplicate(db, MasterCanal, name=payload.name, exclude_uid=uid, extra=MasterCanal.parent_canal_uid == payload.parent_canal_uid)
-    for key, value in payload.model_dump().items(): setattr(row, key, value)
-    _bump(db, username); db.commit(); db.refresh(row); return row
+    if _apply_changes(row, payload.model_dump()):
+        _bump(db, username); db.commit(); db.refresh(row)
+    return row
 
 
 def _scope_values(payload: ManagementScopeWrite) -> tuple[str | None, float | None, str | None, float | None]:
@@ -315,9 +327,11 @@ def update_scope(db: Session, uid: str, payload: ManagementScopeWrite, username:
     if canal.status != "active" or office.status != "active": raise ValueError("只能选择启用的渠道和管理所。")
     start_text, start_value, end_text, end_value = _scope_values(payload)
     _validate_scope_conflicts(db, canal.stable_uid, payload.range_mode, start_value, end_value, uid)
-    for key, value in payload.model_dump(exclude={"start_stake_text", "end_stake_text"}).items(): setattr(row, key, value)
-    row.start_stake_text, row.start_stake_value, row.end_stake_text, row.end_stake_value = start_text, start_value, end_text, end_value
-    _bump(db, username); db.commit(); db.refresh(row); return row
+    values = payload.model_dump(exclude={"start_stake_text", "end_stake_text"})
+    values.update(start_stake_text=start_text, start_stake_value=start_value, end_stake_text=end_text, end_stake_value=end_value)
+    if _apply_changes(row, values):
+        _bump(db, username); db.commit(); db.refresh(row)
+    return row
 
 
 MODEL_BY_KIND = {"departments": MasterDepartment, "offices": MasterOffice, "canals": MasterCanal, "scopes": MasterManagementScope}

@@ -69,6 +69,10 @@ class WorkflowStateError(ValueError):
     pass
 
 
+class SelfReviewError(PermissionError):
+    pass
+
+
 def _issue(
     issues: list[WorkflowIssue],
     code: str,
@@ -390,6 +394,8 @@ def review_submission(
     notes: str | None,
     reviewer: User,
 ) -> ResultSubmission:
+    if reviewer.role != "admin" and row.uploader_user_uid == reviewer.user_uid:
+        raise SelfReviewError("不能审核本人上传的成果包。")
     if decision not in {"accepted", "rejected"}:
         raise ValueError("审核结论无效。")
     if decision == "accepted" and row.status not in {"preflight_passed", "reviewing", "accepted"}:

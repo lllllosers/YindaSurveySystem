@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
@@ -7,10 +7,12 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import require_permission
@@ -32,6 +34,7 @@ from app.schemas.result_verification import ResultFileVerificationRead
 from app.services import result_submission_service
 from app.services import result_verification_service
 from app.services import result_workflow_service
+from app.services import access_scope
 
 
 router = APIRouter(
@@ -47,6 +50,7 @@ ResultUploader = Annotated[
     User,
     Depends(require_permission("results.upload")),
 ]
+ResultDeleter = Annotated[User, Depends(require_permission("results.upload"))]
 ResultVerifier = Annotated[
     User,
     Depends(require_permission("results.verify")),
@@ -63,6 +67,17 @@ ResultImporter = Annotated[
     User,
     Depends(require_permission("results.import")),
 ]
+
+
+def locked_submission(db: Session, submission_uid: str) -> ResultSubmission:
+    row = db.scalar(
+        select(ResultSubmission)
+        .where(ResultSubmission.submission_uid == submission_uid)
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    return row
 
 
 DisplayNames = tuple[
@@ -210,9 +225,10 @@ def to_read(
 
 @router.get("", response_model=ResultSubmissionPage)
 def get_submissions(
-    _: ResultReader,
+    user: ResultReader,
     db: DbSession,
     status_filter: str | None = Query(default=None, alias="status"),
+    queue: Literal["check", "review", "import", "attention"] | None = None,
     project_uid: str | None = None,
     survey_batch_uid: str | None = None,
     keyword: str | None = Query(default=None, max_length=100),
@@ -222,9 +238,11 @@ def get_submissions(
     rows, total, summary = result_submission_service.list_submissions(
         db,
         status=status_filter,
+        queue=queue,
         project_uid=project_uid,
         survey_batch_uid=survey_batch_uid,
         keyword=keyword,
+        office_scope_uid=access_scope.office_scope(user),
         limit=limit,
         offset=offset,
     )
@@ -293,7 +311,7 @@ async def upload_result(
 )
 def get_submission(
     submission_uid: str,
-    _: ResultReader,
+    user: ResultReader,
     db: DbSession,
 ):
     row = result_submission_service.get_submission(
@@ -305,7 +323,20 @@ def get_submission(
             status_code=404,
             detail="Submission not found.",
         )
+    access_scope.require_submission(db, user, row)
     return to_read(row, db)
+
+
+@router.delete("/{submission_uid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_submission(submission_uid: str, request: Request, _: ResultDeleter, db: DbSession):
+    row = locked_submission(db, submission_uid)
+    try:
+        result_submission_service.delete_unprocessed_submission(db, row)
+    except result_submission_service.SubmissionDeleteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    request.state.audit_summary = "删除未入库的成果包"
+    request.state.audit_details = {"submission_uid": submission_uid, "status": row.status}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -315,7 +346,7 @@ def get_submission(
 def verify_submission(
     submission_uid: str,
     request: Request,
-    _: ResultVerifier,
+    user: ResultVerifier,
     db: DbSession,
 ):
     row = result_submission_service.get_submission(
@@ -327,6 +358,7 @@ def verify_submission(
             status_code=404,
             detail="Submission not found.",
         )
+    access_scope.require_submission(db, user, row)
 
     try:
         result = result_verification_service.verify_submission_file(
@@ -353,7 +385,7 @@ def verify_submission(
 @router.get("/{submission_uid}/download")
 def download_submission(
     submission_uid: str,
-    _: ResultReader,
+    user: ResultReader,
     db: DbSession,
 ):
     row = result_submission_service.get_submission(
@@ -365,6 +397,7 @@ def download_submission(
             status_code=404,
             detail="Submission not found.",
         )
+    access_scope.require_submission(db, user, row)
 
     try:
         path = result_submission_service.submission_file_path(row)
@@ -388,12 +421,11 @@ def download_submission(
 def preflight_submission(
     submission_uid: str,
     request: Request,
-    _: ResultPreflightOperator,
+    user: ResultPreflightOperator,
     db: DbSession,
 ):
-    row = result_submission_service.get_submission(db, submission_uid)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+    row = locked_submission(db, submission_uid)
+    access_scope.require_submission(db, user, row)
     try:
         path = result_submission_service.submission_file_path(row)
         result_workflow_service.run_preflight(db, row, path)
@@ -424,9 +456,8 @@ def review_submission(
     reviewer: ResultReviewer,
     db: DbSession,
 ):
-    row = result_submission_service.get_submission(db, submission_uid)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+    row = locked_submission(db, submission_uid)
+    access_scope.require_submission(db, reviewer, row)
     try:
         result_workflow_service.review_submission(
             db,
@@ -435,6 +466,8 @@ def review_submission(
             notes=payload.notes,
             reviewer=reviewer,
         )
+    except result_workflow_service.SelfReviewError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ValueError, result_workflow_service.WorkflowStateError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -456,12 +489,11 @@ def review_submission(
 def import_submission(
     submission_uid: str,
     request: Request,
-    _: ResultImporter,
+    user: ResultImporter,
     db: DbSession,
 ):
-    row = result_submission_service.get_submission(db, submission_uid)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+    row = locked_submission(db, submission_uid)
+    access_scope.require_submission(db, user, row)
     try:
         path = result_submission_service.submission_file_path(row)
         counts = result_workflow_service.import_submission(db, row, path)
