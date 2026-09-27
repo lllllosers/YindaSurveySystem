@@ -7,6 +7,12 @@ import json
 from pathlib import Path, PurePosixPath
 
 import database
+from shared.protocol.constants import (
+    RESULT_SCHEMA_VERSION,
+    SUPPORTED_RESULT_SCHEMA_VERSIONS,
+    SURVEY_RESULT_EXTENSION,
+    SURVEY_RESULT_PACKAGE_KIND,
+)
 
 from services.master_data_integrity import (
     check_master_data_integrity,
@@ -19,21 +25,6 @@ from services.yd_package import (
 from version import (
     APP_VERSION,
     APP_VERSION_LABEL,
-)
-
-
-SURVEY_RESULT_PACKAGE_KIND = (
-    "survey_result"
-)
-SURVEY_RESULT_EXTENSION = (
-    ".ydresult"
-)
-
-RESULT_SCHEMA_VERSION = "2.2"
-SUPPORTED_RESULT_SCHEMA_VERSIONS = (
-    "2.0",
-    "2.1",
-    RESULT_SCHEMA_VERSION,
 )
 
 

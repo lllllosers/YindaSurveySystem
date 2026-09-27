@@ -6,8 +6,10 @@ from pathlib import Path
 
 import database
 
+from shared.protocol.constants import (
+    CURRENT_TASK_SCHEMA_VERSION as TASK_SCHEMA_VERSION,
+)
 from services.survey_task_lineage import (
-    CURRENT_TASK_SCHEMA_VERSION,
     build_root_task_lineage,
 )
 from services.master_data_integrity import check_master_data_integrity
@@ -22,9 +24,6 @@ from services.yd_package import (
     write_package,
 )
 from version import APP_VERSION, APP_VERSION_LABEL
-
-
-TASK_SCHEMA_VERSION = CURRENT_TASK_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)

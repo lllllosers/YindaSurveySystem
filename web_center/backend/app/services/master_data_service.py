@@ -4,7 +4,6 @@ from functools import lru_cache
 from hashlib import sha256
 import json
 from pathlib import Path
-import sys
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -33,26 +32,26 @@ from app.schemas.master_data import (
     OfficeRead,
     OfficeWrite,
 )
+from shared.protocol.identity import deterministic_master_uid as _deterministic_master_uid
+from shared.protocol.stake import parse_stake
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "master_data" / "official_master_contract.json"
 SUPPORTED_CONTRACT_SCHEMA_VERSION = "1.0"
 ALLOWED_RANGE_MODES = {"whole", "segment_known", "segment_unknown"}
-DESKTOP_SRC = REPOSITORY_ROOT / "src"
-if str(DESKTOP_SRC) not in sys.path:
-    sys.path.insert(0, str(DESKTOP_SRC))
-
-from services.stake import parse_stake  # noqa: E402
-
-
 class MasterDataInUseError(ValueError):
     pass
 
 
 def deterministic_master_uid(identity_namespace: str, entity_kind: str, master_key: str) -> str:
-    payload = f"{identity_namespace}:{entity_kind}:{master_key}".encode("utf-8")
-    return sha256(payload).hexdigest()[:32]
+    """Keep the Web adapter API while delegating the rule to shared code."""
+
+    return _deterministic_master_uid(
+        entity_kind,
+        master_key,
+        namespace=identity_namespace,
+    )
 
 
 def _require_text(data: dict, key: str) -> str:

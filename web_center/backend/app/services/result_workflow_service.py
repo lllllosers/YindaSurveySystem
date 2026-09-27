@@ -5,7 +5,6 @@ from datetime import datetime
 from hashlib import sha256
 import json
 from pathlib import Path
-import sys
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -20,10 +19,8 @@ from app.models.central_record import (
 from app.models.result_submission import ResultSubmission
 from app.models.online_entry import OnlineSurveyEntry
 from app.models.survey_task import SurveyTask
-from app.services.master_data_service import REPOSITORY_ROOT
-
-
-DESKTOP_SRC = REPOSITORY_ROOT / "src"
+from shared.protocol.result_package_reader import inspect_survey_result_package
+from shared.protocol.revision import canonical_json, classify_revision_values
 
 
 @dataclass(frozen=True)
@@ -95,13 +92,32 @@ def _content_hash(value: dict, *, kind: str) -> str:
     return sha256(_canonical(normalized).encode("utf-8")).hexdigest()
 
 
-def _load_desktop_package(path: Path, issues: list[WorkflowIssue]) -> PackageDocuments | None:
-    source_text = str(DESKTOP_SRC)
-    if source_text not in sys.path:
-        sys.path.insert(0, source_text)
-    try:
-        from services.survey_result_package_reader import inspect_survey_result_package
+def _identity_signature(item: dict, *, kind: str) -> dict:
+    if kind == "asset":
+        return {
+            "project_uid": str(item.get("project_uid") or "").strip(),
+            "asset_type": str(item.get("asset_type") or "").strip(),
+            "organization_unit_uid": str(item.get("organization_unit_uid") or "").strip(),
+            "canal_unit_uid": str(item.get("canal_unit_uid") or "").strip(),
+            "first_survey_batch_uid": str(item.get("first_survey_batch_uid") or "").strip() or None,
+        }
+    form = item.get("form") if isinstance(item.get("form"), dict) else {}
+    return {
+        "source_task_uid": str(item.get("source_task_uid") or "").strip() or None,
+        "source_management_scope_uid": str(item.get("source_management_scope_uid") or "").strip() or None,
+        "project_uid": str(item.get("project_uid") or "").strip(),
+        "survey_batch_uid": str(item.get("survey_batch_uid") or "").strip(),
+        "form_code": str(form.get("form_code") or item.get("form_code") or "").strip(),
+        "version_code": str(form.get("version_code") or item.get("version_code") or "").strip(),
+        "record_type": str(item.get("record_type") or "").strip(),
+        "organization_unit_uid": str(item.get("organization_unit_uid") or "").strip(),
+        "canal_unit_uid": str(item.get("canal_unit_uid") or "").strip(),
+        "engineering_asset_uid": str(item.get("engineering_asset_uid") or "").strip(),
+    }
 
+
+def _load_desktop_package(path: Path, issues: list[WorkflowIssue]) -> PackageDocuments | None:
+    try:
         report = inspect_survey_result_package(path)
     except Exception as exc:
         _issue(issues, "PROTOCOL_READER_FAILED", f"桌面端协议读取器执行失败：{exc}")
@@ -134,18 +150,26 @@ def _compare_revision(
     incoming: dict,
     existing_revision: int,
     existing_hash: str,
+    existing_payload: dict,
     *,
     kind: str,
 ) -> str:
-    revision = max(1, int(incoming.get("revision_no") or 1))
     digest = _content_hash(incoming, kind=kind)
-    if digest == existing_hash:
-        return "existing"
-    if revision < existing_revision:
-        return "stale"
-    if revision == existing_revision:
+    detailed_state, _ = classify_revision_values(
+        same_identity=(
+            canonical_json(_identity_signature(existing_payload, kind=kind))
+            == canonical_json(_identity_signature(incoming, kind=kind))
+        ),
+        same_content=digest == existing_hash,
+        incoming_revision=incoming.get("revision_no"),
+        local_revision=existing_revision,
+        # The central library does not edit accepted packages in place, so its
+        # current revision is also the last accepted source revision.
+        source_revision=existing_revision,
+    )
+    if detailed_state in {"identity_conflict", "same_revision_conflict", "diverged"}:
         return "conflict"
-    return "update"
+    return detailed_state
 
 
 def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> PreflightResult:
@@ -294,7 +318,7 @@ def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> Prefli
                     _issue(issues, "ASSET_POSSIBLE_DUPLICATE", "中心已有相同项目、渠道、单位和名称的调查对象，请核对后再入库，避免 Web 与桌面端重复建档。", entity_uid=uid)
             summary["new_assets"] += 1
             continue
-        state = _compare_revision(item, existing.revision_no, existing.content_sha256, kind="asset")
+        state = _compare_revision(item, existing.revision_no, existing.content_sha256, existing.payload_json, kind="asset")
         summary[f"{state}_assets"] += 1
         if state == "stale":
             _issue(issues, "ASSET_STALE", "工程对象版本早于中心现有版本。", entity_uid=uid)
@@ -314,7 +338,7 @@ def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> Prefli
         if existing is None:
             summary["new_records"] += 1
             continue
-        state = _compare_revision(item, existing.revision_no, existing.content_sha256, kind="record")
+        state = _compare_revision(item, existing.revision_no, existing.content_sha256, existing.payload_json, kind="record")
         summary[f"{state}_records"] += 1
         if state == "stale":
             _issue(issues, "RECORD_STALE", "调查记录版本早于中心现有版本。", entity_uid=uid)

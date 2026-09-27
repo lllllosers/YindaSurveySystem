@@ -8,9 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import sqlite3
-import sys
 from uuid import uuid4
-import zipfile
 
 from fastapi import UploadFile
 
@@ -22,15 +20,18 @@ from app.models.project import Project, SurveyBatch
 from app.models.survey_task import SurveyTask
 from app.schemas.survey_task import SurveyTaskCreate
 from app.services.master_data_service import REPOSITORY_ROOT, get_snapshot
+from shared.protocol.constants import (
+    CURRENT_TASK_SCHEMA_VERSION as TASK_SCHEMA_VERSION,
+    SURVEY_TASK_PACKAGE_KIND as PACKAGE_KIND,
+)
+from shared.protocol.package import encode_json_bytes, write_package
+from shared.protocol.task_package_reader import load_survey_task_package
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TASK_STORAGE_ROOT = BACKEND_ROOT / "storage" / "tasks"
 TASK_INCOMING_ROOT = BACKEND_ROOT / "storage" / "incoming_tasks"
 FORM_CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "forms" / "engineering_form_contract.json"
-TASK_SCHEMA_VERSION = "3.0"
-PACKAGE_FORMAT_VERSION = "1.0"
-PACKAGE_KIND = "survey_task"
 APP_VERSION = "1.2.0"
 APP_VERSION_LABEL = "V1.2.0"
 MAX_TASK_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -59,7 +60,7 @@ class TaskPackageConflictError(ValueError):
 
 
 def _encode_json(data: dict) -> bytes:
-    return (json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    return encode_json_bytes(data)
 
 
 @lru_cache(maxsize=1)
@@ -302,23 +303,14 @@ def _build_documents(
 
 
 def _write_package(path: Path, package_uid: str, manifest: dict, payload_files: dict[str, bytes]) -> None:
-    entries = [
-        {"path": name, "sha256": sha256(content).hexdigest(), "size": len(content)}
-        for name, content in sorted(payload_files.items())
-    ]
-    manifest_bytes = _encode_json(
-        {**manifest, "package_uid": package_uid, "package_format_version": PACKAGE_FORMAT_VERSION, "files": entries}
-    )
-    path.parent.mkdir(parents=True, exist_ok=False)
-    temporary = path.with_suffix(".tmp")
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for name, content in sorted(payload_files.items()):
-                archive.writestr(name, content)
-            archive.writestr("manifest.json", manifest_bytes)
-        temporary.replace(path)
+        write_package(
+            path,
+            package_uid=package_uid,
+            manifest=manifest,
+            payload_files=payload_files,
+        )
     except Exception:
-        temporary.unlink(missing_ok=True)
         shutil.rmtree(path.parent, ignore_errors=True)
         raise
 
@@ -431,12 +423,6 @@ async def _save_desktop_database_upload(upload: UploadFile, target: Path) -> tup
 
 
 def _task_package_reader(path: Path):
-    desktop_src = REPOSITORY_ROOT / "src"
-    desktop_src_text = str(desktop_src)
-    if desktop_src_text not in sys.path:
-        sys.path.insert(0, desktop_src_text)
-    from services.survey_task_package_reader import load_survey_task_package
-
     return load_survey_task_package(path)
 
 

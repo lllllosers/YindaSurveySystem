@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import database
+from shared.protocol.revision import classify_revision
 
 from services.survey_result_package_reader import (
     load_survey_result_package,
@@ -235,28 +236,6 @@ def _optional_text(value):
 
 
 
-def _safe_revision(
-    value,
-    default=1,
-):
-    try:
-        parsed = int(
-            value
-            if value is not None
-            else default
-        )
-    except (
-        TypeError,
-        ValueError,
-    ):
-        parsed = int(default)
-
-    return max(
-        0,
-        parsed,
-    )
-
-
 def _asset_identity_signature(item):
     return {
         "project_uid": _clean_text(
@@ -339,55 +318,12 @@ def _revision_state(
     revision_no 用于判断“内容不同”时谁更新、是否回退、是否双向分叉；
     不应把同内容仅因来源基线为 0 判成一次业务更新。
     """
-    if (
-        _canonical_json(identity_signature(local_item))
-        != _canonical_json(identity_signature(incoming_item))
-    ):
-        return ("identity_conflict", None)
-
-    incoming_revision = _safe_revision(
-        incoming_item.get("revision_no"),
-        1,
+    return classify_revision(
+        local_item,
+        incoming_item,
+        identity_signature=identity_signature,
+        content_signature=content_signature,
     )
-    local_revision = _safe_revision(
-        local_item.get("revision_no"),
-        1,
-    )
-    source_revision = _safe_revision(
-        local_item.get("source_revision_no"),
-        0,
-    )
-
-    same_content = (
-        _canonical_json(content_signature(local_item))
-        == _canonical_json(content_signature(incoming_item))
-    )
-
-    metadata = {
-        "incoming_revision": incoming_revision,
-        "local_revision": local_revision,
-        "source_revision": source_revision,
-        "same_content": same_content,
-    }
-
-    # 幂等优先：相同 UID + 相同身份 + 相同业务内容就是已存在。
-    # 这同时兼容“同库预检”和 V1.0.1 升级后 source_revision_no=0 的记录。
-    if same_content:
-        return ("existing", metadata)
-
-    if incoming_revision < source_revision:
-        return ("stale", metadata)
-
-    if incoming_revision == source_revision:
-        return ("same_revision_conflict", metadata)
-
-    # incoming_revision > source_revision
-    # 上级在最近一次下级版本之后也发生过本地修改，
-    # 同时下级提交更高 revision：需要人工解决双向分叉。
-    if local_revision > source_revision:
-        return ("diverged", metadata)
-
-    return ("update", metadata)
 
 def _canonical_json(value):
     return json.dumps(

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from hashlib import sha256
-
 import database
-
-
-MASTER_IDENTITY_NAMESPACE = (
-    "yinda-survey-official-master-v1"
+from shared.protocol.identity import (
+    MASTER_IDENTITY_NAMESPACE,
+    deterministic_master_uid,
 )
 
 _OFFICIAL_MASTER_IDENTITY_SPECS = (
@@ -21,57 +18,6 @@ _OFFICIAL_MASTER_IDENTITY_SPECS = (
         "canal_unit_uid",
     ),
 )
-
-
-def deterministic_master_uid(
-    entity_kind,
-    master_key,
-):
-    """
-    为“甲方正式主数据”生成跨数据库一致的稳定 UID。
-
-    Stage 08 的随机 UID 适用于普通业务实体；
-    但 organization_units / canal_units 中带 master_key 的正式
-    参考主数据会在多台电脑上分别初始化，如果继续随机生成，
-    同一个水管所/渠道在不同电脑上的 UID 会不同，无法可靠交换
-    .ydtask / .ydresult。
-
-    因此仅对带 master_key 的官方主数据采用确定性 UID。
-    普通人工新增节点仍保持原有随机 UID 机制。
-    """
-
-    entity_kind = str(
-        entity_kind or ""
-    ).strip().lower()
-
-    master_key = str(
-        master_key or ""
-    ).strip()
-
-    if entity_kind not in {
-        "organization",
-        "canal",
-        "canal_management_scope",
-    }:
-        raise ValueError(
-            "不支持的正式主数据实体类型。"
-        )
-
-    if not master_key:
-        raise ValueError(
-            "master_key 不能为空。"
-        )
-
-    payload = (
-        f"{MASTER_IDENTITY_NAMESPACE}:"
-        f"{entity_kind}:"
-        f"{master_key}"
-    ).encode("utf-8")
-
-    return (
-        sha256(payload)
-        .hexdigest()[:32]
-    )
 
 
 def _build_sync_plan(
