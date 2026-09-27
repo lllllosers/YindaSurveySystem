@@ -22,6 +22,7 @@ from app.schemas.online_entry import (
     OnlineMediaRead,
 )
 from app.services import access_scope, online_entry_service
+from app.services.disk_space import InsufficientStorageError
 
 
 router = APIRouter(prefix="/online-entries", tags=["Online Survey Entries"])
@@ -195,6 +196,8 @@ async def upload_entry_media(
         )
     except online_entry_service.MediaUploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except InsufficientStorageError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
     except online_entry_service.OnlineEntryStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

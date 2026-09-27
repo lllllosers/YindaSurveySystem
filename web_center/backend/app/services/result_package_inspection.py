@@ -8,12 +8,11 @@ import re
 import stat
 import zipfile
 
+from app.core.config import settings
+
 
 PACKAGE_FORMAT_VERSION = "1.0"
 EXPECTED_PACKAGE_KIND = "survey_result"
-MAX_FILE_COUNT = 100_000
-MAX_SINGLE_FILE_BYTES = 8 * 1024 * 1024 * 1024
-MAX_TOTAL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024 * 1024
 
 REQUIRED_FILES = {
     "result.json",
@@ -69,9 +68,14 @@ def is_symlink(info: zipfile.ZipInfo) -> bool:
 
 def read_json_object(archive: zipfile.ZipFile, path: str, issues: list[InspectionIssue]) -> dict | None:
     try:
-        raw = archive.read(path)
+        with archive.open(path) as source:
+            raw = source.read(settings.max_zip_json_bytes + 1)
     except KeyError:
         add_issue(issues, "REQUIRED_FILE_MISSING", "缺少必需文件。", path)
+        return None
+
+    if len(raw) > settings.max_zip_json_bytes:
+        add_issue(issues, "JSON_TOO_LARGE", "成果包内 JSON 文件超过当前安全上限。", path)
         return None
 
     try:
@@ -99,7 +103,7 @@ def inspect_result_package(package_path: Path) -> ResultPackageInspection:
     try:
         with zipfile.ZipFile(package_path, "r") as archive:
             infos = archive.infolist()
-            if len(infos) > MAX_FILE_COUNT:
+            if len(infos) > settings.max_zip_file_count:
                 add_issue(issues, "TOO_MANY_FILES", "包内文件数量超过安全上限。")
 
             names: set[str] = set()
@@ -118,12 +122,15 @@ def inspect_result_package(package_path: Path) -> ResultPackageInspection:
                 if info.is_dir():
                     continue
 
-                if info.file_size > MAX_SINGLE_FILE_BYTES:
+                if info.file_size > settings.max_zip_single_file_bytes:
                     add_issue(issues, "FILE_TOO_LARGE", "包内单文件超过安全上限。", name)
                 total += int(info.file_size)
 
-            if total > MAX_TOTAL_UNCOMPRESSED_BYTES:
+            if total > settings.max_zip_total_uncompressed_bytes:
                 add_issue(issues, "PACKAGE_TOO_LARGE", "成果包解压后总大小超过安全上限。")
+
+            if any(issue.code in {"TOO_MANY_FILES", "FILE_TOO_LARGE", "PACKAGE_TOO_LARGE"} for issue in issues):
+                return ResultPackageInspection(False, tuple(issues), None, None)
 
             if "manifest.json" not in names:
                 add_issue(issues, "MANIFEST_MISSING", "缺少 manifest.json。")
@@ -317,7 +324,7 @@ def inspect_result_package(package_path: Path) -> ResultPackageInspection:
                     "result.json",
                 )
 
-    except (OSError, zipfile.BadZipFile) as exc:
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
         add_issue(issues, "PACKAGE_READ_ERROR", f"成果包读取失败：{exc}")
 
     return ResultPackageInspection(

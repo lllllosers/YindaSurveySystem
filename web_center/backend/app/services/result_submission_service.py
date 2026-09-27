@@ -11,6 +11,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
+from app.core.config import settings
+from app.services.disk_space import require_free_space
 from app.models.central_record import CentralEngineeringAsset, CentralSurveyRecord
 from app.models.result_submission import ResultSubmission
 from app.models.survey_task import SurveyTask
@@ -22,7 +24,6 @@ STORAGE_ROOT = BACKEND_ROOT / "storage"
 INCOMING_DIR = STORAGE_ROOT / "incoming"
 SUBMISSIONS_DIR = STORAGE_ROOT / "result_submissions"
 
-MAX_UPLOAD_BYTES = 16 * 1024 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 
 
@@ -50,14 +51,17 @@ def ensure_storage() -> None:
 async def save_upload(upload: UploadFile, target: Path) -> tuple[str, int]:
     digest = sha256()
     size = 0
+    require_free_space(target.parent, upload.size or 0)
     with target.open("wb") as output:
         while True:
             chunk = await upload.read(CHUNK_SIZE)
             if not chunk:
                 break
             size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                raise UploadTooLargeError("上传文件超过当前 16 GiB 安全上限。")
+            if size > settings.max_result_upload_bytes:
+                raise UploadTooLargeError("上传文件超过当前安全上限。")
+            if upload.size is None:
+                require_free_space(target.parent, len(chunk))
             digest.update(chunk)
             output.write(chunk)
     return digest.hexdigest(), size

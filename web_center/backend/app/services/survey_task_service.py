@@ -15,11 +15,13 @@ from fastapi import UploadFile
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.auth import User
 from app.models.project import Project, SurveyBatch
 from app.models.survey_task import SurveyTask
 from app.schemas.survey_task import SurveyTaskCreate
 from app.services.master_data_service import REPOSITORY_ROOT, get_snapshot
+from app.services.disk_space import require_free_space
 from shared.protocol.constants import (
     CURRENT_TASK_SCHEMA_VERSION as TASK_SCHEMA_VERSION,
     SURVEY_TASK_PACKAGE_KIND as PACKAGE_KIND,
@@ -34,8 +36,6 @@ TASK_INCOMING_ROOT = BACKEND_ROOT / "storage" / "incoming_tasks"
 FORM_CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "forms" / "engineering_form_contract.json"
 APP_VERSION = "1.2.0"
 APP_VERSION_LABEL = "V1.2.0"
-MAX_TASK_UPLOAD_BYTES = 512 * 1024 * 1024
-MAX_DESKTOP_DATABASE_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -393,14 +393,17 @@ def _parse_package_date(value: object) -> date | None:
 async def _save_task_upload(upload: UploadFile, target: Path) -> tuple[str, int]:
     digest = sha256()
     size = 0
+    require_free_space(target.parent, upload.size or 0)
     with target.open("wb") as output:
         while True:
             chunk = await upload.read(UPLOAD_CHUNK_SIZE)
             if not chunk:
                 break
             size += len(chunk)
-            if size > MAX_TASK_UPLOAD_BYTES:
-                raise TaskUploadTooLargeError("任务文件超过当前 512 MiB 安全上限。")
+            if size > settings.max_task_upload_bytes:
+                raise TaskUploadTooLargeError("任务文件超过当前安全上限。")
+            if upload.size is None:
+                require_free_space(target.parent, len(chunk))
             digest.update(chunk)
             output.write(chunk)
     return digest.hexdigest(), size
@@ -409,14 +412,17 @@ async def _save_task_upload(upload: UploadFile, target: Path) -> tuple[str, int]
 async def _save_desktop_database_upload(upload: UploadFile, target: Path) -> tuple[str, int]:
     digest = sha256()
     size = 0
+    require_free_space(target.parent, upload.size or 0)
     with target.open("wb") as output:
         while True:
             chunk = await upload.read(UPLOAD_CHUNK_SIZE)
             if not chunk:
                 break
             size += len(chunk)
-            if size > MAX_DESKTOP_DATABASE_UPLOAD_BYTES:
-                raise TaskUploadTooLargeError("数据库备份超过当前 4 GiB 安全上限。")
+            if size > settings.max_desktop_database_upload_bytes:
+                raise TaskUploadTooLargeError("数据库备份超过当前安全上限。")
+            if upload.size is None:
+                require_free_space(target.parent, len(chunk))
             digest.update(chunk)
             output.write(chunk)
     return digest.hexdigest(), size

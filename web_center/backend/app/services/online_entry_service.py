@@ -10,6 +10,8 @@ import sys
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from fastapi import UploadFile
+from app.core.config import settings
+from app.services.disk_space import require_free_space
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,7 +28,6 @@ from app.services.master_data_service import REPOSITORY_ROOT
 DESKTOP_SRC = Path(REPOSITORY_ROOT) / "src"
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ONLINE_MEDIA_ROOT = BACKEND_ROOT / "storage" / "online_media"
-MAX_MEDIA_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 MEDIA_CHUNK_SIZE = 1024 * 1024
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
@@ -197,14 +198,17 @@ async def add_media(
     digest = sha256()
     size = 0
     try:
+        require_free_space(final_dir, upload.size or 0)
         with final_path.open("wb") as output:
             while True:
                 chunk = await upload.read(MEDIA_CHUNK_SIZE)
                 if not chunk:
                     break
                 size += len(chunk)
-                if size > MAX_MEDIA_UPLOAD_BYTES:
-                    raise MediaUploadTooLargeError("单个影像文件不能超过 2 GiB。")
+                if size > settings.max_media_upload_bytes:
+                    raise MediaUploadTooLargeError("单个影像文件超过当前安全上限。")
+                if upload.size is None:
+                    require_free_space(final_dir, len(chunk))
                 digest.update(chunk)
                 output.write(chunk)
         if size == 0:

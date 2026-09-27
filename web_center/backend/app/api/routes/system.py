@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,9 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/health")
-def health_check() -> dict[str, str]:
+def health_check(request: Request) -> dict[str, str]:
+    if request.app.state.settings.app_env == "production":
+        return {"status": "ok"}
     return {
         "status": "ok",
         "service": "yinda-web-center-api",
@@ -39,21 +41,14 @@ def health_check() -> dict[str, str]:
 def database_health_check() -> dict[str, str]:
     try:
         with engine.connect() as connection:
-            database_name, database_user = connection.execute(
-                text("SELECT current_database(), current_user")
-            ).one()
+            connection.execute(text("SELECT 1")).one()
     except Exception as exc:
         raise HTTPException(
             status_code=503,
             detail="Database connection is unavailable.",
         ) from exc
 
-    return {
-        "status": "ok",
-        "database": str(database_name),
-        "user": str(database_user),
-        "engine": "postgresql",
-    }
+    return {"status": "ok"}
 
 
 @router.get("/overview")

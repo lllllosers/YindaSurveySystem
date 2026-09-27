@@ -32,6 +32,7 @@ from app.schemas.result_submission import (
 )
 from app.schemas.result_verification import ResultFileVerificationRead
 from app.services import result_submission_service
+from app.services.disk_space import InsufficientStorageError
 from app.services import result_verification_service
 from app.services import result_workflow_service
 from app.services import access_scope
@@ -275,6 +276,8 @@ async def upload_result(
         )
     except result_submission_service.UploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except InsufficientStorageError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
     except (
         result_submission_service.DuplicatePackageConflictError,
         result_submission_service.DuplicateResultError,

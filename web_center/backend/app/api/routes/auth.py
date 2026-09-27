@@ -179,6 +179,11 @@ def register(
     request: Request,
     db: DbSession,
 ):
+    mode = settings.effective_registration_mode
+    if mode == "closed":
+        raise HTTPException(status_code=403, detail="当前暂不开放注册。")
+    if mode == "invite_only" and not (payload.invite_code or "").strip():
+        raise HTTPException(status_code=403, detail="注册需要邀请口令，请联系管理员。")
     try:
         user = auth_service.register_user(db, payload)
     except auth_service.DuplicateUsernameError as exc:

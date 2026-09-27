@@ -21,6 +21,7 @@ from app.schemas.survey_task import (
 )
 from app.services import survey_task_service
 from app.services import access_scope
+from app.services.disk_space import InsufficientStorageError
 
 
 router = APIRouter(prefix="/survey-tasks", tags=["Survey Tasks"])
@@ -152,6 +153,8 @@ async def handover_desktop_database(
         )
     except survey_task_service.TaskUploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except InsufficientStorageError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     request.state.audit_summary = "从桌面中心库接续正式下发任务"
@@ -179,6 +182,8 @@ async def import_existing_task(
         )
     except survey_task_service.TaskUploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except InsufficientStorageError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
     except survey_task_service.TaskPackageConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
