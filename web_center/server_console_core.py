@@ -36,6 +36,11 @@ class ConsolePaths:
     python: Path
     pythonw: Path
 
+    @property
+    def portable(self) -> bool:
+        root = self.web_root.parent / "runtime"
+        return (root / "python" / "python.exe").is_file() and (root / "postgres" / "bin" / "initdb.exe").is_file()
+
     @classmethod
     def resolve(cls, web_root: Path | None = None) -> "ConsolePaths":
         if web_root is None:
@@ -209,14 +214,16 @@ class ServerManager:
             return False, "缺少后端 .env 配置。"
         if not (self.paths.frontend_dist / "index.html").is_file():
             return False, "缺少正式管理页面 frontend/dist。"
+        local_portable = self.paths.portable and read_env_value(self.paths.backend / ".env", "APP_ENV") == "development"
+        check_module = "app.cli.portable_check" if local_portable else "app.cli.production_check"
         result = self.runner(
-            [str(self.paths.python), "-m", "app.cli.production_check"],
+            [str(self.paths.python), "-m", check_module],
             cwd=self.paths.backend, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=120,
             creationflags=CREATE_NO_WINDOW,
         )
         messages = [line for line in result.stdout.splitlines() if line.startswith(("BLOCKER:", "WARNING:", "PASS:"))]
-        self._log(f"生产环境预检退出码 {result.returncode}；" + "；".join(messages), "preflight")
+        self._log(f"运行环境预检退出码 {result.returncode}；" + "；".join(messages), "preflight")
         blockers = [line for line in messages if line.startswith("BLOCKER:")]
         (self.paths.runtime / "preflight.status.json").parent.mkdir(parents=True, exist_ok=True)
         (self.paths.runtime / "preflight.status.json").write_text(
@@ -230,9 +237,12 @@ class ServerManager:
             return "Web 服务已运行，不会重复启动。"
         if port_open(8000):
             raise RuntimeError("8000 端口由非本控制台管理的进程占用，请人工检查。")
+        if self.paths.portable:
+            from portable_runtime import PortableRuntime
+            PortableRuntime(self.paths.web_root).start_database()
         ok, reason = self.preflight()
         if not ok:
-            raise RuntimeError("生产环境预检未通过：\n" + reason)
+            raise RuntimeError("运行环境预检未通过：\n" + reason)
         if not self.paths.pythonw.is_file() or not self.paths.worker.is_file():
             raise RuntimeError("缺少隐藏运行所需的 Python 或服务入口。")
         self.paths.runtime.mkdir(parents=True, exist_ok=True)
@@ -264,6 +274,22 @@ class ServerManager:
             raise RuntimeError("停止服务失败，请以管理员身份运行控制台并查看运行日志。")
         self._log(f"停止 Web 服务进程 PID {pid}")
         return "Web 服务已停止。"
+
+    def initialize_portable(self, username: str, display_name: str, password: str) -> str:
+        if not self.paths.portable:
+            raise RuntimeError("当前目录不是完整的 Windows 便携包。")
+        if port_open(8000):
+            raise RuntimeError("请先停止 Web 服务，再初始化或升级数据库结构。")
+        from portable_runtime import PortableRuntime
+        return PortableRuntime(self.paths.web_root).initialize(username, display_name, password)
+
+    def stop_all(self) -> str:
+        if not self.paths.portable:
+            raise RuntimeError("停止全部仅供便携包使用。")
+        self.stop()
+        from portable_runtime import PortableRuntime
+        PortableRuntime(self.paths.web_root).stop_database()
+        return "Web 服务与便携 PostgreSQL 均已停止。"
 
     @staticmethod
     def _terminate_process(pid: int) -> bool:
@@ -297,11 +323,20 @@ class ServerManager:
 
     def backup(self) -> str:
         started = time.monotonic()
+        if self.paths.portable:
+            from portable_runtime import PortableRuntime
+            PortableRuntime(self.paths.web_root).start_database()
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        portable_pg_bin = self.paths.web_root.parent / "runtime" / "postgres" / "bin"
+        if (portable_pg_bin / "pg_dump.exe").is_file():
+            env["PATH"] = str(portable_pg_bin) + os.pathsep + env.get("PATH", "")
         result = self.runner(
             [str(self.paths.python), "-m", "app.cli.backup_web_center"],
             cwd=self.paths.backend, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=3600,
             creationflags=CREATE_NO_WINDOW,
+            env=env,
         )
         success_line = next((line for line in result.stdout.splitlines() if line.startswith("备份完成：")), "")
         self._log(f"备份退出码 {result.returncode}；{success_line or '未生成备份'}", "backup")
@@ -313,9 +348,9 @@ class ServerManager:
         public_url = read_env_value(self.paths.backend / ".env", "PUBLIC_BASE_URL")
         pid = self.owned_pid()
         disk = shutil.disk_usage(self.paths.web_root)
-        db_port = int(read_env_value(self.paths.backend / ".env", "DB_PORT") or "5432")
+        db_port = int(read_env_value(self.paths.backend / ".env", "DB_PORT") or ("55432" if self.paths.portable else "5432"))
         service_name = read_env_value(self.paths.backend / ".env", "POSTGRES_SERVICE_NAME")
-        service = "未指定"
+        service = "便携数据库" if self.paths.portable else "未指定"
         if service_name and os.name == "nt":
             query = self.runner(["sc.exe", "query", service_name], capture_output=True, text=True, timeout=8, creationflags=CREATE_NO_WINDOW)
             service = "运行中" if query.returncode == 0 and "RUNNING" in query.stdout else "已停止或未找到"
@@ -366,6 +401,8 @@ class ServerManager:
             return "不可写"
 
     def install_autostart(self) -> str:
+        if self.paths.portable:
+            raise RuntimeError("便携版 PostgreSQL 未注册系统服务；请开机后打开控制台启动。")
         if os.name != "nt":
             raise RuntimeError("开机自启仅支持 Windows。")
         if not self.paths.pythonw.is_file() or not self.paths.worker.is_file():

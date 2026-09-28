@@ -155,6 +155,29 @@ def test_preflight_and_backup_invoke_existing_cli(paths):
     assert [command[-1] for command in calls] == ["app.cli.production_check", "app.cli.backup_web_center"]
 
 
+def test_portable_backup_finds_bundled_pg_dump(paths):
+    pg_bin = paths.web_root.parent / "runtime" / "postgres" / "bin"
+    pg_bin.mkdir(parents=True)
+    (pg_bin / "pg_dump.exe").touch()
+    calls = []
+    def runner(command, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(command, 0, "备份完成：D:\\backup\\2026\n", "")
+    assert core.ServerManager(paths, runner=runner).backup().startswith("备份完成：")
+    assert calls[0]["env"]["PATH"].split(core.os.pathsep)[0] == str(pg_bin)
+
+
+def test_portable_initialization_requires_web_to_be_stopped(paths, monkeypatch):
+    runtime = paths.web_root.parent / "runtime"
+    (runtime / "python").mkdir(parents=True)
+    (runtime / "python" / "python.exe").touch()
+    (runtime / "postgres" / "bin").mkdir(parents=True)
+    (runtime / "postgres" / "bin" / "initdb.exe").touch()
+    monkeypatch.setattr(core, "port_open", lambda port: port == 8000)
+    with pytest.raises(RuntimeError, match="先停止 Web 服务"):
+        core.ServerManager(paths).initialize_portable("admin", "管理员", "example-password")
+
+
 def test_autostart_registers_windows_task_without_overwriting_foreign_one(paths):
     calls = []
     def runner(command, **kwargs):

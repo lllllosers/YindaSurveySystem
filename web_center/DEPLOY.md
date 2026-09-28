@@ -6,9 +6,9 @@
 
 ## Windows 验收便携包
 
-在开发机具备 Python 3.12 嵌入式运行时 ZIP、项目后端虚拟环境及 PostgreSQL 17 Windows 二进制文件时，可运行 `web_center/build_portable_windows.py` 生成 `web_center/release/yinda-web-windows-portable.zip`。便携包包含上述 Web 代码和本机运行环境，不包含账号及业务数据。将其完整解压到验收电脑的固定目录（例如 `C:\YindaWeb`），双击 `Start-Yinda.bat`；首次启动会初始化本机数据库并要求创建管理员。以后启动仍双击该文件，停止和备份分别使用 `Stop-Yinda.bat`、`Backup-Yinda.bat`。
+在开发机具备 Python 3.12 嵌入式运行时 ZIP、项目后端虚拟环境、PostgreSQL 17 Windows 二进制文件和最新服务控制台 EXE 时，可运行 `web_center/build_portable_windows.py` 生成 `web_center/release/yinda-web-windows-portable.zip`。便携包包含上述 Web 代码和本机运行环境，不包含账号及业务数据。将其完整解压到验收电脑的固定目录（例如 `C:\YindaWeb`），双击 `web_center\YindaWebServerConsole.exe`；首次在控制台点击“初始化便携环境”创建本机数据库和管理员，再点击“启动 Web 服务”。停止与备份也在控制台操作。包内《便携包部署教程.md》给出完整步骤，便携包不再使用启动批处理。
 
-该便携包先在 `http://127.0.0.1:8000/` 提供本机访问。对外验收网址需要另行配置 HTTPS 公网入口；不要直接将数据库端口或 HTTP 端口暴露到公网。正式开放外网前，按下面“公网验收部署”配置 `.env`，运行 `production_check` 并重启服务。便携包内 `data/`、`web_center/backend/.env`、`web_center/backend/storage/` 是需要一起备份和保留的本机状态。
+该便携包先在 `http://127.0.0.1:8000/` 提供本机访问。对外验收网址需要另行配置 HTTPS 公网入口；不要直接将数据库端口或 HTTP 端口暴露到公网。正式开放外网前，按下面“公网验收部署”配置 `.env`，由控制台运行生产预检并重启服务。便携包内 `data/`、`web_center/backend/.env`、`web_center/backend/storage/` 是需要一起备份和保留的本机状态。
 
 ## 公网验收部署
 
@@ -123,7 +123,7 @@ cd D:\YindaWeb\web_center\backend
 
 最后双击 `D:\YindaWeb\web_center\YindaWebServerConsole.exe`，运行生产预检并启动 Web；需要开机自启时，以管理员身份点击相应按钮。检查本机及公网 `/api/v1/health`、正式成果库的 Excel 导出。若 8000 仍由旧服务占用，控制台会拒绝接管，请先人工核实旧进程。
 
-若该目录来自便携包且没有后端 `.venv`，应在开发机构建包含新依赖的完整便携包，再覆盖程序文件；确认 `runtime/python/Lib/site-packages` 已包含 `openpyxl`，并用 `D:\YindaWeb\runtime\python\python.exe -m alembic upgrade head` 迁移。服务控制台会从便携运行时解析 `pythonw.exe`。
+若该目录来自便携包且没有后端 `.venv`，应在开发机构建包含新依赖的完整便携包，再按包内《便携包部署教程.md》升级；确认 `runtime/python/Lib/site-packages` 已包含 `openpyxl`。服务控制台会从便携运行时解析 `pythonw.exe`，并在“初始化便携环境”时升级数据库结构。
 
 把完整备份移到独立磁盘。替换程序文件时保留服务器自己的 `.env`、`storage/` 和备份目录；运行 `alembic upgrade head` 后重启服务。恢复时停止服务，将同一次备份中的 PostgreSQL 自定义格式数据库文件和 `storage/` 成套恢复，再按备份对应的程序版本启动。不要只恢复数据库而丢失成果文件。
 

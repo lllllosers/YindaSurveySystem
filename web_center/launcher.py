@@ -11,12 +11,13 @@ import webbrowser
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFontDatabase, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMenu, QMessageBox, QPushButton, QSystemTrayIcon,
     QTextEdit, QVBoxLayout, QWidget,
 )
 
-from server_console_core import ConsolePaths, LOCAL_URL, ServerManager, tail
+from server_console_core import ConsolePaths, LOCAL_URL, ServerManager, read_env_value, tail
 
 
 class Bridge(QObject):
@@ -71,6 +72,7 @@ class ServerConsole(QMainWindow):
         super().__init__()
         self.manager = manager or ServerManager()
         self.paths = self.manager.paths
+        self.portable = self.paths.portable
         self.bridge = Bridge()
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.refreshing = False
@@ -102,7 +104,7 @@ class ServerConsole(QMainWindow):
         titles = QVBoxLayout()
         title = QLabel("引大调查 Web 中心服务")
         title.setObjectName("title")
-        subtitle = QLabel("数据中心运行与维护控制台  ·  Production")
+        subtitle = QLabel("数据中心运行与维护控制台  ·  " + ("Windows 便携版" if self.portable else "Production"))
         subtitle.setObjectName("muted")
         titles.addWidget(title)
         titles.addWidget(subtitle)
@@ -122,21 +124,30 @@ class ServerConsole(QMainWindow):
             cards.addWidget(card, 1)
         outer.addLayout(cards)
 
-        actions = QHBoxLayout()
+        actions = QGridLayout()
         self.buttons = []
-        for label, command, kind in (
+        action_specs = [
             ("启动 Web 服务", "start", "primary"),
             ("停止 Web 服务", "stop", "danger"),
             ("重启 Web 服务", "restart", "normal"),
             ("打开管理端", "open", "normal"),
-            ("生产环境预检", "preflight", "normal"),
+        ]
+        if self.portable:
+            action_specs += [
+                ("初始化便携环境", "initialize", "normal"),
+                ("停止全部", "stop_all", "danger"),
+            ]
+        action_specs += [
+            ("运行环境预检", "preflight", "normal"),
             ("立即备份", "backup", "normal"),
-            ("设置开机自启", "autostart", "normal"),
-        ):
+        ]
+        if not self.portable:
+            action_specs.append(("设置开机自启", "autostart", "normal"))
+        for index, (label, command, kind) in enumerate(action_specs):
             button = QPushButton(label)
             button.setObjectName(kind)
             button.clicked.connect(lambda checked=False, name=command: self.action(name))
-            actions.addWidget(button)
+            actions.addWidget(button, index // 4, index % 4)
             self.buttons.append(button)
         outer.addLayout(actions)
 
@@ -147,7 +158,7 @@ class ServerConsole(QMainWindow):
         grid.setVerticalSpacing(11)
         fields = [
             ("数据库连接", "database"), ("PostgreSQL 服务", "postgres_service"),
-            ("数据库结构", "alembic"), ("生产预检", "preflight"),
+            ("数据库结构", "alembic"), ("运行环境预检", "preflight"),
             ("APP_ENV", "app_env"), ("管理页面", "frontend"),
             ("storage", "storage"), ("backups", "backups"),
             ("剩余磁盘空间", "disk"), ("最近检查", "checked_at"),
@@ -171,7 +182,7 @@ class ServerConsole(QMainWindow):
         log_header.addWidget(QLabel("运行日志"))
         log_header.addStretch()
         self.log_choice = QComboBox()
-        for label, name in (("Web 服务", "server"), ("控制台操作", "operations"), ("备份", "backup"), ("生产预检", "preflight")):
+        for label, name in (("Web 服务", "server"), ("控制台操作", "operations"), ("备份", "backup"), ("环境预检", "preflight")):
             self.log_choice.addItem(label, name)
         self.log_choice.currentIndexChanged.connect(self.refresh_logs)
         log_header.addWidget(self.log_choice)
@@ -185,7 +196,7 @@ class ServerConsole(QMainWindow):
         log_layout.addWidget(self.log_view)
         outer.addWidget(log_panel, 1)
 
-        foot = QLabel("关闭控制台仅收起窗口；Web 服务持续运行。请使用“停止 Web 服务”明确停服。")
+        foot = QLabel("关闭控制台仅收起窗口；服务持续运行。便携版请点击“停止全部”关闭 Web 与数据库。" if self.portable else "关闭控制台仅收起窗口；Web 服务持续运行。请使用“停止 Web 服务”明确停服。")
         foot.setObjectName("muted")
         outer.addWidget(foot)
         self.setStyleSheet("""
@@ -212,11 +223,15 @@ class ServerConsole(QMainWindow):
         self.tray = QSystemTrayIcon(icon(), self)
         self.tray.setToolTip("引大调查 Web 中心服务")
         menu = QMenu()
-        for label, command in (
+        menu_actions = [
             ("打开控制台", "show"), ("打开管理端", "open"),
             ("启动 Web", "start"), ("重启 Web", "restart"),
-            ("停止 Web", "stop"), ("退出控制台", "exit"),
-        ):
+            ("停止 Web", "stop"),
+        ]
+        if self.portable:
+            menu_actions.append(("停止全部", "stop_all"))
+        menu_actions.append(("退出控制台", "exit"))
+        for label, command in menu_actions:
             item = QAction(label, menu)
             item.triggered.connect(lambda checked=False, name=command: self.action(name))
             menu.addAction(item)
@@ -282,10 +297,17 @@ class ServerConsole(QMainWindow):
             QApplication.instance().quit()
             return
         if command == "open":
-            webbrowser.open(LOCAL_URL)
+            app_env = read_env_value(self.paths.backend / ".env", "APP_ENV")
+            public_url = read_env_value(self.paths.backend / ".env", "PUBLIC_BASE_URL")
+            webbrowser.open(public_url if app_env == "production" and public_url.startswith("https://") else LOCAL_URL)
             return
         if self.busy:
             return
+        credentials = None
+        if command == "initialize":
+            credentials = self._ask_admin_credentials()
+            if credentials is None:
+                return
         self.busy = True
         for button in self.buttons:
             button.setEnabled(False)
@@ -295,7 +317,9 @@ class ServerConsole(QMainWindow):
                     ok, detail = self.manager.preflight()
                     if not ok:
                         raise RuntimeError(detail)
-                    message = "生产环境预检通过。\n" + detail
+                    message = "运行环境预检通过。\n" + detail
+                elif command == "initialize":
+                    message = self.manager.initialize_portable(*credentials)
                 elif command == "autostart":
                     message = self.manager.install_autostart()
                 else:
@@ -306,6 +330,29 @@ class ServerConsole(QMainWindow):
             except Exception:
                 self.bridge.error.emit("操作失败，请查看运行日志并检查服务器配置。")
         self.pool.submit(work)
+
+    def _ask_admin_credentials(self) -> tuple[str, str, str] | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("初始化便携环境")
+        form = QFormLayout(dialog)
+        username = QLineEdit("admin")
+        display_name = QLineEdit("系统管理员")
+        password = QLineEdit()
+        repeat = QLineEdit()
+        password.setEchoMode(QLineEdit.Password)
+        repeat.setEchoMode(QLineEdit.Password)
+        for label, field in (("管理员账号", username), ("显示名称", display_name), ("密码（至少 6 位）", password), ("重复密码", repeat)):
+            form.addRow(label, field)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        if not username.text().strip() or not 6 <= len(password.text()) <= 128 or password.text() != repeat.text():
+            QMessageBox.warning(self, "输入无效", "请填写管理员账号、6～128 位密码，并确认两次密码一致。")
+            return None
+        return username.text().strip(), display_name.text().strip() or "系统管理员", password.text()
 
     def closeEvent(self, event):
         if not self.exiting and self.tray.isVisible():

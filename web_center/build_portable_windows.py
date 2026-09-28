@@ -35,6 +35,11 @@ def main() -> None:
     for path in (embed_zip, site_packages, postgres_home / "bin" / "initdb.exe"):
         if not path.exists():
             parser.error(f"缺少运行时文件：{path}")
+    if not (OUTPUT_ROOT / "YindaWebServerConsole.exe").is_file():
+        parser.error("缺少服务控制台 EXE，请先运行 build_server_console.py。")
+    for package in ("fastapi", "uvicorn", "sqlalchemy", "alembic", "psycopg", "openpyxl"):
+        if not (site_packages / package).is_dir():
+            parser.error(f"后端运行环境缺少 {package}，请先安装 requirements.txt。")
 
     build_web_bundle()
     output = OUTPUT_ROOT / "yinda-web-windows-portable.zip"
@@ -43,10 +48,7 @@ def main() -> None:
         with ZipFile(OUTPUT_ROOT / "yinda-web-center.zip") as archive:
             archive.extractall(root)
 
-        portable_files = WEB_ROOT / "portable_windows"
-        for file in portable_files.iterdir():
-            if file.is_file():
-                shutil.copy2(file, root / file.name)
+        shutil.copy2(WEB_ROOT / "portable_windows" / "便携包部署教程.md", root / "便携包部署教程.md")
 
         python_root = root / "runtime" / "python"
         python_root.mkdir(parents=True)
@@ -56,7 +58,7 @@ def main() -> None:
         if not path_file.exists():
             parser.error("需要 Python 3.12 x64 嵌入式运行时。")
         path_file.write_text(
-            "python312.zip\n.\nLib\\site-packages\n..\\..\n..\\..\\web_center\\backend\nimport site\n",
+            "python312.zip\n.\nLib\\site-packages\n..\\..\n..\\..\\web_center\n..\\..\\web_center\\backend\nimport site\n",
             encoding="utf-8",
         )
         copy_runtime(site_packages, python_root / "Lib" / "site-packages", python_packages=True)
@@ -72,22 +74,17 @@ def main() -> None:
         if vc_redist.exists():
             shutil.copy2(vc_redist, root / "runtime" / "vcredist_x64.exe")
 
-        guide = root / "先看这里.txt"
-        guide.write_text(
-            "引大调查 Web 系统 · Windows 验收部署包\n\n"
-            "1. 将压缩包完整解压到固定文件夹，例如 C:\\YindaWeb。不要在 ZIP 预览窗口内运行。\n"
-            "2. 双击 Start-Yinda.bat。首次启动会初始化数据库并提示创建管理员。\n"
-            "3. 浏览器会打开 http://127.0.0.1:8000/；以后开机后再次双击 Start-Yinda.bat。\n"
-            "4. 关闭服务请双击 Stop-Yinda.bat；备份请双击 Backup-Yinda.bat。\n\n"
-            "账号、业务数据与上传文件仅保存在解压目录内；不要删除 data、"
-            "web_center\\backend\\.env 或 web_center\\backend\\storage。\n"
-            "这个包完成的是电脑本机启动。给甲方外网网址前，须按 DEPLOY.md 配置 production、"
-            "运行 production_check，并配置 HTTPS 公网入口。\n"
-            "首次启动如提示缺少 Visual C++ 运行库，可运行 runtime\\vcredist_x64.exe。\n",
+        (root / "先看这里.txt").write_text(
+            "引大调查 Web 中心 Windows 便携包\n\n"
+            "1. 将 ZIP 完整解压到固定目录，例如 C:\\YindaWeb；不要在压缩包内直接运行。\n"
+            "2. 双击 web_center\\YindaWebServerConsole.exe。\n"
+            "3. 首次点击“初始化便携环境”，设置管理员，再点击“启动 Web 服务”。\n"
+            "4. 点击“打开管理端”进入本机网页；关闭前点击“停止全部”。\n\n"
+            "详细步骤、升级与数据备份请阅读同目录的《便携包部署教程.md》。\n",
             encoding="utf-8-sig",
         )
 
-        forbidden = {".env", ".venv", ".git", "node_modules", "storage", "backups", "tests"}
+        forbidden = {".env", ".venv", ".git", "node_modules", "storage", "backups", "tests", ".runtime"}
         for file in root.rglob("*"):
             if forbidden.intersection(file.relative_to(root).parts):
                 raise RuntimeError(f"部署包包含禁止内容：{file.relative_to(root)}")

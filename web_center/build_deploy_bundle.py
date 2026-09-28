@@ -55,7 +55,7 @@ def main() -> None:
             raise FileNotFoundError("正式原表模板不完整。")
         copy_file(template, bundle / "templates" / "excel" / template.name)
 
-    for name in ("launcher.py", "server_console_core.py", "server_worker.py", "build_server_console.py", "console-requirements.txt"):
+    for name in ("launcher.py", "server_console_core.py", "portable_runtime.py", "server_worker.py", "build_server_console.py", "console-requirements.txt"):
         copy_file(WEB_ROOT / name, bundle / "web_center" / name)
     console_exe = OUTPUT_ROOT / "YindaWebServerConsole.exe"
     if console_exe.is_file():

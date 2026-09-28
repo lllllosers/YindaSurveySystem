@@ -1,4 +1,6 @@
+import argparse
 from getpass import getpass
+import sys
 
 from sqlalchemy import select
 
@@ -22,6 +24,11 @@ def read_password() -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="创建首位管理员")
+    parser.add_argument("--username")
+    parser.add_argument("--display-name")
+    parser.add_argument("--password-stdin", action="store_true")
+    args = parser.parse_args()
     with SessionLocal() as db:
         existing = db.scalar(
             select(User).where(
@@ -33,12 +40,11 @@ def main() -> None:
             print("Active administrator already exists:", existing.username)
             return
 
-        username = input("Admin username [admin]: ").strip() or "admin"
-        display_name = (
-            input("Admin display name [系统管理员]: ").strip()
-            or "系统管理员"
-        )
-        password = read_password()
+        username = args.username or input("Admin username [admin]: ").strip() or "admin"
+        display_name = args.display_name or input("Admin display name [系统管理员]: ").strip() or "系统管理员"
+        password = sys.stdin.readline().rstrip("\r\n") if args.password_stdin else read_password()
+        if args.password_stdin and not 6 <= len(password) <= 128:
+            raise SystemExit("Admin password must be 6-128 characters.")
 
         user = create_user(
             db,
