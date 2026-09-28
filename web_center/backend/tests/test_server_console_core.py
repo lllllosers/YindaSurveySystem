@@ -178,6 +178,21 @@ def test_portable_initialization_requires_web_to_be_stopped(paths, monkeypatch):
         core.ServerManager(paths).initialize_portable("admin", "管理员", "example-password")
 
 
+def test_portable_stop_all_stops_web_before_database(paths, monkeypatch):
+    runtime = paths.web_root.parent / "runtime"
+    (runtime / "python").mkdir(parents=True)
+    (runtime / "python" / "python.exe").touch()
+    (runtime / "postgres" / "bin").mkdir(parents=True)
+    (runtime / "postgres" / "bin" / "initdb.exe").touch()
+    calls = []
+    manager = core.ServerManager(paths)
+    monkeypatch.setattr(manager, "stop", lambda: calls.append("web"))
+    import portable_runtime
+    monkeypatch.setattr(portable_runtime.PortableRuntime, "stop_database", lambda self: calls.append("postgres"))
+    assert "均已停止" in manager.stop_all()
+    assert calls == ["web", "postgres"]
+
+
 def test_autostart_registers_windows_task_without_overwriting_foreign_one(paths):
     calls = []
     def runner(command, **kwargs):

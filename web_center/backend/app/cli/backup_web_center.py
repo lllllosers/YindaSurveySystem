@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 import json
+import locale
 import os
 from pathlib import Path
 import shutil
-import subprocess
 
 from app.core.config import BACKEND_DIR, settings
+from app.core.windows_subprocess import hidden_run
 
 
 def main() -> None:
@@ -29,6 +30,8 @@ def main() -> None:
     dump_path = target / "database.dump"
     env = os.environ.copy()
     env["PGPASSWORD"] = settings.db_password
+    env["LC_MESSAGES"] = "C"
+    env["LANG"] = "C"
     command = [
         pg_dump,
         "--host", settings.db_host,
@@ -39,7 +42,13 @@ def main() -> None:
         "--file", str(dump_path),
     ]
     try:
-        subprocess.run(command, env=env, check=True)
+        result = hidden_run(
+            command, env=env, capture_output=True, text=True,
+            encoding="mbcs" if os.name == "nt" else locale.getpreferredencoding(False),
+            errors="replace", timeout=3600,
+        )
+        if result.returncode:
+            raise RuntimeError("pg_dump 失败：" + result.stderr.strip()[-500:])
         storage = BACKEND_DIR / "storage"
         if not args.database_only and storage.exists():
             shutil.copytree(storage, target / "storage")

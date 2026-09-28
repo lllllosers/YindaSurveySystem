@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import locale
 import os
 from pathlib import Path
 import secrets
@@ -9,11 +10,10 @@ import subprocess
 import tempfile
 import time
 
+from backend.app.core.windows_subprocess import hidden_run
 
-CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
-DETACHED_PROCESS = 0x00000008 if os.name == "nt" else 0
-CREATE_NEW_PROCESS_GROUP = 0x00000200 if os.name == "nt" else 0
 DB_PORT = 55432
+READY_TIMEOUT_SECONDS = 60
 
 
 class PortableRuntime:
@@ -50,16 +50,21 @@ class PortableRuntime:
     def _environment(self, *, password: str | None = None) -> dict[str, str]:
         env = os.environ.copy()
         env["PATH"] = str(self.pg_bin) + os.pathsep + env.get("PATH", "")
+        env["LC_MESSAGES"] = "C"
+        env["LANG"] = "C"
+        env["PGCLIENTENCODING"] = "UTF8"
+        env["PYTHONIOENCODING"] = "utf-8"
         if password is not None:
             env["PGPASSWORD"] = password
         return env
 
     def _run(self, command: list[str], *, password: str | None = None, cwd: Path | None = None, input_text: str | None = None, timeout: int = 120) -> str:
-        result = subprocess.run(
+        is_python = Path(command[0]).name.lower() in {"python.exe", "pythonw.exe"}
+        encoding = "utf-8" if is_python else ("mbcs" if os.name == "nt" else locale.getpreferredencoding(False))
+        result = hidden_run(
             command, cwd=cwd, env=self._environment(password=password),
             input=input_text, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout,
-            creationflags=CREATE_NO_WINDOW,
+            encoding=encoding, errors="replace", timeout=timeout,
         )
         if result.returncode:
             detail = (result.stderr or result.stdout).strip()[-500:]
@@ -126,39 +131,52 @@ class PortableRuntime:
         if not (self.data / "PG_VERSION").is_file():
             raise RuntimeError("本机数据库尚未初始化，请先点击“初始化便携环境”。")
         self._check_database_address()
-        status = subprocess.run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "status"], capture_output=True, env=self._environment(), creationflags=CREATE_NO_WINDOW)
-        if status.returncode == 0:
-            return
-        import socket
-        try:
-            with socket.create_connection(("127.0.0.1", DB_PORT), timeout=0.5):
-                raise RuntimeError("55432 端口被其他数据库占用，未接管。")
-        except OSError:
-            pass
-        logs = self.root / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        log_path = logs / "postgres.log"
-        with log_path.open("ab") as log:
-            process = subprocess.Popen(
-                [str(self.pg_bin / "postgres.exe"), "-D", str(self.data), "-h", "127.0.0.1", "-p", str(DB_PORT)],
-                cwd=self.root, env=self._environment(), stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT,
-                creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-            )
-        for _ in range(30):
-            if process.poll() is not None:
-                break
-            status = subprocess.run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "status"], capture_output=True, env=self._environment(), creationflags=CREATE_NO_WINDOW)
-            if status.returncode == 0:
+        deadline = time.monotonic() + READY_TIMEOUT_SECONDS
+        status = hidden_run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "status"], capture_output=True, env=self._environment(), timeout=10)
+        if status.returncode != 0:
+            import socket
+            try:
+                with socket.create_connection(("127.0.0.1", DB_PORT), timeout=0.5):
+                    raise RuntimeError("55432 端口被其他数据库占用，未接管。")
+            except OSError:
+                pass
+            logs = self.root / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            log_path = logs / "postgres.log"
+            # pg_ctl launches postgres through cmd.exe on Windows. Its descendants
+            # can inherit stdout/stderr handles, so capture_output=True would wait
+            # for the database to stop even after pg_ctl itself has exited.
+            result = hidden_run([
+                str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data),
+                "-l", str(log_path),
+                "-o", f"-h 127.0.0.1 -p {DB_PORT}",
+                "-t", str(READY_TIMEOUT_SECONDS), "-w", "start",
+            ], env=self._environment(), stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=READY_TIMEOUT_SECONDS + 5)
+            if result.returncode:
+                detail = log_path.read_bytes()[-1024:].decode(
+                    "mbcs" if os.name == "nt" else locale.getpreferredencoding(False), errors="replace"
+                ).strip() if log_path.is_file() else "请查看 logs/postgres.log。"
+                raise RuntimeError(f"便携 PostgreSQL 启动失败（退出码 {result.returncode}）：{detail}")
+        self._wait_until_ready(deadline)
+
+    def _wait_until_ready(self, deadline: float) -> None:
+        command = [
+            str(self.pg_bin / "pg_isready.exe"), "-h", "127.0.0.1",
+            "-p", str(DB_PORT), "-U", "yinda_app", "-d", "postgres",
+        ]
+        while True:
+            result = hidden_run(command, capture_output=True, env=self._environment(), timeout=5)
+            if result.returncode == 0:
                 return
-            time.sleep(0.5)
-        if process.poll() is None:
-            process.terminate()
-        raise RuntimeError("便携 PostgreSQL 启动失败，请查看 logs/postgres.log。")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("便携 PostgreSQL 在 60 秒内未就绪；请查看 logs/postgres.log。")
+            time.sleep(min(0.75, remaining))
 
     def stop_database(self) -> None:
         if not (self.data / "PG_VERSION").is_file():
             return
-        status = subprocess.run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "status"], capture_output=True, env=self._environment(), creationflags=CREATE_NO_WINDOW)
+        status = hidden_run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "status"], capture_output=True, env=self._environment(), timeout=10)
         if status.returncode == 0:
             self._run([str(self.pg_bin / "pg_ctl.exe"), "-D", str(self.data), "-m", "fast", "-w", "stop"])

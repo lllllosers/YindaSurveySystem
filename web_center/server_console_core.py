@@ -18,10 +18,9 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from xml.etree import ElementTree
 
+from backend.app.core.windows_subprocess import hidden_popen, hidden_run
 
-CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
-DETACHED_PROCESS = 0x00000008 if os.name == "nt" else 0
-CREATE_NEW_PROCESS_GROUP = 0x00000200 if os.name == "nt" else 0
+
 TASK_NAME = "YindaWebCenter"
 LOCAL_URL = "http://127.0.0.1:8000"
 
@@ -216,11 +215,12 @@ class ServerManager:
             return False, "缺少正式管理页面 frontend/dist。"
         local_portable = self.paths.portable and read_env_value(self.paths.backend / ".env", "APP_ENV") == "development"
         check_module = "app.cli.portable_check" if local_portable else "app.cli.production_check"
-        result = self.runner(
+        result = hidden_run(
             [str(self.paths.python), "-m", check_module],
+            runner=self.runner,
             cwd=self.paths.backend, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=120,
-            creationflags=CREATE_NO_WINDOW,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         messages = [line for line in result.stdout.splitlines() if line.startswith(("BLOCKER:", "WARNING:", "PASS:"))]
         self._log(f"运行环境预检退出码 {result.returncode}；" + "；".join(messages), "preflight")
@@ -246,12 +246,12 @@ class ServerManager:
         if not self.paths.pythonw.is_file() or not self.paths.worker.is_file():
             raise RuntimeError("缺少隐藏运行所需的 Python 或服务入口。")
         self.paths.runtime.mkdir(parents=True, exist_ok=True)
-        process = self.popen(
+        process = hidden_popen(
             [str(self.paths.pythonw), str(self.paths.worker)],
+            popen=self.popen,
             cwd=self.paths.backend, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True,
-            creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         )
         self._log(f"启动服务入口进程 PID {process.pid}")
         for _ in range(30):
@@ -328,14 +328,17 @@ class ServerManager:
             PortableRuntime(self.paths.web_root).start_database()
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
+        env["LC_MESSAGES"] = "C"
+        env["LANG"] = "C"
+        env["PGCLIENTENCODING"] = "UTF8"
         portable_pg_bin = self.paths.web_root.parent / "runtime" / "postgres" / "bin"
         if (portable_pg_bin / "pg_dump.exe").is_file():
             env["PATH"] = str(portable_pg_bin) + os.pathsep + env.get("PATH", "")
-        result = self.runner(
+        result = hidden_run(
             [str(self.paths.python), "-m", "app.cli.backup_web_center"],
+            runner=self.runner,
             cwd=self.paths.backend, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=3600,
-            creationflags=CREATE_NO_WINDOW,
             env=env,
         )
         success_line = next((line for line in result.stdout.splitlines() if line.startswith("备份完成：")), "")
@@ -352,7 +355,7 @@ class ServerManager:
         service_name = read_env_value(self.paths.backend / ".env", "POSTGRES_SERVICE_NAME")
         service = "便携数据库" if self.paths.portable else "未指定"
         if service_name and os.name == "nt":
-            query = self.runner(["sc.exe", "query", service_name], capture_output=True, text=True, timeout=8, creationflags=CREATE_NO_WINDOW)
+            query = hidden_run(["sc.exe", "query", service_name], runner=self.runner, capture_output=True, text=True, timeout=8)
             service = "运行中" if query.returncode == 0 and "RUNNING" in query.stdout else "已停止或未找到"
         try:
             preflight = json.loads((self.paths.runtime / "preflight.status.json").read_text(encoding="utf-8"))
@@ -360,10 +363,12 @@ class ServerManager:
         except (OSError, ValueError, KeyError):
             preflight_status = "尚未执行"
         try:
-            migration = self.runner(
+            migration = hidden_run(
                 [str(self.paths.python), "-m", "alembic", "current", "--check-heads"],
+                runner=self.runner,
                 cwd=self.paths.backend, capture_output=True, text=True, timeout=15,
-                creationflags=CREATE_NO_WINDOW,
+                encoding="utf-8", errors="replace",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
             alembic = "最新" if migration.returncode == 0 else "未到最新或无法检查"
             database_connected = migration.returncode == 0 or "not on current head" in (migration.stdout + migration.stderr).lower() or database_ok()
@@ -407,9 +412,9 @@ class ServerManager:
             raise RuntimeError("开机自启仅支持 Windows。")
         if not self.paths.pythonw.is_file() or not self.paths.worker.is_file():
             raise RuntimeError("缺少服务运行文件。")
-        existing = self.runner(
+        existing = hidden_run(
             ["schtasks.exe", "/query", "/tn", TASK_NAME, "/xml"],
-            capture_output=True, text=True, timeout=10, creationflags=CREATE_NO_WINDOW,
+            runner=self.runner, capture_output=True, text=True, timeout=10,
         )
         if existing.returncode == 0:
             try:
@@ -433,9 +438,9 @@ class ServerManager:
             f"{task_command} -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger "
             "-Principal $principal -Settings $settings | Out-Null"
         )
-        result = self.runner(
+        result = hidden_run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW,
+            runner=self.runner, capture_output=True, text=True, timeout=30,
         )
         if result.returncode:
             raise RuntimeError("设置开机自启失败，请以管理员身份运行控制台。")

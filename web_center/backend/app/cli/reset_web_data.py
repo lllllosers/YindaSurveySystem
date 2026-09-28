@@ -5,12 +5,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 
 from sqlalchemy import func, inspect, select, text
 
 from app.core.config import BACKEND_DIR, settings
+from app.core.windows_subprocess import hidden_run
 from app.db.session import SessionLocal, engine
 from app.services.master_data_service import ensure_seeded
 
@@ -47,7 +47,7 @@ def main() -> None:
     if args.confirm != settings.db_name:
         raise SystemExit("确认值与当前数据库名称不一致，未执行清空。")
 
-    subprocess.run([sys.executable, "-m", "app.cli.backup_web_center"], check=True, cwd=BACKEND_DIR)
+    hidden_run([sys.executable, "-m", "app.cli.backup_web_center"], check=True, cwd=BACKEND_DIR)
     with SessionLocal() as db:
         db.execute(text("TRUNCATE TABLE " + ", ".join(TABLES) + " RESTART IDENTITY"))
         ensure_seeded(db)
