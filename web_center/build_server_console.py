@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -10,6 +11,23 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parent
+
+
+def clean_build_environment() -> dict[str, str]:
+    """Keep unrelated Qt/ICU DLLs on the developer's PATH out of the bundle."""
+    env = os.environ.copy()
+    windows = Path(env.get("SystemRoot", r"C:\Windows"))
+    search_dirs = (
+        Path(sys.executable).parent,
+        Path(sys.base_prefix),
+        windows / "System32",
+        windows,
+        windows / "System32" / "Wbem",
+    )
+    env["PATH"] = os.pathsep.join(str(path) for path in search_dirs if path.is_dir())
+    for name in ("PYTHONPATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"):
+        env.pop(name, None)
+    return env
 
 
 def main() -> None:
@@ -22,6 +40,7 @@ def main() -> None:
         from PySide6.QtWidgets import QApplication  # noqa: F401
     except ImportError as exc:
         raise SystemExit("PySide6 Qt DLL 无法加载；请使用独立的 Windows x64 Python 虚拟环境构建。") from exc
+    build_env = clean_build_environment()
     subprocess.run(
         [
             sys.executable, "-m", "PyInstaller", "--onefile", "--windowed",
@@ -33,8 +52,11 @@ def main() -> None:
         ],
         cwd=ROOT,
         check=True,
+        env=build_env,
     )
-    print(f"控制台：{ROOT / 'release' / 'YindaWebServerConsole.exe'}")
+    executable = ROOT / "release" / "YindaWebServerConsole.exe"
+    subprocess.run([str(executable), "--smoke-test"], cwd=ROOT, check=True, timeout=45, env=build_env)
+    print(f"控制台（启动验证通过）：{executable}")
 
 
 if __name__ == "__main__":

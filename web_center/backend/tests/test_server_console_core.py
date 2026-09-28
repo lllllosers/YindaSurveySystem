@@ -44,6 +44,14 @@ def test_path_resolution_and_public_configuration(paths, monkeypatch):
     assert core.public_health("http://example.com") != "正常"
 
 
+def test_frozen_console_uses_source_layout_from_release(paths, monkeypatch):
+    release = paths.web_root / "release"
+    release.mkdir()
+    monkeypatch.setattr(core.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(core.sys, "executable", str(release / "YindaWebServerConsole.exe"))
+    assert core.ConsolePaths.resolve().web_root == paths.web_root
+
+
 def test_venv_redirector_allows_actual_base_pythonw(paths, tmp_path):
     base = tmp_path / "base-python"
     base.mkdir()

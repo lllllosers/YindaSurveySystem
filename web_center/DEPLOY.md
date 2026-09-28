@@ -79,6 +79,8 @@ python build_deploy_bundle.py
 
 生成的 `YindaWebServerConsole.exe` 和 ZIP 位于 `web_center/release/`。先构建 EXE 再打 ZIP，部署包会包含 EXE；没有 EXE 时仅包含控制台源码，服务器不能直接双击运行。控制台构建依赖不进入 Web 后端 requirements。桌面端继续使用现有 `.ydtask V3 / .ydresult 2.2`，不要单独修改部署包里的 `shared/` 或表单规则。
 
+开发机可直接双击 `web_center/release/YindaWebServerConsole.exe`。控制台会识别仓库中的 `web_center` 目录；如需在开发机启动 Web 服务，还需按下文准备 `web_center/backend/.venv`、`.env` 和 `web_center/frontend/dist`。构建脚本会在生成 EXE 后实际启动一次控制台进行自检；如果 Qt 无法加载，构建会失败。
+
 ## 2. 在服务器首次安装
 
 准备 PostgreSQL、Python、PostgreSQL 客户端 `pg_dump`，解压部署包到固定目录。本机验证环境为 Python 3.12.14、PostgreSQL 17.11；首次部署建议使用相同大版本。数据库仅允许应用服务器访问，为 Web 中心创建独立数据库及仅供该应用使用的账号。以下命令在解压目录的 `web_center/backend` 中执行：

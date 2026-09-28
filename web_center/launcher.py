@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+import sys
 import webbrowser
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
@@ -323,6 +324,8 @@ def main():
     app.setQuitOnLastWindowClosed(not QSystemTrayIcon.isSystemTrayAvailable())
     window = ServerConsole()
     window.show()
+    if "--smoke-test" in sys.argv:
+        QTimer.singleShot(500, app.quit)
     raise SystemExit(app.exec())
 
 

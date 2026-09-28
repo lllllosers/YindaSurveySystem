@@ -39,7 +39,15 @@ class ConsolePaths:
     @classmethod
     def resolve(cls, web_root: Path | None = None) -> "ConsolePaths":
         if web_root is None:
-            web_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+            if getattr(sys, "frozen", False):
+                web_root = Path(sys.executable).resolve().parent
+                # Local builds keep the EXE in web_center/release; deployed
+                # bundles place it directly in web_center.
+                parent = web_root.parent
+                if web_root.name.lower() == "release" and (parent / "backend").is_dir() and (parent / "server_worker.py").is_file():
+                    web_root = parent
+            else:
+                web_root = Path(__file__).resolve().parent
         web_root = web_root.resolve()
         backend = web_root / "backend"
         venv = backend / ".venv" / "Scripts"
