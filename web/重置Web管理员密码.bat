@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul
-cd /d "%~dp0web_center\backend"
+cd /d "%~dp0backend"
 
 if not exist ".venv\Scripts\python.exe" (
   echo [ERROR] Web 后端虚拟环境不存在。

@@ -28,7 +28,7 @@ def copy_python_tree(source: Path, target: Path) -> None:
 def main() -> None:
     dist = WEB_ROOT / "frontend" / "dist"
     if not (dist / "index.html").is_file():
-        raise SystemExit("请先在 web_center/frontend 运行 npm ci 和 npm run build。")
+        raise SystemExit("请先在 web/frontend 运行 npm ci 和 npm run build。")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     bundle = OUTPUT_ROOT / f"yinda-web-center-{stamp}"
     bundle.mkdir(parents=True, exist_ok=False)

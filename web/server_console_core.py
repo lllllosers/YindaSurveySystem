@@ -45,7 +45,7 @@ class ConsolePaths:
         if web_root is None:
             if getattr(sys, "frozen", False):
                 web_root = Path(sys.executable).resolve().parent
-                # Local builds keep the EXE in web_center/release; deployed
+                # Source builds keep the EXE in web/release; deployed
                 # bundles place it directly in web_center.
                 parent = web_root.parent
                 if web_root.name.lower() == "release" and (parent / "backend").is_dir() and (parent / "server_worker.py").is_file():

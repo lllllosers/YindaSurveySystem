@@ -1,4 +1,4 @@
-﻿{
+{
   "version": "0.2.0",
   "configurations": [
     {
@@ -14,7 +14,7 @@
         "--port",
         "8000"
       ],
-      "cwd": "${workspaceFolder}\\web_center\\backend",
+      "cwd": "${workspaceFolder}\\web\\backend",
       "console": "integratedTerminal"
     }
   ]

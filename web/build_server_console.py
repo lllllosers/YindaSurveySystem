@@ -35,7 +35,7 @@ def main() -> None:
         raise SystemExit("服务控制台 EXE 仅能在 Windows x64 构建。")
     for module in ("PySide6", "PyInstaller"):
         if importlib.util.find_spec(module) is None:
-            raise SystemExit(f"缺少构建依赖 {module}，请安装 web_center/console-requirements.txt。")
+            raise SystemExit(f"缺少构建依赖 {module}，请安装 web/console-requirements.txt。")
     try:
         from PySide6.QtWidgets import QApplication  # noqa: F401
     except ImportError as exc:

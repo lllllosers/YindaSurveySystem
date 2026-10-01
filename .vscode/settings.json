@@ -1,8 +1,8 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}\\web_center\\backend\\.venv\\Scripts\\python.exe",
+  "python.defaultInterpreterPath": "${workspaceFolder}\\web\\backend\\.venv\\Scripts\\python.exe",
   "python.terminal.activateEnvironment": true,
   "python.analysis.extraPaths": [
-    "${workspaceFolder}\\web_center\\backend"
+    "${workspaceFolder}\\web\\backend"
   ],
   "python-envs.defaultEnvManager": "ms-python.python:venv",
   "python-envs.defaultPackageManager": "ms-python.python:pip"
