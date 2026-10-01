@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 os.environ.setdefault(
@@ -30,6 +31,9 @@ from PySide6.QtWidgets import (
 from forms.engineering.registry import (
     get_engineering_form_definitions,
 )
+from pages.components.engineering_survey_list_page import (
+    EngineeringSurveyListPage,
+)
 from pages.components.generic_engineering_survey_page import (
     GenericEngineeringSurveyPage,
 )
@@ -45,6 +49,26 @@ class SurveyPageWidthStabilityTestCase(
             QApplication.instance()
             or QApplication([])
         )
+
+    def setUp(self):
+        # Construct real widgets without loading unrelated survey data.
+        load_data_patch = patch.object(
+            EngineeringSurveyListPage,
+            "load_data",
+            autospec=True,
+        )
+        load_data_patch.start()
+        self.addCleanup(load_data_patch.stop)
+
+        # Fail before opening SQLite if another widget adds a database query.
+        database_patch = patch(
+            "database.get_connection",
+            side_effect=AssertionError(
+                "Survey width tests must not access SQLite."
+            ),
+        )
+        database_patch.start()
+        self.addCleanup(database_patch.stop)
 
     def test_survey_stack_does_not_force_hidden_page_width(
         self,
