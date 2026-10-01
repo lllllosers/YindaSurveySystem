@@ -1,0 +1,273 @@
+from shared.forms.engineering.form_2_1 import (
+    FORM_2_1,
+)
+
+from shared.forms.engineering.form_2_2 import (
+    FORM_2_2,
+)
+
+from shared.forms.engineering.form_2_3 import (
+    FORM_2_3,
+)
+
+from shared.forms.engineering.form_2_4 import (
+    FORM_2_4,
+)
+
+from shared.forms.engineering.form_2_5 import (
+    FORM_2_5,
+)
+
+from shared.forms.engineering.form_2_6 import (
+    FORM_2_6,
+)
+
+from shared.forms.engineering.form_2_7 import (
+    FORM_2_7,
+)
+
+from shared.forms.engineering.form_2_8 import (
+    FORM_2_8,
+)
+
+from shared.forms.engineering.form_2_9 import (
+    FORM_2_9,
+)
+
+from shared.forms.engineering.form_2_12 import (
+    FORM_2_12,
+)
+
+from shared.forms.engineering.form_2_13 import (
+    FORM_2_13,
+)
+
+from shared.forms.engineering.form_2_10 import (
+    FORM_2_10,
+)
+
+from shared.forms.engineering.form_2_11 import (
+    FORM_2_11,
+)
+
+from shared.forms.engineering.form_2_14 import (
+    FORM_2_14,
+)
+
+from shared.forms.engineering.models import (
+    EngineeringFormDefinition,
+)
+
+
+# =============================================================
+# 已迁移到 Engineering Form Framework 的正式表单定义
+# =============================================================
+#
+# 所有已接入附表2工程调查表均在此注册，
+# 本 Registry 作为工程调查表身份的
+# 唯一代码级事实来源。
+# =============================================================
+
+_ENGINEERING_FORM_DEFINITIONS: tuple[
+    EngineeringFormDefinition,
+    ...,
+] = (
+    FORM_2_1,
+    FORM_2_2,
+    FORM_2_3,
+    FORM_2_4,
+    FORM_2_5,
+    FORM_2_6,
+    FORM_2_7,
+    FORM_2_8,
+    FORM_2_9,
+    FORM_2_10,
+    FORM_2_11,
+    FORM_2_12,
+    FORM_2_13,
+    FORM_2_14,
+)
+
+
+def _validate_registry(
+    definitions: tuple[
+        EngineeringFormDefinition,
+        ...,
+    ],
+) -> None:
+    """
+    检查 Registry 中必须跨表唯一的身份字段。
+
+    EngineeringFormDefinition 自身负责
+    单张表内部合同校验；
+    Registry 只负责跨表唯一性。
+    """
+
+    unique_attributes = (
+        (
+            "form_code",
+            "form_code",
+        ),
+        (
+            "form_number",
+            "form_number",
+        ),
+        (
+            "business_type_code",
+            "business_type_code",
+        ),
+        (
+            "asset_type",
+            "asset_type",
+        ),
+    )
+
+    for (
+        attribute_name,
+        display_name,
+    ) in unique_attributes:
+        values = [
+            getattr(
+                definition,
+                attribute_name,
+            )
+            for definition in definitions
+        ]
+
+        if len(values) != len(set(values)):
+            raise ValueError(
+                "EngineeringFormRegistry "
+                "中存在重复的 "
+                f"{display_name}。"
+            )
+
+
+_validate_registry(
+    _ENGINEERING_FORM_DEFINITIONS,
+)
+
+
+_ENGINEERING_FORM_BY_CODE = {
+    definition.form_code: definition
+    for definition
+    in _ENGINEERING_FORM_DEFINITIONS
+}
+
+_ENGINEERING_FORM_BY_ASSET_TYPE = {
+    definition.asset_type: definition
+    for definition
+    in _ENGINEERING_FORM_DEFINITIONS
+}
+
+
+def get_engineering_form_definition(
+    form_code: str,
+) -> EngineeringFormDefinition | None:
+    """
+    根据 form_code 获取正式
+    EngineeringFormDefinition。
+    """
+
+    return _ENGINEERING_FORM_BY_CODE.get(
+        form_code,
+    )
+
+
+def get_engineering_form_definitions() -> tuple[
+    EngineeringFormDefinition,
+    ...,
+]:
+    """
+    返回所有已接入工程调查框架的
+    正式表单定义。
+
+    使用不可变 tuple，
+    避免调用方修改 Registry。
+    """
+
+    return _ENGINEERING_FORM_DEFINITIONS
+
+
+
+def get_engineering_asset_type_display_name(
+    asset_type: str | None,
+) -> str:
+    """
+    将 EngineeringAsset.asset_type
+    转换为 Registry 中正式 Definition
+    对应的中文工程类型名称。
+
+    不再在工程台账、详情等页面分别维护
+    英文代码 -> 中文名称字典。
+    """
+    value = str(
+        asset_type or ""
+    ).strip()
+
+    if not value:
+        return ""
+
+    definition = (
+        _ENGINEERING_FORM_BY_ASSET_TYPE
+        .get(value)
+    )
+
+    if definition is None:
+        return value
+
+    name = (
+        definition.form_name.strip()
+    )
+
+    for suffix in (
+        "工程状况调查表",
+        "状况调查表",
+        "调查表",
+    ):
+        if name.endswith(
+            suffix
+        ):
+            name = name[
+                :-len(suffix)
+            ].strip()
+            break
+
+    return (
+        name
+        or definition.form_name
+    )
+
+def get_engineering_grade_options(
+    form_code: str | None = None,
+) -> tuple[str, ...]:
+    # 指定表单时返回该表等级；
+    # 跨表时返回 Registry 中全部等级的有序并集。
+    if form_code is not None:
+        definition = (
+            get_engineering_form_definition(
+                form_code
+            )
+        )
+
+        if definition is None:
+            raise ValueError(
+                "未找到工程调查表定义："
+                f"{form_code}"
+            )
+
+        return tuple(
+            definition.grade_options
+        )
+
+    result = []
+
+    for definition in (
+        get_engineering_form_definitions()
+    ):
+        for grade in (
+            definition.grade_options
+        ):
+            if grade not in result:
+                result.append(grade)
+
+    return tuple(result)

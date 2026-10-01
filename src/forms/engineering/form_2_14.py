@@ -1,17 +1,10 @@
-from forms.engineering.models import (
-    EngineeringFormDefinition,
-    FieldDefinition,
-    FieldRowDefinition,
-    FormSectionDefinition,
-    PositionDefinition,
-)
+from dataclasses import fields
+
+from forms.engineering.models import EngineeringFormDefinition
+
+from shared.forms.engineering.form_2_14 import FORM_2_14 as CORE_DEFINITION
 
 from forms.engineering.extension_models import (
-    OriginalFormCellBinding,
-    OriginalFormConclusionBinding,
-    OriginalFormEvaluationBinding,
-    OriginalFormExportDefinition,
-    OriginalFormPrintSettings,
     SummaryColumnDefinition,
     SummaryExportDefinition,
     ValueBindingDefinition,
@@ -25,117 +18,11 @@ from forms.engineering.list_definitions import (
     build_standard_engineering_list_definition,
 )
 
-from services.ditch_section_evaluation import (
-    DITCH_SECTION_EVALUATION_ITEMS,
-)
-
-
 FORM_2_14 = EngineeringFormDefinition(
-    form_code="form_2_14",
-    form_number="2.14",
-    form_name='沟段工程状况调查表',
-    asset_type='ditch_section',
-    business_type_code='14',
-    asset_name_field="asset_name",
-    position=PositionDefinition.range(
-                 start_stake_field="start_stake",
-                 start_stake_value_key="start_stake_value",
-                 end_stake_field="end_stake",
-                 end_stake_value_key="end_stake_value",
-             ),
-    fields=(
-        FieldDefinition(
-            key='asset_name',
-            label='名称',
-            input_type='text',
-            required=True,
-            placeholder="按原始资料填写",
-        ),
-        FieldDefinition(
-            key="start_stake",
-            label="起始桩号",
-            input_type="stake",
-            required=True,
-            placeholder="例如：CH12+350",
-        ),
-        FieldDefinition(
-            key="end_stake",
-            label="终止桩号",
-            input_type="stake",
-            required=True,
-            placeholder="例如：CH12+360",
-        ),
-        FieldDefinition(
-            key='ditch_width',
-            label='沟道宽度',
-            input_type='decimal',
-            required=True,
-        ),
-        FieldDefinition(
-            key='has_flood_control_facility',
-            label='有无防洪设施',
-            input_type='choice',
-            required=True,
-            choices=('有', '无'),
-        ),
-        FieldDefinition(
-            key='flood_control_facility_type',
-            label='防洪设施类型',
-            input_type='text',
-            required=False,
-            placeholder="按原始资料填写",
-        ),
-        FieldDefinition(
-            key='flood_control_build_time',
-            label='防洪设施建成时间',
-            input_type='text',
-            required=False,
-            placeholder="按原始资料填写",
-        ),
-        FieldDefinition(
-            key='flood_control_renovation_time',
-            label='防洪设施改造时间',
-            input_type='text',
-            required=False,
-            placeholder="按原始资料填写",
-        ),
-        FieldDefinition(
-            key='flood_control_capacity',
-            label='防洪能力',
-            input_type='text',
-            required=False,
-            placeholder="按原始资料填写",
-        ),
-    ),
-    sections=(
-        FormSectionDefinition(
-            title='二、沟段基本信息',
-            rows=(
-                FieldRowDefinition(('asset_name',)),
-                FieldRowDefinition(("start_stake",)),
-                FieldRowDefinition(("end_stake",)),
-                FieldRowDefinition(('ditch_width',)),
-            ),
-        ),
-        FormSectionDefinition(
-            title='三、防洪设施信息',
-            rows=(
-                FieldRowDefinition(('has_flood_control_facility',)),
-                FieldRowDefinition(('flood_control_facility_type',)),
-                FieldRowDefinition(('flood_control_build_time',)),
-                FieldRowDefinition(('flood_control_renovation_time',)),
-                FieldRowDefinition(('flood_control_capacity',)),
-            ),
-        ),
-    ),
-    list_definition=(
-        build_standard_engineering_list_definition(
+    **{field.name: getattr(CORE_DEFINITION, field.name) for field in fields(CORE_DEFINITION)},
+    list_definition=build_standard_engineering_list_definition(
             new_button_text='新增沟段调查',
-        )
-    ),
-    # =========================================================
-    # 详细汇总导出
-    # =========================================================
+        ),
     summary_export_definition=SummaryExportDefinition(
         sheet_name='沟段调查汇总',
         columns=(
@@ -238,98 +125,4 @@ FORM_2_14 = EngineeringFormDefinition(
             ),
         ),
     ),
-    # =========================================================
-    # 正式原表导出
-    # =========================================================
-    original_form_export_definition=OriginalFormExportDefinition(
-        template_filename='form_2_14_V1.xlsx',
-        sheet_name='附表2.14',
-        field_bindings=(
-            OriginalFormCellBinding(
-                cell='B5',
-                binding=ValueBindingDefinition.single(
-                    source='record',
-                    key='asset_name',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='H5',
-                binding=ValueBindingDefinition.composite(
-                            source="record_data",
-                            keys=("start_stake", "end_stake"),
-                            formatter=format_stake_range_compact,
-                        ),
-            ),
-            OriginalFormCellBinding(
-                cell='J5',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='ditch_width',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='B6',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='has_flood_control_facility',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='D6',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='flood_control_facility_type',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='F6',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='flood_control_build_time',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='H6',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='flood_control_renovation_time',
-                ),
-            ),
-            OriginalFormCellBinding(
-                cell='J6',
-                binding=ValueBindingDefinition.single(
-                    source='record_data',
-                    key='flood_control_capacity',
-                ),
-            ),
-        ),
-        evaluation_binding=OriginalFormEvaluationBinding(
-            column="E",
-            start_row=8,
-        ),
-        conclusion_binding=OriginalFormConclusionBinding(
-            survey_comment_cell='C14',
-            overall_grade_cell='J14',
-            surveyor_signatures_cell='B15',
-            water_office_manager_signature_cell='D15',
-            engineering_section_chief_signature_cell='F15',
-            department_head_signature_cell='H15',
-            survey_date_cell='J15',
-        ),
-        print_settings=OriginalFormPrintSettings(
-            print_area='A1:J16',
-        ),
-        output_filename_prefix='附表2.14_沟段工程状况调查表',
-        fallback_asset_name='沟段',
-    ),
-    evaluation_items=tuple(
-        DITCH_SECTION_EVALUATION_ITEMS
-    ),
-    grade_options=(
-        "A",
-        "B",
-        "C",
-    ),
-    evaluation_title="四、分项评价",
-    conclusion_title="五、调查结论",
 )
