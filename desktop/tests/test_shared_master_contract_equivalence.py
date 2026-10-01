@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from shared.master_data.loader import load_official_master_contract
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = PROJECT_ROOT / "shared/master_data/official_master_contract.json"
+CONTRACT_PATH = PROJECT_ROOT.parent / "shared/master_data/official_master_contract.json"
 def load_contract():
     return load_official_master_contract(CONTRACT_PATH), None
 

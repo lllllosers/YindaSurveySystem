@@ -24,6 +24,7 @@ dist/
 release/
 *.spec
 !YindaSurveySystem.spec
+!desktop/YindaSurveySystem.spec
 
 # =========================
 # Local databases
@@ -86,3 +87,21 @@ web_center/frontend/node_modules/
 web_center/frontend/dist/
 web_center/frontend/.env.local
 web_center/.runtime/
+web_center/backend/backups/
+
+# Monorepo product paths; keep legacy web_center rules until Phase 3.
+web/backend/.venv/
+web/backend/.env
+web/backend/storage/
+web/backend/backups/
+web/frontend/node_modules/
+web/frontend/dist/
+web/frontend/.env.local
+web/.runtime/
+web/build/
+web/release/
+desktop/.venv/
+desktop/build/
+desktop/dist/
+desktop/release/
+desktop/local_data/

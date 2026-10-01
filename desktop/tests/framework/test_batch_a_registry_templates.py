@@ -39,7 +39,7 @@ class BatchARegistryTemplatesTestCase(unittest.TestCase):
         )
 
     def test_batch_a_templates_match_declared_contract(self):
-        template_dir = PROJECT_ROOT / "templates" / "excel"
+        template_dir = PROJECT_ROOT.parent / "templates" / "excel"
 
         for form_code, (sheet_name, filename, item_count) in self.EXPECTED.items():
             with self.subTest(form_code=form_code):

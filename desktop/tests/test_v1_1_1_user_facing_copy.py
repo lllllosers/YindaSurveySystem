@@ -168,7 +168,7 @@ class V111UserFacingCopyTestCase(unittest.TestCase):
 
     def test_copy_standard_is_updated(self):
         text = (
-            PROJECT_ROOT / "docs" / "07_术语与界面文案规范.md"
+            PROJECT_ROOT.parent / "docs" / "07_术语与界面文案规范.md"
         ).read_text(encoding="utf-8")
         for expected in (
             "检查成果包",

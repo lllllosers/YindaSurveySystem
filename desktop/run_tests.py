@@ -4,7 +4,7 @@
 
 功能：
 1. 编译检查 src / tests
-2. 运行全部 unittest
+2. 运行全部 Desktop pytest / unittest 测试
 3. 同时输出到终端和日志文件
 4. 返回正确的进程退出码
 """
@@ -127,13 +127,10 @@ def main() -> int:
                 [
                     sys.executable,
                     "-m",
-                    "unittest",
-                    "discover",
-                    "-s",
+                    "pytest",
                     str(TEST_DIR),
-                    "-p",
-                    "test_*.py",
-                    "-v",
+                    "-x",
+                    "-q",
                 ],
                 log_file,
             )

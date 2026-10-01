@@ -12,6 +12,8 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parent
+REPO_ROOT = ROOT.parent
+DOCS_ROOT = REPO_ROOT / "docs"
 
 EXPECTED_BRANCH = "release/v1.2.0"
 EXPECTED_APP_NAME = "引大入秦工程现状调查采集系统"
@@ -37,7 +39,7 @@ ICON_PATH = (
 )
 
 TEMPLATES_DIR = (
-    ROOT
+    REPO_ROOT
     / "templates"
 )
 
@@ -186,8 +188,8 @@ def check_required_paths():
         ROOT / "src" / "version.py",
         ROOT / "build_update_package.py",
         ROOT / "README.md",
-        ROOT / "docs" / "14_V1.2.0发布说明.md",
-        ROOT / "docs" / "15_V1.2.0生产升级验收记录.md",
+        DOCS_ROOT / "14_V1.2.0发布说明.md",
+        DOCS_ROOT / "15_V1.2.0生产升级验收记录.md",
     )
 
     missing = [
@@ -382,15 +384,13 @@ def copy_release_docs(
             release_dir / "README.md",
         ),
         (
-            ROOT
-            / "docs"
+            DOCS_ROOT
             / "14_V1.2.0发布说明.md",
             release_dir
             / "V1.2.0_发布说明.md",
         ),
         (
-            ROOT
-            / "docs"
+            DOCS_ROOT
             / "15_V1.2.0生产升级验收记录.md",
             release_dir
             / "V1.2.0_生产验收记录.md",

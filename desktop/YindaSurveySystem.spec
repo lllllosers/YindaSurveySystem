@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+from pathlib import Path
+DESKTOP_ROOT = Path(SPECPATH)
+REPO_ROOT = DESKTOP_ROOT.parent
+
 a = Analysis(
-    ['src/main.py'],
-    pathex=['.'],
+    [str(DESKTOP_ROOT / 'src/main.py')],
+    pathex=[str(DESKTOP_ROOT / 'src'), str(REPO_ROOT)],
     binaries=[],
-    datas=[('assets/app_icon.ico', 'assets')],
+    datas=[(str(DESKTOP_ROOT / 'assets/app_icon.ico'), 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -32,7 +36,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/app_icon.ico'],
+    icon=[str(DESKTOP_ROOT / 'assets/app_icon.ico')],
 )
 coll = COLLECT(
     exe,

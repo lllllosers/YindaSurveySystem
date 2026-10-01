@@ -109,7 +109,7 @@ class BatchBRegistryTemplatesTestCase(
         self,
     ):
         template_dir = (
-            PROJECT_ROOT
+            PROJECT_ROOT.parent
             / "templates"
             / "excel"
         )

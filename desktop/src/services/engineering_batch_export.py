@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.runtime_paths import get_templates_root
+
 from dataclasses import dataclass
 from pathlib import Path
 import shutil
@@ -144,8 +146,7 @@ def _validate_export_support(definition):
         )
 
     template_path = (
-        get_app_root()
-        / "templates"
+        get_templates_root(get_app_root())
         / "excel"
         / original_definition.template_filename
     )

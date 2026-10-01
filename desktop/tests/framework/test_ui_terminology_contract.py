@@ -138,7 +138,7 @@ class UiTerminologyContractTestCase(unittest.TestCase):
 
     def test_terminology_document_exists(self):
         path = (
-            PROJECT_ROOT
+            PROJECT_ROOT.parent
             / "docs"
             / "07_术语与界面文案规范.md"
         )

@@ -4,6 +4,7 @@ from database import get_app_root, get_engineering_asset_detail, get_inspection_
 from forms.engineering.persistence import get_engineering_record
 from services.original_form_export_common import fill_original_form_ownership_header
 from services.original_form_renderer import render_original_form
+from services.runtime_paths import get_templates_root
 
 
 def _resolve_ownership_canal_id(record):
@@ -32,7 +33,7 @@ def export_engineering_original_form(definition, *, survey_record_id, file_path)
     }
     render_original_form(
         definition,
-        template_root=get_app_root() / "templates" / "excel",
+        template_root=get_templates_root(get_app_root()) / "excel",
         output=file_path,
         record=record,
         record_data=record["record_data"] or {},
