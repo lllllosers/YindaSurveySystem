@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.canal_under_culvert_evaluation import (
+from shared.evaluation.canal_under_culvert_evaluation import (
     CANAL_UNDER_CULVERT_EVALUATION_ITEMS,
 )
 

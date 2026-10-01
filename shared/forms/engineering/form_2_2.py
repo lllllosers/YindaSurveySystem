@@ -23,7 +23,7 @@ from shared.forms.engineering.formatters import (
     format_opening_size,
 )
 
-from shared.forms.engineering.evaluation_items.sluice_gate_evaluation import (
+from shared.evaluation.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
 )
 

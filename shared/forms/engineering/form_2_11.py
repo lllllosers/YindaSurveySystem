@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.weir_flume_measurement_evaluation import (
+from shared.evaluation.weir_flume_measurement_evaluation import (
     WEIR_FLUME_MEASUREMENT_EVALUATION_ITEMS,
 )
 

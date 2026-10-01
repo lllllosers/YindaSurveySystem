@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.gate_hoist_evaluation import (
+from shared.evaluation.gate_hoist_evaluation import (
     GATE_HOIST_EVALUATION_ITEMS,
 )
 

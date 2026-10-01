@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.ditch_section_evaluation import (
+from shared.evaluation.ditch_section_evaluation import (
     DITCH_SECTION_EVALUATION_ITEMS,
 )
 

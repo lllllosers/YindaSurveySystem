@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_spaced,
 )
 
-from shared.forms.engineering.evaluation_items.drop_steep_slope_evaluation import (
+from shared.evaluation.drop_steep_slope_evaluation import (
     DROP_STEEP_SLOPE_EVALUATION_ITEMS,
 )
 

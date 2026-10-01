@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.bridge_evaluation import (
+from shared.evaluation.bridge_evaluation import (
     BRIDGE_EVALUATION_ITEMS,
 )
 

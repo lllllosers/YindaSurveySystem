@@ -20,7 +20,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_spaced,
 )
 
-from shared.forms.engineering.evaluation_items.lined_channel_evaluation import (
+from shared.evaluation.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
 )
 

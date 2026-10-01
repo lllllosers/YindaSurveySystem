@@ -20,7 +20,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.tunnel_evaluation import (
+from shared.evaluation.tunnel_evaluation import (
     TUNNEL_EVALUATION_ITEMS,
 )
 

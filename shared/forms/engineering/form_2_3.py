@@ -23,7 +23,7 @@ from shared.forms.engineering.formatters import (
     format_dimension_pair,
 )
 
-from shared.forms.engineering.evaluation_items.aqueduct_evaluation import (
+from shared.evaluation.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
 

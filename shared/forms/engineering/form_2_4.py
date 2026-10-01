@@ -19,7 +19,7 @@ from shared.forms.engineering.formatters import (
     format_stake_range_compact,
 )
 
-from shared.forms.engineering.evaluation_items.inverted_siphon_evaluation import (
+from shared.evaluation.inverted_siphon_evaluation import (
     INVERTED_SIPHON_EVALUATION_ITEMS,
 )
 
