@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "python_embed": {
+    "version": "3.12.9",
+    "architecture": "Windows x64",
+    "legacy_input": "web_center/release/python-3.12.9-embed-amd64.zip",
+    "sha256": "615861fb801e8b04c847598db4e1e46e4b046295017caa37cb5486dde72b5865"
+  },
+  "postgresql": {
+    "version": "17.11",
+    "legacy_input": "web_center/build/portable-final-verify-20260929/runtime/postgres",
+    "required_directories": ["bin", "lib", "share"],
+    "postgres_exe_sha256": "8ae8bb442e8a4c4fb2c8e9ad38c19aca610ee3cba33afd69249de769f905329b",
+    "exclude": ["data", "postmaster.pid", "configuration", "credentials"]
+  },
+  "backend_dependencies": {
+    "requirements": "web/backend/requirements.txt",
+    "input_type": "complete site-packages directory",
+    "legacy_input": "web_center/backend/.venv/Lib/site-packages"
+  },
+  "phase3_requirement": "Establish and verify a durable pinned build input source before deleting legacy inputs."
+}

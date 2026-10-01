@@ -54,7 +54,7 @@ def main() -> None:
     if console_exe.is_file():
         copy_file(console_exe, bundle / "web_center" / console_exe.name)
 
-    copy_file(WEB_ROOT / "DEPLOY.md", bundle / "DEPLOY.md")
+    copy_file(REPO_ROOT / "docs" / "web" / "DEPLOY.md", bundle / "DEPLOY.md")
     forbidden_parts = {".env", ".venv", "node_modules", "storage", "backups", ".runtime", ".git", ".pytest_cache"}
     forbidden_suffixes = {".key", ".pem", ".p12", ".token"}
     for file in bundle.rglob("*"):

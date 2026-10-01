@@ -1,12 +1,12 @@
 # Web 中心部署与数据初始化
 
-部署包由 `web_center/build_deploy_bundle.py` 生成，包含 Web 后端、编译后的页面、共享协议、正式主数据契约、在线表单规则、正式原表 Excel 模板和服务控制台。桌面调查 GUI、完整桌面源码、测试、`.venv`、`node_modules`、本地账号、上传文件和数据库备份均不进入部署包。
+部署包由 `web/build_deploy_bundle.py` 生成，包含 Web 后端、编译后的页面、共享协议、正式主数据契约、在线表单规则、正式原表 Excel 模板和服务控制台。桌面调查 GUI、完整桌面源码、测试、`.venv`、`node_modules`、本地账号、上传文件和数据库备份均不进入部署包。
 
 正式成果库的“导出查询结果”下载 CSV 汇总；每条记录的“导出原表”下载使用正式模板的 Excel 附表 2.1～2.14。两端共享 `EngineeringFormDefinition`、`OriginalFormExportDefinition` 和原表渲染函数；Web 从中央 PostgreSQL 正式记录及中央主数据快照取值，不读取桌面 SQLite。
 
 ## Windows 验收便携包
 
-在开发机具备 Python 3.12 嵌入式运行时 ZIP、项目后端虚拟环境、PostgreSQL 17 Windows 二进制文件和最新服务控制台 EXE 时，可运行 `web_center/build_portable_windows.py` 生成 `web_center/release/yinda-web-windows-portable.zip`。便携包包含上述 Web 代码和本机运行环境，不包含账号及业务数据。将其完整解压到验收电脑的固定目录（例如 `C:\YindaWeb`），双击 `web_center\YindaWebServerConsole.exe`；首次在控制台点击“初始化便携环境”创建本机数据库和管理员，再点击“启动 Web 服务”。停止与备份也在控制台操作。包内《便携包部署教程.md》给出完整步骤，便携包不再使用启动批处理。
+在开发机具备 Python 3.12 嵌入式运行时 ZIP、项目后端虚拟环境、PostgreSQL 17 Windows 二进制文件和最新服务控制台 EXE 时，可运行 `web/build_portable_windows.py` 生成 `web/release/yinda-web-windows-portable.zip`。便携包包含上述 Web 代码和本机运行环境，不包含账号及业务数据。将其完整解压到验收电脑的固定目录（例如 `C:\YindaWeb`），双击 `web_center\YindaWebServerConsole.exe`；首次在控制台点击“初始化便携环境”创建本机数据库和管理员，再点击“启动 Web 服务”。停止与备份也在控制台操作。包内《便携包部署教程.md》给出完整步骤，便携包不再使用启动批处理。
 
 该便携包先在 `http://127.0.0.1:8000/` 提供本机访问。对外验收网址需要另行配置 HTTPS 公网入口；不要直接将数据库端口或 HTTP 端口暴露到公网。正式开放外网前，按下面“公网验收部署”配置 `.env`，由控制台运行生产预检并重启服务。便携包内 `data/`、`web_center/backend/.env`、`web_center/backend/storage/` 是需要一起备份和保留的本机状态。
 

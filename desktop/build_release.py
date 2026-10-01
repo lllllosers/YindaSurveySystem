@@ -13,7 +13,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
-DOCS_ROOT = REPO_ROOT / "docs"
+DOCS_ROOT = REPO_ROOT / "docs" / "desktop"
 
 EXPECTED_BRANCH = "release/v1.2.0"
 EXPECTED_APP_NAME = "引大入秦工程现状调查采集系统"

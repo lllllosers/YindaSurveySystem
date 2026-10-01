@@ -48,7 +48,7 @@ def main() -> None:
         with ZipFile(OUTPUT_ROOT / "yinda-web-center.zip") as archive:
             archive.extractall(root)
 
-        shutil.copy2(WEB_ROOT / "portable_windows" / "便携包部署教程.md", root / "便携包部署教程.md")
+        shutil.copy2(WEB_ROOT.parent / "docs" / "web" / "便携包部署教程.md", root / "便携包部署教程.md")
 
         python_root = root / "runtime" / "python"
         python_root.mkdir(parents=True)
