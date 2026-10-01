@@ -1,7 +1,6 @@
 from pathlib import Path
 import shutil
 import sqlite3
-import sys
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -16,10 +15,6 @@ from app.services.survey_task_service import BACKEND_ROOT
 from tests.auth_helpers import cleanup_test_user, create_test_user, login_client
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-DESKTOP_SRC = REPOSITORY_ROOT / "src"
-if str(DESKTOP_SRC) not in sys.path:
-    sys.path.insert(0, str(DESKTOP_SRC))
 
 
 def cleanup_task(task_uid: str) -> None:
@@ -112,7 +107,7 @@ def test_scoped_viewer_only_sees_own_office_tasks() -> None:
 
 
 def test_create_download_and_validate_desktop_v3_task_package(tmp_path: Path) -> None:
-    from services.survey_task_package_reader import inspect_survey_task_package
+    from shared.protocol.task_package_reader import inspect_survey_task_package
 
     token = uuid4().hex[:8]
     admin = create_test_user("admin")
@@ -261,7 +256,7 @@ def test_task_permissions_and_target_scope_authority() -> None:
 
 
 def test_form_contract_matches_desktop_registry() -> None:
-    from forms.engineering.registry import get_engineering_form_definitions
+    from shared.forms.engineering.registry import get_engineering_form_definitions
     from app.services.survey_task_service import load_form_contract
 
     items, version, contract_hash = load_form_contract()
@@ -342,7 +337,7 @@ def test_register_existing_desktop_task_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_handover_issued_tasks_from_read_only_desktop_database(tmp_path: Path) -> None:
-    from services.survey_task_package_reader import inspect_survey_task_package
+    from shared.protocol.task_package_reader import inspect_survey_task_package
 
     admin = create_test_user("admin")
     manager = create_test_user("manager")

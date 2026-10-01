@@ -223,9 +223,10 @@ def test_deployment_bundle_excludes_runtime_and_secrets(monkeypatch, tmp_path: P
         "web_center/frontend/dist/index.html",
         "DEPLOY.md",
         "shared/protocol/constants.py",
-        "src/forms/engineering/registry.py",
+        "shared/forms/engineering/registry.py",
     }
     assert required.issubset(names)
+    assert not any(name.startswith(("src/", "desktop/")) for name in names)
     assert not any(
         part in {".env", "storage", "backups", "node_modules", ".venv", ".git", "tests"}
         for name in names for part in Path(name).parts

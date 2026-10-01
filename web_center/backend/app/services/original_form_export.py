@@ -3,18 +3,13 @@
 from io import BytesIO
 from pathlib import Path
 import re
-import sys
 
 from app.services.master_data_service import REPOSITORY_ROOT, get_snapshot
 
 
-DESKTOP_SRC = Path(REPOSITORY_ROOT) / "src"
-if str(DESKTOP_SRC) not in sys.path:
-    sys.path.insert(0, str(DESKTOP_SRC))
-
-from forms.engineering.registry import get_engineering_form_definition  # noqa: E402
-from services.original_form_export_common import fill_original_form_ownership_header  # noqa: E402
-from services.original_form_renderer import render_original_form  # noqa: E402
+from shared.forms.engineering.registry import get_engineering_form_definition
+from shared.export.original_form_export_common import fill_original_form_ownership_header
+from shared.export.original_form_renderer import render_original_form
 
 
 def _ownership(snapshot, organization_uid: str, canal_uid: str):
@@ -85,7 +80,6 @@ def export_central_original_form(record, asset, inspections) -> tuple[bytes, str
         fill_header=lambda worksheet: fill_original_form_ownership_header(
             worksheet,
             asset=ownership,
-            canal_id=record.canal_unit_uid,
             business_code=values["business_code"],
             canal_lineage=lineage,
         ),

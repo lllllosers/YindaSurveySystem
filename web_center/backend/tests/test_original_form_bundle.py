@@ -16,8 +16,9 @@ def test_bundle_contains_templates_and_renderer_without_runtime_data(tmp_path, m
     with ZipFile(tmp_path / "yinda-web-center.zip") as archive:
         names = set(archive.namelist())
         assert len([name for name in names if name.startswith("templates/excel/form_2_") and name.endswith("_V1.xlsx")]) == 14
-        assert "src/services/original_form_renderer.py" in names
-        assert "src/services/original_form_export_common.py" in names
+        assert "shared/export/original_form_renderer.py" in names
+        assert "shared/export/original_form_export_common.py" in names
+        assert not any(name.startswith(("src/", "desktop/")) for name in names)
         assert "web_center/backend/app/services/original_form_export.py" in names
         assert "web_center/server_console_core.py" in names
         assert "web_center/server_worker.py" in names
@@ -33,10 +34,10 @@ def test_bundle_contains_templates_and_renderer_without_runtime_data(tmp_path, m
     env.update(
         APP_ENV="test",
         DB_PASSWORD="test-only-password",
-        PYTHONPATH=os.pathsep.join((str(unpacked), str(unpacked / "src"), env.get("PYTHONPATH", ""))),
+        PYTHONPATH=str(unpacked),
     )
     result = subprocess.run(
-        [sys.executable, "-c", "import app.main; from app.services.original_form_export import export_central_original_form; from forms.engineering.registry import get_engineering_form_definitions; print(len(get_engineering_form_definitions()))"],
+        [sys.executable, "-c", "import app.main; from app.services.original_form_export import export_central_original_form; from shared.forms.engineering.registry import get_engineering_form_definitions; print(len(get_engineering_form_definitions()))"],
         cwd=unpacked / "web_center" / "backend",
         env=env,
         capture_output=True,

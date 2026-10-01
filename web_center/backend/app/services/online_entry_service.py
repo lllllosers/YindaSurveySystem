@@ -6,7 +6,6 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
-import sys
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from fastapi import UploadFile
@@ -25,16 +24,12 @@ from app.schemas.online_entry import OnlineEntryPayload, OnlineEntryUpdate
 from app.services.master_data_service import REPOSITORY_ROOT
 
 
-DESKTOP_SRC = Path(REPOSITORY_ROOT) / "src"
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ONLINE_MEDIA_ROOT = BACKEND_ROOT / "storage" / "online_media"
 MEDIA_CHUNK_SIZE = 1024 * 1024
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
-if str(DESKTOP_SRC) not in sys.path:
-    sys.path.insert(0, str(DESKTOP_SRC))
-
-from forms.engineering.registry import (  # noqa: E402
+from shared.forms.engineering.registry import (
     get_engineering_form_definition,
     get_engineering_form_definitions,
 )

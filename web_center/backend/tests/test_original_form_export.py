@@ -14,7 +14,7 @@ from app.main import app
 from app.models.auth import User
 from app.services import original_form_export
 from tests.auth_helpers import cleanup_test_user, create_test_user, login_client
-from forms.engineering.registry import get_engineering_form_definitions, get_engineering_form_definition
+from shared.forms.engineering.registry import get_engineering_form_definitions, get_engineering_form_definition
 
 
 def _snapshot():

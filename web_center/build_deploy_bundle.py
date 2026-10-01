@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import shutil
+import sys
 
 
 WEB_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = WEB_ROOT.parent
 OUTPUT_ROOT = WEB_ROOT / "release"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 
 def copy_file(source: Path, target: Path) -> None:
@@ -35,25 +38,15 @@ def main() -> None:
     for name in ("alembic.ini", "requirements.txt", ".env.example"):
         copy_file(WEB_ROOT / "backend" / name, bundle / "web_center" / "backend" / name)
     shutil.copytree(dist, bundle / "web_center" / "frontend" / "dist")
-    shutil.copytree(REPO_ROOT / "shared", bundle / "shared", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".env", ".venv", "node_modules", "storage", "backups", ".runtime"))
+    shutil.copytree(REPO_ROOT / "shared", bundle / "shared", ignore=shutil.ignore_patterns("tests", "__pycache__", "*.pyc", ".env", ".venv", "node_modules", "storage", "backups", ".runtime"))
 
-    form_source = REPO_ROOT / "src" / "forms" / "engineering"
-    form_target = bundle / "src" / "forms" / "engineering"
-    for name in ("__init__.py", "registry.py", "models.py", "extension_models.py", "formatters.py", "list_definitions.py"):
-        copy_file(form_source / name, form_target / name)
-    for file in form_source.glob("form_2_*.py"):
-        copy_file(file, form_target / file.name)
-    copy_file(REPO_ROOT / "src" / "forms" / "__init__.py", bundle / "src" / "forms" / "__init__.py")
-    copy_file(REPO_ROOT / "src" / "services" / "__init__.py", bundle / "src" / "services" / "__init__.py")
-    for file in (REPO_ROOT / "src" / "services").glob("*_evaluation.py"):
-        copy_file(file, bundle / "src" / "services" / file.name)
-    for name in ("original_form_export_common.py", "original_form_renderer.py"):
-        copy_file(REPO_ROOT / "src" / "services" / name, bundle / "src" / "services" / name)
-    for definition in form_source.glob("form_2_*.py"):
-        template = REPO_ROOT / "templates" / "excel" / f"{definition.stem}_V1.xlsx"
+    from shared.forms.engineering.registry import get_engineering_form_definitions
+    for definition in get_engineering_form_definitions():
+        filename = definition.original_form_export_definition.template_filename
+        template = REPO_ROOT / "templates" / "excel" / filename
         if not template.is_file():
             raise FileNotFoundError("正式原表模板不完整。")
-        copy_file(template, bundle / "templates" / "excel" / template.name)
+        copy_file(template, bundle / "templates" / "excel" / filename)
 
     for name in ("launcher.py", "server_console_core.py", "portable_runtime.py", "server_worker.py", "build_server_console.py", "console-requirements.txt"):
         copy_file(WEB_ROOT / name, bundle / "web_center" / name)
