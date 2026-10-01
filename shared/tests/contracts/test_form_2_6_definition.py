@@ -2,22 +2,11 @@ import sys
 import unittest
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-SRC_DIR = PROJECT_ROOT / "src"
-
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(
-        0,
-        str(SRC_DIR),
-    )
-
-
-from forms.engineering.form_2_6 import (
+from shared.forms.engineering.form_2_6 import (
     FORM_2_6,
 )
 
-from services.culvert_evaluation import (
+from shared.evaluation.culvert_evaluation import (
     CULVERT_EVALUATION_ITEMS,
 )
 

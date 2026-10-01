@@ -2,46 +2,35 @@ import sys
 import unittest
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-SRC_DIR = PROJECT_ROOT / "src"
-
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(
-        0,
-        str(SRC_DIR),
-    )
-
-
-from forms.engineering.form_2_1 import (
+from shared.forms.engineering.form_2_1 import (
     FORM_2_1,
 )
 
-from forms.engineering.form_2_2 import (
+from shared.forms.engineering.form_2_2 import (
     FORM_2_2,
 )
 
-from forms.engineering.form_2_3 import (
+from shared.forms.engineering.form_2_3 import (
     FORM_2_3,
 )
 
-from forms.engineering.form_2_4 import (
+from shared.forms.engineering.form_2_4 import (
     FORM_2_4,
 )
 
-from services.aqueduct_evaluation import (
+from shared.evaluation.aqueduct_evaluation import (
     AQUEDUCT_EVALUATION_ITEMS,
 )
 
-from services.inverted_siphon_evaluation import (
+from shared.evaluation.inverted_siphon_evaluation import (
     INVERTED_SIPHON_EVALUATION_ITEMS,
 )
 
-from services.lined_channel_evaluation import (
+from shared.evaluation.lined_channel_evaluation import (
     LINED_CHANNEL_EVALUATION_ITEMS,
 )
 
-from services.sluice_gate_evaluation import (
+from shared.evaluation.sluice_gate_evaluation import (
     SLUICE_GATE_EVALUATION_ITEMS,
 )
 
