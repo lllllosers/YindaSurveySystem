@@ -48,7 +48,28 @@ class ResultExportPageTestCase(
         )
 
     def setUp(self):
+        database_patch = patch(
+            "database.get_connection",
+            side_effect=AssertionError("Export page UI tests must not access SQLite."),
+        )
+        connection = database_patch.start()
+        self.addCleanup(database_patch.stop)
+        self.addCleanup(connection.assert_not_called)
         self.patches = [
+            # The embedded package panel is outside these export-filter UI tests.
+            patch(
+                "pages.components.survey_result_package_panel."
+                "SurveyResultPackagePanel._current_local_identity",
+                return_value={"batch_name": "2026年度全面调查"},
+            ),
+            patch(
+                "pages.result_export_page.get_current_task_workspace",
+                return_value=None,
+            ),
+            patch(
+                "pages.components.survey_result_package_panel.load_scope_records",
+                return_value=(),
+            ),
             patch(
                 "pages.result_export_page."
                 "get_current_context",

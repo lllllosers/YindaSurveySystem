@@ -40,6 +40,15 @@ class WorkflowNavigationSplitTestCase(
             or QApplication([])
         )
 
+    def setUp(self):
+        database_patch = patch(
+            "database.get_connection",
+            side_effect=AssertionError("Navigation UI tests must not access SQLite."),
+        )
+        connection = database_patch.start()
+        self.addCleanup(database_patch.stop)
+        self.addCleanup(connection.assert_not_called)
+
     @patch(
         "pages.components.survey_task_receive_panel."
         "get_current_task_workspace",
@@ -58,8 +67,10 @@ class WorkflowNavigationSplitTestCase(
         finally:
             page.deleteLater()
 
+    @patch("pages.result_receive_page.get_current_context", return_value=None)
     def test_result_receive_has_dedicated_page(
         self,
+        _mock_context,
     ):
         page = ResultReceivePage()
 

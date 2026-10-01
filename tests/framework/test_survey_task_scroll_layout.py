@@ -32,6 +32,16 @@ class SurveyTaskScrollLayoutTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def setUp(self):
+        database_patch = patch(
+            "database.get_connection",
+            side_effect=AssertionError("Scroll layout tests must not access SQLite."),
+        )
+        connection = database_patch.start()
+        self.addCleanup(database_patch.stop)
+        self.addCleanup(connection.assert_not_called)
+
+    @patch("pages.survey_task_page.get_current_task_workspace", return_value=None)
     @patch(
         "pages.survey_task_page."
         "get_management_scopes_for_organization",

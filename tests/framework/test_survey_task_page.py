@@ -20,6 +20,20 @@ class SurveyTaskPageTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def setUp(self):
+        tracking_patch = patch(
+            "pages.survey_task_page.list_survey_task_tracking", return_value=(),
+        )
+        tracking_patch.start()
+        self.addCleanup(tracking_patch.stop)
+        database_patch = patch(
+            "database.get_connection",
+            side_effect=AssertionError("Task page UI tests must not access SQLite."),
+        )
+        connection = database_patch.start()
+        self.addCleanup(database_patch.stop)
+        self.addCleanup(connection.assert_not_called)
+
     @patch("pages.survey_task_page.get_canal_lineage")
     @patch("pages.survey_task_page.get_management_scopes_for_organization")
     @patch("pages.survey_task_page.get_water_offices")
