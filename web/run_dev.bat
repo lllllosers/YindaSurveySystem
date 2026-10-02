@@ -1,5 +1,14 @@
 @echo off
+setlocal
 set "ROOT=%~dp0"
+if not exist "%ROOT%backend\.venv\Scripts\python.exe" (
+  echo Backend Python is missing: web/backend/.venv/Scripts/python.exe
+  echo Create the backend virtual environment and install requirements-dev.txt.
+  exit /b 1
+)
+"%ROOT%backend\.venv\Scripts\python.exe" -B "%ROOT%dev_preflight.py"
+if errorlevel 1 exit /b 1
+if /i "%~1"=="--check-only" exit /b 0
 echo [1/3] Checking database structure...
 cd /d "%ROOT%backend"
 "%ROOT%backend\.venv\Scripts\python.exe" -m alembic upgrade head

@@ -4,7 +4,7 @@ Vue 3 + FastAPI + PostgreSQL。当前为 acceptance baseline / version pending�
 
 源码目录是 `web/`；部署包内部和既有服务器目录继续使用 `web_center/`。DB `yinda_web_center`、source_channel `web_center` 和 `backup_web_center` CLI 不变。
 
-在仓库根目录配置 `web/backend/.venv` 与独立开发 PostgreSQL，填写 `web/backend/.env`；分别运行 `web/backend/run_backend.bat`、`web/frontend/run_frontend.bat`，或使用 `web/run_dev.bat`。前端依赖在 `web/frontend` 执行 `npm ci`，构建执行 `npm run build`。
+在仓库根目录配置 `web/backend/.venv` 与独立开发 PostgreSQL，从 `web/backend/.env.example` 创建 ignored 的 `web/backend/.env`，填写本机 `yinda_app` 的必填 `DB_PASSWORD`。分别运行 `web/backend/run_backend.bat`、`web/frontend/run_frontend.bat`，或使用 `web/run_dev.bat`；后者会先检查后端 Python、`.env`、密码是否非空、前端依赖及 8000/8848 端口，检查失败时不执行迁移或启动服务。`web/run_dev.bat --check-only` 只做检查；已有开发进程需自行停止，脚本不会终止进程。前端依赖在 `web/frontend` 执行 `npm ci`，构建执行 `npm run build`。
 
 后端回归入口为根目录 `run_tests.py web`；使用专门测试数据库，不指向正式数据。源码只依赖 shared 和 root templates；不需要 desktop 目录。
 
