@@ -170,16 +170,24 @@ SQLite
 openpyxl
 ```
 
+以下命令从 monorepo 仓库根目录执行。创建或恢复 Desktop 开发环境：
+
+```bat
+desktop\setup_dev_env.bat
+```
+
+脚本使用当前终端的 Python；环境不存在时创建 `desktop/.venv`，安装 `requirements-dev.txt`，从 tracked 的 `desktop/dev/sitecustomize.py` 安装 Windows ICU 启动钩子并验证 Qt 导入。该钩子提前加载系统 ICU，避免 Miniconda ICU 与 Qt 的符号冲突；不复制 DLL、不修改系统 PATH。已有 venv 不会被删除重建。
+
 运行完整测试：
 
 ```bat
-run_tests.bat
+desktop\run_tests.bat
 ```
 
 开发环境启动：
 
 ```bat
-.\.venv\Scripts\python.exe src\main.py
+desktop\.venv\Scripts\python.exe desktop\src\main.py
 ```
 
 ## 文档
