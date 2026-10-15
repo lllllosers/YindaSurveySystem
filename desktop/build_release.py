@@ -5,7 +5,6 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 import importlib.util
-import os
 import shutil
 import subprocess
 import sys
@@ -349,17 +348,9 @@ def run_command(
         )
     )
 
-    environment = os.environ.copy()
-    # A venv backed by Conda may hide conda-meta from PyInstaller.
-    # Expose the base interpreter's native dependencies during collection.
-    native_bin = Path(sys.base_prefix) / "Library" / "bin"
-    if native_bin.is_dir():
-        environment["PATH"] = str(native_bin) + os.pathsep + environment.get("PATH", "")
-
     result = subprocess.run(
         command,
         cwd=ROOT,
-        env=environment,
         check=False,
     )
 
