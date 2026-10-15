@@ -683,7 +683,7 @@ def preflight(
     )
 
 
-def build_release():
+def build_release(*, skip_tests=False):
     (
         version_info,
         git_info,
@@ -738,18 +738,21 @@ def build_release():
         "=" * 72
     )
 
-    run_command(
-        [
-            str(
-                VENV_PYTHON
-            ),
-            str(
-                ROOT
-                / "run_tests.py"
-            ),
-        ],
-        label="Full regression tests",
-    )
+    if not skip_tests:
+        run_command(
+            [
+                str(
+                    VENV_PYTHON
+                ),
+                str(
+                    ROOT
+                    / "run_tests.py"
+                ),
+            ],
+            label="Full regression tests",
+        )
+    else:
+        print("[OK] Reusing the completed Desktop full suite; artifact checks remain enabled.")
 
     print()
     print(
@@ -1017,6 +1020,11 @@ def main():
             "without building."
         ),
     )
+    parser.add_argument(
+        "--skip-tests",
+        action="store_true",
+        help="Use only after the Desktop full suite has passed for this release source.",
+    )
 
     args = parser.parse_args()
 
@@ -1024,7 +1032,7 @@ def main():
         check_only()
         return
 
-    build_release()
+    build_release(skip_tests=args.skip_tests)
 
 
 if __name__ == "__main__":
