@@ -5,6 +5,7 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -348,9 +349,20 @@ def run_command(
         )
     )
 
+    environment = None
+    if label == "PyInstaller":
+        environment = os.environ.copy()
+        system_root = Path(environment.get("SYSTEMROOT", r"C:\Windows"))
+        # Toolchain PATH entries can shadow Windows ICU with an incompatible ABI.
+        environment["PATH"] = os.pathsep.join(str(path) for path in (
+            system_root / "System32", system_root,
+            Path(sys.executable).parent, Path(sys.base_prefix),
+        ))
+
     result = subprocess.run(
         command,
         cwd=ROOT,
+        env=environment,
         check=False,
     )
 
