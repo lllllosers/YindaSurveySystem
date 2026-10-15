@@ -8,11 +8,11 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parent
-BASE_VERSION = "1.1.1"
-TARGET_VERSION = "1.2.0"
+BASE_VERSION = "1.2.0"
+TARGET_VERSION = "1.2.1"
 RELEASE_ROOT = ROOT / "release"
-DEFAULT_SOURCE_RELEASE = RELEASE_ROOT / "YindaSurveySystem_V1.2.0_Windows_x64"
-UPDATE_NAME = "YindaSurveySystem_V1.1.1_to_V1.2.0_Update"
+DEFAULT_SOURCE_RELEASE = RELEASE_ROOT / "YindaSurveySystem_V1.2.1_Windows_x64"
+UPDATE_NAME = "YindaSurveySystem_V1.2.0_to_V1.2.1_Update"
 FORBIDDEN_RUNTIME_NAMES = {"local_data"}
 FORBIDDEN_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
 
@@ -29,7 +29,7 @@ $ManifestPath = Join-Path $PackageRoot "UPDATE_MANIFEST.sha256"
 function Write-Step {
     param([string]$Message)
     Write-Host ""
-    Write-Host ("[V1.2.0] " + $Message) -ForegroundColor Cyan
+    Write-Host ("[V1.2.1] " + $Message) -ForegroundColor Cyan
 }
 
 function Get-ReleaseVersion {
@@ -64,19 +64,19 @@ function Select-InstallDirectory {
 
     if (Test-InstallDirectory $parentCandidate) {
         $candidateVersion = Get-ReleaseVersion $parentCandidate
-        if ($candidateVersion -eq "1.1.1") {
+        if ($candidateVersion -eq "1.2.0") {
             return $parentCandidate
         }
     }
 
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = "请选择当前 V1.1.1 程序所在文件夹"
+    $dialog.Description = "请选择当前 V1.2.0 程序所在文件夹"
     $dialog.ShowNewFolderButton = $false
 
     $result = $dialog.ShowDialog()
     if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
-        throw "未选择 V1.1.1 程序目录，升级已取消。"
+        throw "未选择 V1.2.0 程序目录，升级已取消。"
     }
 
     return $dialog.SelectedPath
@@ -154,7 +154,7 @@ function Restore-ProgramFiles {
 try {
     Write-Host "============================================================"
     Write-Host "引大入秦工程现状调查采集系统"
-    Write-Host "V1.1.1 -> V1.2.0 安全升级程序"
+    Write-Host "V1.2.0 -> V1.2.1 安全升级程序"
     Write-Host "============================================================"
 
     Verify-Payload
@@ -174,15 +174,15 @@ try {
     }
 
     $currentVersion = Get-ReleaseVersion $TargetDir
-    if ($currentVersion -ne "1.1.1") {
+    if ($currentVersion -ne "1.2.0") {
         $shownVersion = if ($null -eq $currentVersion) { "未知" } else { "V" + $currentVersion }
-        throw ("本升级包仅支持 V1.1.1 -> V1.2.0。当前目录识别版本：" + $shownVersion)
+        throw ("本升级包仅支持 V1.2.0 -> V1.2.1。当前目录识别版本：" + $shownVersion)
     }
 
     Write-Step ("目标目录：" + $TargetDir)
 
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $upgradeBackupRoot = Join-Path $TargetDir ("upgrade_backups\V1.1.1_to_V1.2.0_" + $timestamp)
+    $upgradeBackupRoot = Join-Path $TargetDir ("upgrade_backups\V1.2.0_to_V1.2.1_" + $timestamp)
     $dataBackupDir = Join-Path $upgradeBackupRoot "local_data"
     $rollbackDir = Join-Path $upgradeBackupRoot "program_rollback"
 
@@ -203,7 +203,7 @@ try {
 
     $oldReleaseInfo = Join-Path $TargetDir "RELEASE_INFO.txt"
     if (Test-Path -LiteralPath $oldReleaseInfo -PathType Leaf) {
-        Copy-Item -LiteralPath $oldReleaseInfo -Destination (Join-Path $upgradeBackupRoot "RELEASE_INFO_V1.1.1.txt") -Force
+        Copy-Item -LiteralPath $oldReleaseInfo -Destination (Join-Path $upgradeBackupRoot "RELEASE_INFO_V1.2.0.txt") -Force
     }
 
     New-Item -ItemType Directory -Path $rollbackDir -Force | Out-Null
@@ -211,7 +211,7 @@ try {
     $replacementStarted = $false
 
     try {
-        Write-Step "准备替换 V1.1.1 程序文件"
+        Write-Step "准备替换 V1.2.0 程序文件"
 
         foreach ($payloadItem in Get-ChildItem -LiteralPath $PayloadDir -Force) {
             if ($payloadItem.Name -eq "local_data") {
@@ -226,15 +226,15 @@ try {
         }
 
         $replacementStarted = $true
-        Write-Step "安装 V1.2.0 程序文件"
+        Write-Step "安装 V1.2.1 程序文件"
 
         foreach ($payloadItem in Get-ChildItem -LiteralPath $PayloadDir -Force) {
             Copy-Item -LiteralPath $payloadItem.FullName -Destination $TargetDir -Recurse -Force
         }
 
         $newVersion = Get-ReleaseVersion $TargetDir
-        if ($newVersion -ne "1.2.0") {
-            throw "程序文件复制完成，但目标目录未识别为 V1.2.0。"
+        if ($newVersion -ne "1.2.1") {
+            throw "程序文件复制完成，但目标目录未识别为 V1.2.1。"
         }
 
         $newExe = Join-Path $TargetDir "YindaSurveySystem.exe"
@@ -253,23 +253,23 @@ try {
 
     $completedLog = Join-Path $upgradeBackupRoot "UPDATE_COMPLETED.txt"
     @(
-        "YindaSurveySystem V1.1.1 -> V1.2.0"
+        "YindaSurveySystem V1.2.0 -> V1.2.1"
         ("Completed=" + (Get-Date).ToString("s"))
         ("Target=" + $TargetDir)
         ("LocalDataBackup=" + $dataBackupDir)
         ""
         "程序文件升级已经完成。"
-        "首次启动 V1.2.0 时，应用自身还会在数据库迁移前创建 pre_v1_2_0_upgrade SQLite 备份。"
+        "首次启动 V1.2.1 时，应用自身还会在数据库迁移前创建 pre_v1_2_1_upgrade SQLite 备份。"
     ) | Set-Content -LiteralPath $completedLog -Encoding UTF8
 
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Green
-    Write-Host "V1.2.0 程序文件升级完成。" -ForegroundColor Green
+    Write-Host "V1.2.1 程序文件升级完成。" -ForegroundColor Green
     if (Test-Path -LiteralPath $dataBackupDir) {
         Write-Host ("local_data 文件级备份：" + $dataBackupDir)
     }
     Write-Host "现在可以启动 YindaSurveySystem.exe。"
-    Write-Host "首次启动会继续执行 V1.2.0 数据库级安全备份与兼容迁移。"
+    Write-Host "首次启动会继续执行 V1.2.1 数据库级安全备份与兼容迁移。"
     Write-Host "============================================================" -ForegroundColor Green
     exit 0
 }
@@ -291,22 +291,22 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo.
-echo Starting YindaSurveySystem V1.1.1 to V1.2.0 updater...
+echo Starting YindaSurveySystem V1.2.0 to V1.2.1 updater...
 echo.
 
 powershell.exe ^
   -NoProfile ^
   -ExecutionPolicy Bypass ^
-  -File "%~dp0update_v1_2_0.ps1"
+  -File "%~dp0update_v1_2_1.ps1"
 
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
 
 if not "%EXIT_CODE%"=="0" (
-    echo [FAILED] V1.2.0 update was not completed.
+    echo [FAILED] V1.2.1 update was not completed.
 ) else (
-    echo [SUCCESS] V1.2.0 program update completed.
+    echo [SUCCESS] V1.2.1 program update completed.
 )
 
 echo.
@@ -316,50 +316,49 @@ exit /b %EXIT_CODE%
 
 
 UPGRADE_NOTE = r'''引大入秦工程现状调查采集系统
-V1.1.1 -> V1.2.0 升级说明
+V1.2.0 -> V1.2.1 升级说明
 ============================================================
 
 【这个包是什么】
-这是 V1.1.1 -> V1.2.0 专用安全升级包。
+这是 V1.2.0 -> V1.2.1 专用安全升级包。
 
-它不是只替换几个内部文件的“差分补丁”。升级包内携带经过完整校验的 V1.2.0 程序 payload，由升级程序统一替换 V1.1.1 程序文件，同时明确保留 local_data。这样可以避免 PyInstaller 内部文件漏覆盖或旧文件混用。
+它不是只替换几个内部文件的“差分补丁”。升级包内携带经过完整校验的 V1.2.1 程序 payload，由升级程序统一替换 V1.2.0 程序文件，同时明确保留 local_data。这样可以避免 PyInstaller 内部文件漏覆盖或旧文件混用。
 
 【适用范围】
-仅用于当前正式版 V1.1.1 升级到 V1.2.0。
+仅用于当前正式版 V1.2.0 升级到 V1.2.1。
 
-全新电脑、重装或没有既有 V1.1.1 安装目录时，请使用完整发布包：
-YindaSurveySystem_V1.2.0_Windows_x64.zip
+全新电脑、重装或没有既有 V1.2.0 安装目录时，请使用完整发布包：
+YindaSurveySystem_V1.2.1_Windows_x64.zip
 
 【升级方法】
 1. 完全关闭“引大入秦工程现状调查采集系统”。
 2. 将本升级 ZIP 解压到任意独立文件夹。
-3. 双击“升级到V1.2.0.bat”。
-4. 选择当前 V1.1.1 程序所在文件夹。
-5. 等待提示“V1.2.0 程序文件升级完成”。
+3. 双击“升级到V1.2.1.bat”。
+4. 选择当前 V1.2.0 程序所在文件夹。
+5. 等待提示“V1.2.1 程序文件升级完成”。
 6. 启动原程序目录中的 YindaSurveySystem.exe。
-7. 首次启动时，V1.2.0 会自动完成数据库级安全备份和兼容迁移。
+7. 首次启动时，V1.2.1 会自动完成数据库级安全备份和兼容迁移。
 
 【双重数据保护】
 第一层：升级程序在替换程序文件前复制完整 local_data 到：
-    <原程序目录>\upgrade_backups\V1.1.1_to_V1.2.0_<时间>\local_data
+    <原程序目录>\upgrade_backups\V1.2.0_to_V1.2.1_<时间>\local_data
 
-第二层：V1.2.0 首次启动、数据库迁移之前，再生成：
-    local_data\backups\yinda_survey_<时间>_pre_v1_2_0_upgrade.db
+第二层：V1.2.1 首次启动、数据库迁移之前，再生成：
+    local_data\backups\yinda_survey_<时间>_pre_v1_2_1_upgrade.db
 
 升级程序不会删除或覆盖原 local_data。
 
-【升级后的历史桩号】
-11张原单桩号附表：
-    旧单桩号 -> 起始桩号
-    终止桩号 -> 留空待补充
-
-历史“录入完成”状态保持不变。业务编号、revision、source_revision 和历史表单版本保持。
+【升级后的生产数据】
+既有数据库直接继续使用，不需要重新导入或人工迁移。
+只新增成果接收明细表及索引，不批量改写调查、工程或影像。
+桩号以三位小数显示和导出；历史存储值、UID、revision 不重写。
+任务协议 V3 和成果协议 2.2 保持兼容。
 
 【注意】
 - 升级过程中不要启动旧程序。
 - 不要把 update_payload 目录手工复制到 local_data。
 - 不要删除 local_data。
-- 若升级程序识别到的版本不是 V1.1.1，会主动停止。
+- 若升级程序识别到的版本不是 V1.2.0，会主动停止。
 '''
 
 
@@ -406,7 +405,7 @@ def validate_source_release(source_release: Path) -> None:
     missing = [path for path in required if not path.exists()]
     if missing:
         raise RuntimeError(
-            "V1.2.0 完整发布目录不完整：\n"
+            "V1.2.1 完整发布目录不完整：\n"
             + "\n".join(f"- {item}" for item in missing)
         )
 
@@ -414,8 +413,8 @@ def validate_source_release(source_release: Path) -> None:
         encoding="utf-8",
         errors="replace",
     )
-    if "Version=V1.2.0" not in release_info:
-        raise RuntimeError("source release 不是 V1.2.0。")
+    if "Version=V1.2.1" not in release_info:
+        raise RuntimeError("source release 不是 V1.2.1。")
 
     forbidden = find_forbidden_payload_artifacts(source_release)
     if forbidden:
@@ -439,9 +438,9 @@ def write_manifest(payload_dir: Path, manifest_path: Path) -> None:
 
 def verify_update_tree(update_dir: Path) -> None:
     required = (
-        update_dir / "升级到V1.2.0.bat",
-        update_dir / "update_v1_2_0.ps1",
-        update_dir / "V1.2.0_升级说明.txt",
+        update_dir / "升级到V1.2.1.bat",
+        update_dir / "update_v1_2_1.ps1",
+        update_dir / "V1.2.1_升级说明.txt",
         update_dir / "UPDATE_INFO.txt",
         update_dir / "UPDATE_MANIFEST.sha256",
         update_dir / "update_payload" / "YindaSurveySystem.exe",
@@ -469,9 +468,9 @@ def verify_zip(zip_path: Path) -> None:
         names = set(archive.namelist())
 
     required = {
-        "升级到V1.2.0.bat",
-        "update_v1_2_0.ps1",
-        "V1.2.0_升级说明.txt",
+        "升级到V1.2.1.bat",
+        "update_v1_2_1.ps1",
+        "V1.2.1_升级说明.txt",
         "UPDATE_INFO.txt",
         "UPDATE_MANIFEST.sha256",
         "update_payload/YindaSurveySystem.exe",
@@ -523,17 +522,17 @@ def build_update_package(
     payload_dir = update_dir / "update_payload"
     shutil.copytree(source_release, payload_dir)
 
-    (update_dir / "update_v1_2_0.ps1").write_text(
+    (update_dir / "update_v1_2_1.ps1").write_text(
         POWERSHELL_UPDATER,
         encoding="utf-8-sig",
         newline="\r\n",
     )
-    (update_dir / "升级到V1.2.0.bat").write_text(
+    (update_dir / "升级到V1.2.1.bat").write_text(
         BAT_UPDATER,
         encoding="utf-8",
         newline="\r\n",
     )
-    (update_dir / "V1.2.0_升级说明.txt").write_text(
+    (update_dir / "V1.2.1_升级说明.txt").write_text(
         UPGRADE_NOTE,
         encoding="utf-8-sig",
         newline="\r\n",
@@ -542,12 +541,12 @@ def build_update_package(
         (
             "YindaSurveySystem Update Package\n"
             "PackageType=SafeFullPayloadUpdater\n"
-            "FromVersion=V1.1.1\n"
-            "ToVersion=V1.2.0\n"
+            "FromVersion=V1.2.0\n"
+            "ToVersion=V1.2.1\n"
             "Preserve=local_data\n"
             "PayloadHashManifest=UPDATE_MANIFEST.sha256\n"
             "\n"
-            "该包用于已有 V1.1.1 安装的安全覆盖升级，不是源码级差分补丁。\n"
+            "该包用于已有 V1.2.0 安装的安全覆盖升级，不是源码级差分补丁。\n"
         ),
         encoding="utf-8",
         newline="\n",
@@ -574,7 +573,7 @@ def build_update_package(
 
     print()
     print("=" * 72)
-    print("[SUCCESS] V1.1.1 -> V1.2.0 update package completed.")
+    print("[SUCCESS] V1.2.0 -> V1.2.1 update package completed.")
     print(f"Directory: {update_dir}")
     print(f"ZIP:       {created_zip}")
     print(f"SHA256:    {checksum_path}")
@@ -592,7 +591,7 @@ def main():
     parser.add_argument(
         "--source-release",
         default=str(DEFAULT_SOURCE_RELEASE),
-        help="Validated V1.2.0 full release directory.",
+        help="Validated V1.2.1 full release directory.",
     )
     args = parser.parse_args()
     build_update_package(Path(args.source_release))

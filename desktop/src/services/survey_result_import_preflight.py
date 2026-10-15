@@ -1620,6 +1620,15 @@ def preflight_survey_result_import(
         # SurveyRecord
         # -----------------------------------------------------
 
+        # Child media content is compared independently of legacy parent revisions.
+        incoming_media = {}
+        for media in contents.survey_media:
+            incoming_media.setdefault(media["survey_record_uid"], {})[media["media_uid"]] = _media_signature(media)
+        local_media_sets = {}
+        for row in connection.execute("SELECT sm.*, sr.survey_record_uid FROM survey_media sm JOIN survey_records sr ON sr.id=sm.survey_record_id"):
+            item = dict(row)
+            local_media_sets.setdefault(item["survey_record_uid"], {})[item["media_uid"]] = _media_signature(item)
+
         package_record_uids = set()
 
         for record in contents.survey_records:
@@ -1653,6 +1662,15 @@ def preflight_survey_result_import(
                     _record_signature
                 ),
             )
+
+            if state != "identity_conflict" and metadata is not None:
+                if metadata["incoming_revision"] < metadata["source_revision"]:
+                    state = "stale"
+                elif state == "existing" and (
+                    incoming_media.get(record_uid, {}) != local_media_sets.get(record_uid, {})
+                    or metadata["incoming_revision"] > metadata["local_revision"]
+                ):
+                    state = "update"
 
             if state == "existing":
                 existing_records += 1
@@ -1832,31 +1850,20 @@ def preflight_survey_result_import(
             )
 
             if local_media is None:
-                new_media += 1
+                if media.get("survey_record_uid") not in record_stale_uids:
+                    new_media += 1
                 continue
 
             existing_media += 1
 
-            if (
-                _canonical_json(
-                    _media_signature(
-                        local_media
-                    )
-                )
-                !=
-                _canonical_json(
-                    _media_signature(
-                        media
-                    )
-                )
-            ):
+            if _clean_text(local_media.get("survey_record_uid")) != _clean_text(media.get("survey_record_uid")):
                 _append(
                     issues,
                     SEVERITY_ERROR,
                     "MEDIA_UID_CONFLICT",
                     (
                         "相同 media_uid 在目标数据库中"
-                        "已有不同影像元数据或文件哈希。"
+                        "指向不同调查记录。"
                     ),
                     entity_uid=media_uid,
                 )

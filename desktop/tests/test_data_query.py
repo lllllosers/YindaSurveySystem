@@ -403,7 +403,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             lined_record["engineering_position"],
-            "K10+000 ～ K11+000",
+            "CH10+000.000 ～ CH11+000.000",
         )
 
         sluice_record = next(
@@ -412,7 +412,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             sluice_record["engineering_position"],
-            "K20+500",
+            "CH20+500.000",
         )
 
         aqueduct_record = next(
@@ -421,7 +421,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             aqueduct_record["engineering_position"],
-            "K25+300",
+            "CH25+300.000",
         )
 
         self.assertEqual(
@@ -494,7 +494,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             aqueduct_record["engineering_position"],
-            "K25+300",
+            "CH25+300.000",
         )
 
         detailed_record = next(
@@ -505,7 +505,7 @@ class DataQueryTestCase(unittest.TestCase):
 
         self.assertEqual(
             detailed_record["engineering_position"],
-            "K26+100",
+            "CH26+100.000",
         )
 
     # =========================================================
@@ -604,7 +604,7 @@ class DataQueryTestCase(unittest.TestCase):
                 row=aqueduct_row,
                 column=9,
             ).value,
-            "K25+300",
+            "CH25+300.000",
         )
 
         # J列：工程状况类别
@@ -724,7 +724,7 @@ class DataQueryTestCase(unittest.TestCase):
                 row=detailed_row,
                 column=7,
             ).value,
-            "K26+100～K26+100",
+            "CH26+100.000～CH26+100.000",
         )
 
         self.assertEqual(

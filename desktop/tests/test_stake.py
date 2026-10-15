@@ -22,7 +22,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH12+350",
+            "CH12+350.000",
         )
         self.assertEqual(
             stake_value,
@@ -34,7 +34,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH12+350",
+            "CH12+350.000",
         )
         self.assertEqual(
             stake_value,
@@ -46,7 +46,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH12+350",
+            "CH12+350.000",
         )
         self.assertEqual(
             stake_value,
@@ -58,7 +58,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH12+350",
+            "CH12+350.000",
         )
         self.assertEqual(
             stake_value,
@@ -70,7 +70,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH12+350",
+            "CH12+350.000",
         )
         self.assertEqual(
             stake_value,
@@ -82,7 +82,7 @@ class StakeServiceTestCase(unittest.TestCase):
 
         self.assertEqual(
             stake_text,
-            "CH1+005.5",
+            "CH1+005.500",
         )
         self.assertEqual(
             stake_value,

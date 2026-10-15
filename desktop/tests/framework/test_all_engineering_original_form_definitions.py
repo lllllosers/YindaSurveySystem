@@ -289,14 +289,14 @@ class AllEngineeringOriginalFormDefinitionsTestCase(
                 "K10+000",
                 "K11+000",
             ),
-            "K10+000 ～ K11+000",
+            "CH10+000.000 ～ CH11+000.000",
         )
         self.assertEqual(
             format_stake_range_compact(
                 "K20+000",
                 "K21+200",
             ),
-            "K20+000～K21+200",
+            "CH20+000.000～CH21+200.000",
         )
         self.assertEqual(
             format_side_slope(

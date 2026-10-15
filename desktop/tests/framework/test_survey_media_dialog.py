@@ -41,6 +41,7 @@ class SurveyMediaDialogTestCase(
             or QApplication([])
         )
 
+    @patch("services.survey_record_editability.is_survey_record_locally_editable", return_value=True)
     @patch(
         "pages.components."
         "survey_media_dialog."
@@ -55,6 +56,7 @@ class SurveyMediaDialogTestCase(
         self,
         mock_get_media,
         mock_get_definition,
+        mock_editability,
     ):
         mock_get_definition.return_value = None
 

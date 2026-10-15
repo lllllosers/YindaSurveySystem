@@ -304,7 +304,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             record["engineering_position"],
-            "K1+250",
+            "CH1+250.000",
         )
 
         self.assertEqual(
@@ -348,7 +348,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             row["single_stake_text"],
-            "K1+250",
+            "CH1+250.000",
         )
 
         self.assertAlmostEqual(
@@ -471,7 +471,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             record["single_stake_text"],
-            "K1+250",
+            "CH1+250.000",
         )
 
         # -------------------------
@@ -519,7 +519,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             updated_record["single_stake_text"],
-            "K1+500",
+            "CH1+500.000",
         )
 
         self.assertAlmostEqual(
@@ -1202,7 +1202,7 @@ class AqueductWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K1+250～K1+250",
+            "CH1+250.000～CH1+250.000",
         )
 
         self.assertEqual(

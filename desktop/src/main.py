@@ -55,9 +55,11 @@ class MainWindow(QMainWindow):
         self.current_page_name = "首页"
 
         self.setWindowTitle(f"{APP_NAME} - {APP_VERSION_LABEL}")
-        self.resize(1200, 760)
+        from pages.components.window_geometry import fit_window_to_screen
+        fit_window_to_screen(self, 1200, 760)
 
         self.init_ui()
+        fit_window_to_screen(self, 1200, 760)
 
     def init_ui(self):
         central_widget = QWidget()
@@ -320,6 +322,10 @@ class MainWindow(QMainWindow):
                 f"▸ {other_name}"
             )
 
+    def show_import_changes(self, result_import_id):
+        self.change_page("数据查询")
+        self.data_query_page.show_import_changes(result_import_id)
+
     def refresh_current_context(self):
         """
         项目或调查批次切换后，
@@ -520,6 +526,7 @@ class MainWindow(QMainWindow):
                 ResultReceivePage()
             )
 
+            self.result_receive_page.view_import_changes_requested.connect(self.show_import_changes)
             self.content_layout.addWidget(
                 self.result_receive_page
             )

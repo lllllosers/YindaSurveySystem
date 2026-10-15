@@ -1,3 +1,4 @@
+from shared.protocol.stake import display_stake
 import sys
 import unittest
 from pathlib import Path
@@ -341,16 +342,16 @@ class BatchAWorkflowMixin:
             == "point"
         ):
             self.assertIn(
-                self.POINT_STAKE,
+                display_stake(self.POINT_STAKE),
                 position_text,
             )
         else:
             self.assertIn(
-                self.RANGE_START,
+                display_stake(self.RANGE_START),
                 position_text,
             )
             self.assertIn(
-                self.RANGE_END,
+                display_stake(self.RANGE_END),
                 position_text,
             )
 

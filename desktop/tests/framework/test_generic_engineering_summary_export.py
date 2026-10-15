@@ -171,7 +171,7 @@ class GenericEngineeringSummaryExportTestCase(
             )
             self.assertEqual(
                 worksheet["G2"].value,
-                "K26+100～K26+250",
+                "CH26+100.000～CH26+250.000",
             )
             self.assertEqual(
                 worksheet["O2"].value,

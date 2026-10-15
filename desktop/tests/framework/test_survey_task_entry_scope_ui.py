@@ -43,6 +43,9 @@ class SurveyTaskEntryScopeUiTestCase(
         )
 
     def setUp(self):
+        ownership = patch("services.survey_record_editability.is_survey_record_locally_editable", return_value=True)
+        ownership.start()
+        self.addCleanup(ownership.stop)
         self.page = (
             GenericEngineeringSurveyPage(
                 TEST_POINT_DEFINITION

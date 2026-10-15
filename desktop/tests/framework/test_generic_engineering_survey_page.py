@@ -57,6 +57,9 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
     def setUp(
         self,
     ):
+        ownership = patch("services.survey_record_editability.is_survey_record_locally_editable", return_value=True)
+        ownership.start()
+        self.addCleanup(ownership.stop)
         self.page = GenericEngineeringSurveyPage(TEST_POINT_DEFINITION)
 
     def tearDown(
@@ -300,7 +303,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             data["stake"],
-            "CH12+350",
+            "CH12+350.000",
         )
 
         self.assertEqual(
@@ -335,7 +338,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
             position,
             {
                 "kind": "point",
-                "single_stake_text": ("CH12+350"),
+                "single_stake_text": ("CH12+350.000"),
                 "single_stake_value": (12350.0),
             },
         )
@@ -364,7 +367,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.get_field_widget("stake").text(),
-            "CH1+005",
+            "CH1+005.000",
         )
 
         self.assertEqual(
@@ -979,7 +982,7 @@ class GenericEngineeringSurveyPageTestCase(unittest.TestCase):
 
         self.assertEqual(
             self.page.get_field_widget("stake").text(),
-            "CH8+500",
+            "CH8+500.000",
         )
 
         self.assertEqual(

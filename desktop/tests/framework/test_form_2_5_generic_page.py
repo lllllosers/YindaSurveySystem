@@ -91,9 +91,9 @@ class Form25GenericPageTestCase(
             position,
             {
                 "kind": "range",
-                "start_stake_text": "CH20+000",
+                "start_stake_text": 'CH20+000.000',
                 "start_stake_value": 20000.0,
-                "end_stake_text": "CH21+200",
+                "end_stake_text": 'CH21+200.000',
                 "end_stake_value": 21200.0,
             },
         )
@@ -134,7 +134,7 @@ class Form25GenericPageTestCase(
 
         self.assertEqual(
             data["start_stake"],
-            "CH20+000",
+            "CH20+000.000",
         )
 
         self.assertEqual(
@@ -144,7 +144,7 @@ class Form25GenericPageTestCase(
 
         self.assertEqual(
             data["end_stake"],
-            "CH21+200",
+            "CH21+200.000",
         )
 
         self.assertEqual(

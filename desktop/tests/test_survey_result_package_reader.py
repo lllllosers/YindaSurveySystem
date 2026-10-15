@@ -212,6 +212,9 @@ class SurveyResultPackageReaderTestCase(unittest.TestCase):
         source = self.temp_root / "现场照片.jpg"
         source.write_bytes(b"reader-test-media")
 
+        from tests.local_task_fixture import receive_workspace_for_record
+        receive_workspace_for_record(self.record_id)
+
         self.media = import_survey_media(
             survey_record_id=self.record_id,
             source_file=source,

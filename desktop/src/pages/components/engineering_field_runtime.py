@@ -190,6 +190,9 @@ class EngineeringFieldRuntime:
             self.widget.clear()
             return
 
+        if self.definition.input_type == "stake":
+            from shared.protocol.stake import display_stake
+            value = display_stake(value)
         self.widget.setText(str(value))
 
     # =========================================================

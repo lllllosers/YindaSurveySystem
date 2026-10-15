@@ -40,8 +40,8 @@ class V120UpdatePackageBuilderTestCase(
         )
 
         for expected in (
-            'BASE_VERSION = "1.1.1"',
-            'TARGET_VERSION = "1.2.0"',
+            'BASE_VERSION = "1.2.0"',
+            'TARGET_VERSION = "1.2.1"',
             "SafeFullPayloadUpdater",
             "UPDATE_MANIFEST.sha256",
             "Get-FileHash",
@@ -49,10 +49,10 @@ class V120UpdatePackageBuilderTestCase(
             "upgrade_backups",
             "program_rollback",
             "Get-Process",
-            '$currentVersion -ne "1.1.1"',
-            '$newVersion -ne "1.2.0"',
+            '$currentVersion -ne "1.2.0"',
+            '$newVersion -ne "1.2.1"',
             "Restore-ProgramFiles",
-            "update_v1_2_0.ps1",
+            "update_v1_2_1.ps1",
         ):
             self.assertIn(
                 expected,
@@ -104,7 +104,7 @@ class V120UpdatePackageBuilderTestCase(
                 source_release
                 / "RELEASE_INFO.txt"
             ).write_text(
-                "Version=V1.2.0\nStage=正式版\n",
+                "Version=V1.2.1\nStage=正式版\n",
                 encoding="utf-8",
             )
 
@@ -123,13 +123,13 @@ class V120UpdatePackageBuilderTestCase(
             self.assertTrue(
                 (
                     update_dir
-                    / "升级到V1.2.0.bat"
+                    / "升级到V1.2.1.bat"
                 ).exists()
             )
             self.assertTrue(
                 (
                     update_dir
-                    / "update_v1_2_0.ps1"
+                    / "update_v1_2_1.ps1"
                 ).exists()
             )
             self.assertTrue(
@@ -182,7 +182,7 @@ class V120UpdatePackageBuilderTestCase(
                 source_release
                 / "RELEASE_INFO.txt"
             ).write_text(
-                "Version=V1.2.0\n",
+                "Version=V1.2.1\n",
                 encoding="utf-8",
             )
             (

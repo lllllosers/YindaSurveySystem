@@ -428,7 +428,7 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             asset["start_stake_text"],
-            "K12+000",
+            "CH12+000.000",
         )
 
         self.assertEqual(
@@ -438,7 +438,7 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             asset["end_stake_text"],
-            "K13+250",
+            "CH13+250.000",
         )
 
         self.assertEqual(
@@ -537,12 +537,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             ledger_asset["start_stake_text"],
-            "K12+000",
+            "CH12+000.000",
         )
 
         self.assertEqual(
             ledger_asset["end_stake_text"],
-            "K13+250",
+            "CH13+250.000",
         )
 
         self.assertIsNone(ledger_asset["single_stake_text"])
@@ -585,12 +585,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             record["start_stake_text"],
-            "K12+000",
+            "CH12+000.000",
         )
 
         self.assertEqual(
             record["end_stake_text"],
-            "K13+250",
+            "CH13+250.000",
         )
 
         self.assertEqual(
@@ -668,12 +668,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             record["start_stake_text"],
-            "K12+100",
+            "CH12+100.000",
         )
 
         self.assertEqual(
             record["end_stake_text"],
-            "K13+600",
+            "CH13+600.000",
         )
 
         self.assertIsNone(record["single_stake_text"])
@@ -705,12 +705,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             records[0]["start_stake_text"],
-            "K12+100",
+            "CH12+100.000",
         )
 
         self.assertEqual(
             records[0]["end_stake_text"],
-            "K13+600",
+            "CH13+600.000",
         )
 
     def test_all_basic_fields_round_trip(
@@ -768,15 +768,18 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             loaded["start_stake_text"],
-            "K10+000",
+            "CH10+000.000",
         )
 
         self.assertEqual(
             loaded["end_stake_text"],
-            "K11+500",
+            "CH11+500.000",
         )
 
         for key, expected_value in record_data.items():
+            if key in ("stake", "start_stake", "end_stake"):
+                from shared.protocol.stake import display_stake
+                expected_value = display_stake(expected_value)
             self.assertEqual(
                 loaded_data[key],
                 expected_value,
@@ -1136,12 +1139,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             loaded["start_stake_text"],
-            "K11+000",
+            "CH11+000.000",
         )
 
         self.assertEqual(
             loaded["end_stake_text"],
-            "K12+000",
+            "CH12+000.000",
         )
 
     def test_delete_record_cleans_orphan_asset(
@@ -1287,12 +1290,12 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             worksheet["G2"].value,
-            "K10+000",
+            "CH10+000.000",
         )
 
         self.assertEqual(
             worksheet["H2"].value,
-            "K11+000",
+            "CH11+000.000",
         )
 
         self.assertEqual(
@@ -1370,7 +1373,7 @@ class LinedChannelWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K10+000 ～ K11+000",
+            "CH10+000.000 ～ CH11+000.000",
         )
 
         self.assertEqual(

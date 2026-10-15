@@ -264,14 +264,14 @@ def _audit_records(records):
         start_value = float(start_value)
         end_value = float(end_value)
 
-        if end_value <= start_value + STAKE_TOLERANCE:
+        if end_value < start_value:
             errors.append(
                 _issue(
                     severity=ERROR,
                     code="LINED_RANGE_INVALID",
                     message=(
-                        "该防渗衬砌渠段的终点桩号没有大于起点桩号。"
-                        "请检查是否填反、填错或录入了零长度渠段，"
+                        "该防渗衬砌渠段的终点桩号小于起点桩号。"
+                        "请检查是否填反或填错，"
                         "修正后再锁号。"
                     ),
                     row=row,
@@ -567,6 +567,15 @@ def finalize_engineering_business_codes(
             project_id=project_id,
             survey_batch_id=survey_batch_id,
         )
+
+        from services.survey_record_editability import require_survey_record_editable
+        for row in rows:
+            records = connection.execute(
+                "SELECT id FROM survey_records WHERE engineering_asset_id=? AND survey_batch_id=? AND record_status!='void'",
+                (row["engineering_asset_id"], survey_batch_id),
+            ).fetchall()
+            for record in records:
+                require_survey_record_editable(record["id"], connection=connection)
 
         if errors:
             preview = EngineeringNumberingFinalizationPreview(

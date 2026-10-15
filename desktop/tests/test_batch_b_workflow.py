@@ -1,3 +1,4 @@
+from shared.protocol.stake import display_stake
 import sys
 import unittest
 from pathlib import Path
@@ -371,7 +372,7 @@ class BatchBWorkflowMixin:
             record[
                 "start_stake_text"
             ],
-            self.POINT_STAKE,
+            display_stake(self.POINT_STAKE),
         )
         self.assertAlmostEqual(
             float(
@@ -385,7 +386,7 @@ class BatchBWorkflowMixin:
             record[
                 "end_stake_text"
             ],
-            self.POINT_STAKE,
+            display_stake(self.POINT_STAKE),
         )
         self.assertAlmostEqual(
             float(
@@ -423,7 +424,7 @@ class BatchBWorkflowMixin:
             "draft",
         )
         self.assertIn(
-            self.POINT_STAKE,
+            display_stake(self.POINT_STAKE),
             (
                 records[0][
                     "engineering_position"
