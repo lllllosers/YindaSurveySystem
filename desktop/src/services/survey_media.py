@@ -1,4 +1,5 @@
 from __future__ import annotations
+from services.survey_record_editability import require_survey_record_editable, bump_survey_media_revision
 
 from datetime import datetime
 from hashlib import sha256
@@ -190,6 +191,8 @@ def import_survey_media(
     - 正式归档名称在成果导出阶段按规则生成。
     """
 
+    require_survey_record_editable(survey_record_id)
+
     source_path = Path(
         source_file
     ).expanduser()
@@ -363,6 +366,9 @@ def import_survey_media(
                 ),
             )
 
+            require_survey_record_editable(survey_record_id, connection=connection)
+            bump_survey_media_revision(connection, survey_record_id)
+
             media_id = (
                 cursor.lastrowid
             )
@@ -524,7 +530,7 @@ def update_media_metadata(
     with database.get_connection() as connection:
         current = connection.execute(
             """
-            SELECT id
+            SELECT *
             FROM survey_media
             WHERE id = ?
             """,
@@ -536,6 +542,18 @@ def update_media_metadata(
                 "没有找到需要修改的影像记录。"
             )
 
+        require_survey_record_editable(current["survey_record_id"], connection=connection)
+        proposed = {
+            "media_role": media_role,
+            "item_code": _clean_text(item_code),
+            "part_name": _clean_text(part_name),
+            "sequence_no": sequence_no,
+            "captured_at": _clean_text(captured_at),
+            "notes": _clean_text(notes),
+        }
+        if all((current[key] or None) == (value or None) for key, value in proposed.items()):
+            return
+        bump_survey_media_revision(connection, current["survey_record_id"])
         connection.execute(
             """
             UPDATE survey_media
@@ -584,6 +602,8 @@ def delete_survey_media(
             "没有找到需要删除的影像记录。"
         )
 
+    require_survey_record_editable(media["survey_record_id"])
+
     absolute_path = Path(
         media["absolute_path"]
     )
@@ -606,6 +626,8 @@ def delete_survey_media(
 
     try:
         with database.get_connection() as connection:
+            require_survey_record_editable(media["survey_record_id"], connection=connection)
+            bump_survey_media_revision(connection, media["survey_record_id"])
             connection.execute(
                 """
                 DELETE FROM survey_media

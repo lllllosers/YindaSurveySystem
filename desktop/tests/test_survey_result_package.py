@@ -301,6 +301,9 @@ class SurveyResultPackageTestCase(
             self.media_bytes
         )
 
+        from tests.local_task_fixture import receive_workspace_for_record
+        receive_workspace_for_record(self.record_id)
+
         self.media_result = (
             import_survey_media(
                 survey_record_id=(

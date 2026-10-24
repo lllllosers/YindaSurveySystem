@@ -1351,38 +1351,8 @@ def _ensure_v102_production_feedback_schema(
             """
         )
 
-    # V1.0.1 以前已经由成果包导入的记录没有来源版本字段。
-    # 升级时把其当前内容视为“已接收 revision 1”基线。
-    connection.execute(
-        """
-        UPDATE survey_records
-        SET source_revision_no = revision_no
-        WHERE source_revision_no = 0
-          AND source_task_uid IS NOT NULL
-          AND trim(source_task_uid) <> ''
-        """
-    )
-
-    # 与既有下级成果记录关联的工程对象同样建立来源版本基线。
-    # 某些历史数据库的 survey_records 只有极简旧字段；
-    # engineering_asset_id 尚不存在时必须跳过关联回填，
-    # 不能让 V1.0.2 新迁移阻断更早版本的安全升级路径。
-    if "engineering_asset_id" in record_columns:
-        connection.execute(
-            """
-            UPDATE engineering_assets
-            SET source_revision_no = revision_no
-            WHERE source_revision_no = 0
-              AND EXISTS (
-                  SELECT 1
-                  FROM survey_records AS sr
-                  WHERE sr.engineering_asset_id
-                        = engineering_assets.id
-                    AND sr.source_task_uid IS NOT NULL
-                    AND trim(sr.source_task_uid) <> ''
-              )
-            """
-        )
+    if "source_revision_no" not in record_columns:
+        _backfill_legacy_source_revisions(connection, record_columns)
 
     connection.execute(
         """
@@ -1421,6 +1391,41 @@ def _ensure_v102_production_feedback_schema(
         WHERE code_status = 'final'
         """
     )
+
+def _backfill_legacy_source_revisions(connection, record_columns):
+    # V1.0.1 以前已经由成果包导入的记录没有来源版本字段。
+    # 升级时把其当前内容视为“已接收 revision 1”基线。
+    connection.execute(
+        """
+        UPDATE survey_records
+        SET source_revision_no = revision_no
+        WHERE source_revision_no = 0
+          AND source_task_uid IS NOT NULL
+          AND trim(source_task_uid) <> ''
+        """
+    )
+
+    # 与既有下级成果记录关联的工程对象同样建立来源版本基线。
+    # 某些历史数据库的 survey_records 只有极简旧字段；
+    # engineering_asset_id 尚不存在时必须跳过关联回填，
+    # 不能让 V1.0.2 新迁移阻断更早版本的安全升级路径。
+    if "engineering_asset_id" in record_columns:
+        connection.execute(
+            """
+            UPDATE engineering_assets
+            SET source_revision_no = revision_no
+            WHERE source_revision_no = 0
+              AND EXISTS (
+                  SELECT 1
+                  FROM survey_records AS sr
+                  WHERE sr.engineering_asset_id
+                        = engineering_assets.id
+                    AND sr.source_task_uid IS NOT NULL
+                    AND trim(sr.source_task_uid) <> ''
+              )
+            """
+        )
+
 
 
 _V120_LEGACY_POINT_FORM_CODES = (
@@ -2015,9 +2020,8 @@ def init_database():
             connection
         )
 
-        _migrate_v120_legacy_point_chainage(
-            connection
-        )
+        if not (DATA_DIR / ".v1_2_0_upgrade_backup_complete").exists():
+            _migrate_v120_legacy_point_chainage(connection)
 
         _ensure_official_master_data_schema(connection)
 
@@ -3827,6 +3831,7 @@ def get_engineering_survey_query_records(
             ea.id AS engineering_asset_id,
             ea.asset_name,
 
+            ea.single_stake_value, ea.start_stake_value, ea.end_stake_value,
             ea.single_stake_text,
             ea.start_stake_text,
             ea.end_stake_text,
@@ -3901,9 +3906,10 @@ def get_engineering_survey_query_records(
 
     sql += """
         ORDER BY
-            sb.id DESC,
-            fd.sort_order,
-            sr.id DESC
+            canal.name,
+            COALESCE(ea.start_stake_value, ea.single_stake_value, 1e100),
+            COALESCE(ea.end_stake_value, ea.single_stake_value, 1e100),
+            sr.id
     """
 
     with get_connection() as connection:
@@ -3912,22 +3918,20 @@ def get_engineering_survey_query_records(
             parameters,
         ).fetchall()
 
+    from shared.protocol.stake import display_stake, normalize_stake_fields
     result = []
 
     for row in rows:
         single_stake = (
-            row["single_stake_text"]
-            or ""
+            display_stake(row["single_stake_text"])
         )
 
         start_stake = (
-            row["start_stake_text"]
-            or ""
+            display_stake(row["start_stake_text"])
         )
 
         end_stake = (
-            row["end_stake_text"]
-            or ""
+            display_stake(row["end_stake_text"])
         )
 
         try:
@@ -4052,6 +4056,9 @@ def get_engineering_survey_query_records(
                 # ---------------------------------------------
                 # 原始位置
                 # ---------------------------------------------
+                "single_stake_value": row["single_stake_value"],
+                "start_stake_value": row["start_stake_value"],
+                "end_stake_value": row["end_stake_value"],
                 "single_stake_text": (
                     single_stake
                 ),
@@ -4076,7 +4083,7 @@ def get_engineering_survey_query_records(
                 # 表单业务数据
                 # ---------------------------------------------
                 "record_data": (
-                    record_data
+                    normalize_stake_fields(record_data)
                 ),
 
                 "overall_grade": (
@@ -4280,6 +4287,9 @@ def create_engineering_survey(
     两步处于同一个 SQLite 事务中。
     任意一步失败时，全部回滚。
     """
+    from shared.protocol.stake import normalize_stake_parts, normalize_stake_fields
+    single_stake_text, single_stake_value = normalize_stake_parts(single_stake_text, single_stake_value)
+    record_data = normalize_stake_fields(record_data or {})
 
     if not asset_name or not asset_name.strip():
         raise ValueError("工程名称不能为空。")
@@ -4567,6 +4577,10 @@ def create_range_engineering_survey(
     第一次保存区间型工程调查时，
     同时创建 EngineeringAsset 和 SurveyRecord。
     """
+    from shared.protocol.stake import normalize_stake_parts, normalize_stake_fields
+    start_stake_text, start_stake_value = normalize_stake_parts(start_stake_text, start_stake_value)
+    end_stake_text, end_stake_value = normalize_stake_parts(end_stake_text, end_stake_value)
+    record_data = normalize_stake_fields(record_data or {})
 
     if not asset_name or not asset_name.strip():
         raise ValueError("工程名称不能为空。")
@@ -4815,6 +4829,8 @@ def complete_engineering_survey_record(
         raise ValueError("当前调查表没有配置" "有效的评价等级。")
 
     with get_connection() as connection:
+        from services.survey_record_editability import require_survey_record_editable
+        require_survey_record_editable(survey_record_id, connection=connection)
         record = connection.execute(
             """
             SELECT
@@ -5040,6 +5056,8 @@ def delete_engineering_survey_record(
     """
 
     with get_connection() as connection:
+        from services.survey_record_editability import require_survey_record_editable
+        require_survey_record_editable(survey_record_id, connection=connection)
         record = connection.execute(
             """
             SELECT
@@ -5339,6 +5357,9 @@ def update_point_engineering_survey(
     - 业务编号；
     - 调查表类型。
     """
+    from shared.protocol.stake import normalize_stake_parts, normalize_stake_fields
+    single_stake_text, single_stake_value = normalize_stake_parts(single_stake_text, single_stake_value)
+    record_data = normalize_stake_fields(record_data or {})
 
     if not asset_name or not asset_name.strip():
         raise ValueError("工程名称不能为空。")
@@ -5349,6 +5370,8 @@ def update_point_engineering_survey(
     )
 
     with get_connection() as connection:
+        from services.survey_record_editability import require_survey_record_editable
+        require_survey_record_editable(survey_record_id, connection=connection)
         record = connection.execute(
             """
             SELECT
@@ -5741,6 +5764,10 @@ def update_range_engineering_survey(
     附表2.1等需要修改工程归属时，
     可以显式传入新的值。
     """
+    from shared.protocol.stake import normalize_stake_parts, normalize_stake_fields
+    start_stake_text, start_stake_value = normalize_stake_parts(start_stake_text, start_stake_value)
+    end_stake_text, end_stake_value = normalize_stake_parts(end_stake_text, end_stake_value)
+    record_data = normalize_stake_fields(record_data or {})
 
     if not asset_name or not asset_name.strip():
         raise ValueError("工程名称不能为空。")
@@ -5751,6 +5778,8 @@ def update_range_engineering_survey(
     )
 
     with get_connection() as connection:
+        from services.survey_record_editability import require_survey_record_editable
+        require_survey_record_editable(survey_record_id, connection=connection)
         record = connection.execute(
             """
             SELECT
@@ -5991,6 +6020,7 @@ def get_engineering_assets(
                 ea.asset_name,
                 ea.asset_type,
 
+                ea.single_stake_value, ea.start_stake_value, ea.end_stake_value,
                 ea.single_stake_text,
                 ea.start_stake_text,
                 ea.end_stake_text,
@@ -6109,7 +6139,9 @@ def get_engineering_assets(
             WHERE ea.project_id = ?
 
             ORDER BY
-                ea.business_code,
+                canal.name,
+                COALESCE(ea.start_stake_value, ea.single_stake_value, 1e100),
+                COALESCE(ea.end_stake_value, ea.single_stake_value, 1e100),
                 ea.id
             """,
             (

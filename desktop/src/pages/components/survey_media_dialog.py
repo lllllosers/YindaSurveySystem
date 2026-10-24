@@ -109,10 +109,12 @@ class MediaMetadataDialog(QDialog):
         self.setWindowTitle(
             "编辑影像信息"
         )
-        self.resize(520, 430)
+        from pages.components.window_geometry import fit_window_to_screen
+        fit_window_to_screen(self, 520, 430)
 
         self._init_ui()
         self._load_values()
+        fit_window_to_screen(self, 520, 430)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -371,6 +373,8 @@ class SurveyMediaDialog(QDialog):
         )
 
         self._init_ui()
+        from pages.components.window_geometry import fit_window_to_screen
+        fit_window_to_screen(self, 1160, 680)
         self.load_data()
 
     def _init_ui(self):
@@ -470,6 +474,13 @@ class SurveyMediaDialog(QDialog):
         refresh_button.clicked.connect(
             self.load_data
         )
+
+        from services.survey_record_editability import is_survey_record_locally_editable, READ_ONLY_MESSAGE
+        editable = is_survey_record_locally_editable(self.survey_record_id)
+        for button in (import_button, edit_button, delete_button):
+            button.setEnabled(editable)
+            if not editable:
+                button.setToolTip(READ_ONLY_MESSAGE)
 
         button_row.addWidget(
             import_button
@@ -704,6 +715,9 @@ class SurveyMediaDialog(QDialog):
         return None
 
     def import_files(self):
+        from services.survey_record_editability import is_survey_record_locally_editable
+        if not is_survey_record_locally_editable(self.survey_record_id):
+            return
         file_paths, _ = (
             QFileDialog.getOpenFileNames(
                 self,
@@ -796,6 +810,9 @@ class SurveyMediaDialog(QDialog):
             )
 
     def edit_selected(self):
+        from services.survey_record_editability import is_survey_record_locally_editable
+        if not is_survey_record_locally_editable(self.survey_record_id):
+            return
         media = self._selected_media()
 
         if media is None:
@@ -884,6 +901,9 @@ class SurveyMediaDialog(QDialog):
             )
 
     def delete_selected(self):
+        from services.survey_record_editability import is_survey_record_locally_editable
+        if not is_survey_record_locally_editable(self.survey_record_id):
+            return
         media = self._selected_media()
 
         if media is None:

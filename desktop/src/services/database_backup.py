@@ -10,17 +10,18 @@ BACKUP_DIR = DATA_DIR / "backups"
 MAX_BACKUPS = 20
 
 
-def _get_backup_files():
+def _get_backup_files(backup_dir=None):
     """
     获取已有数据库备份，
     按修改时间从新到旧排列。
     """
 
-    if not BACKUP_DIR.exists():
+    backup_dir = Path(backup_dir) if backup_dir is not None else BACKUP_DIR
+    if not backup_dir.exists():
         return []
 
     return sorted(
-        BACKUP_DIR.glob("yinda_survey_*.db"),
+        backup_dir.glob("yinda_survey_*.db"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -45,14 +46,15 @@ def _database_changed_since_last_backup():
     return DB_PATH.stat().st_mtime > latest_backup.stat().st_mtime
 
 
-def _cleanup_old_backups():
+def _cleanup_old_backups(backup_dir=None):
     """
     只保留最近 MAX_BACKUPS 份备份。
     """
 
-    backup_files = _get_backup_files()
+    backup_files = _get_backup_files(backup_dir)
 
-    for old_backup in backup_files[MAX_BACKUPS:]:
+    regular_backups = [path for path in backup_files if "_upgrade" not in path.stem]
+    for old_backup in regular_backups[MAX_BACKUPS:]:
         try:
             old_backup.unlink()
         except OSError:
@@ -63,6 +65,8 @@ def _cleanup_old_backups():
 def create_database_backup(
     reason="auto",
     skip_if_unchanged=True,
+    database_path=None,
+    backup_dir=None,
 ):
     """
     创建 SQLite 数据库备份。
@@ -75,16 +79,20 @@ def create_database_backup(
         None -> 无需备份
     """
 
-    if not DB_PATH.exists():
+    database_path = Path(database_path) if database_path is not None else DB_PATH
+    backup_dir = Path(backup_dir) if backup_dir is not None else BACKUP_DIR
+    if not database_path.exists():
         return None
 
-    if DB_PATH.stat().st_size <= 0:
+    if database_path.stat().st_size <= 0:
         return None
 
-    if skip_if_unchanged and not _database_changed_since_last_backup():
-        return None
+    if skip_if_unchanged:
+        backups = _get_backup_files(backup_dir)
+        if backups and database_path.stat().st_mtime <= backups[0].stat().st_mtime:
+            return None
 
-    BACKUP_DIR.mkdir(
+    backup_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
@@ -98,7 +106,7 @@ def create_database_backup(
     if not safe_reason:
         safe_reason = "auto"
 
-    backup_path = BACKUP_DIR / (f"yinda_survey_" f"{timestamp}_" f"{safe_reason}.db")
+    backup_path = backup_dir / (f"yinda_survey_" f"{timestamp}_" f"{safe_reason}.db")
 
     source_connection = None
     backup_connection = None
@@ -108,7 +116,7 @@ def create_database_backup(
     # =========================
 
     try:
-        source_connection = sqlite3.connect(DB_PATH)
+        source_connection = sqlite3.connect(database_path)
 
         backup_connection = sqlite3.connect(backup_path)
 
@@ -179,7 +187,7 @@ def create_database_backup(
     # 4. 清理旧备份
     # =========================
 
-    _cleanup_old_backups()
+    _cleanup_old_backups(backup_dir)
 
     return backup_path
 

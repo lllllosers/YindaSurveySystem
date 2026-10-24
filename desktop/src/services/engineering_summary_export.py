@@ -67,6 +67,10 @@ def _resolve_binding(
 ):
     """解析 SummaryColumnDefinition 的声明式值绑定。"""
 
+    from shared.protocol.stake import normalize_stake_fields
+    record = normalize_stake_fields(record)
+    record_data = normalize_stake_fields(record_data)
+
     if binding.source == "query_record":
         values = [
             summary_record[key]

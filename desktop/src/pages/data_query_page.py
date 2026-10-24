@@ -22,6 +22,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pages.components.stake_table_item import StakeTableItem, stake_sort_key
+from services.survey_result_changes import latest_record_changes, change_label, changed_record_ids
+
 from database import (
     get_current_context,
     get_engineering_survey_query_records,
@@ -68,6 +71,8 @@ class DataQueryPage(QWidget):
 
         self.current_context = None
 
+        self.result_import_id = None
+        self._import_record_ids = None
         self.all_records = []
         self.filtered_records = []
 
@@ -319,7 +324,7 @@ class DataQueryPage(QWidget):
             self._update_open_record_button
         )
 
-        self.table.setColumnCount(13)
+        self.table.setColumnCount(14)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -336,6 +341,7 @@ class DataQueryPage(QWidget):
                 "状态",
                 "影像",
                 "修改时间",
+                "成果变化",
             ]
         )
 
@@ -368,6 +374,9 @@ class DataQueryPage(QWidget):
                 index,
                 width,
             )
+
+        self.table.setColumnWidth(13, 175)
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
         root_layout.addWidget(
             self.table,
@@ -608,6 +617,8 @@ class DataQueryPage(QWidget):
         result = []
 
         for record in self.all_records:
+            if self._import_record_ids is not None and record["survey_record_id"] not in self._import_record_ids:
+                continue
             if batch_id is not None and record["survey_batch_id"] != batch_id:
                 continue
 
@@ -669,8 +680,21 @@ class DataQueryPage(QWidget):
         self._render_records(result)
 
         self._update_statistics(result)
+        if self.result_import_id is not None:
+            self.statistics_label.setText(
+                f"接收批次 #{self.result_import_id} 本次新增/更新（重置可查看全部）  |  "
+                + self.statistics_label.text()
+            )
+
+    def show_import_changes(self, result_import_id):
+        self.reset_filters()
+        self.result_import_id = int(result_import_id)
+        self._import_record_ids = changed_record_ids(result_import_id)
+        self.apply_filters()
 
     def reset_filters(self):
+        self.result_import_id = None
+        self._import_record_ids = None
         self.keyword_edit.clear()
 
         for combo in (
@@ -696,6 +720,8 @@ class DataQueryPage(QWidget):
         self,
         records,
     ):
+        changes = latest_record_changes()
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(records))
 
         for row_index, record in enumerate(records):
@@ -732,10 +758,12 @@ class DataQueryPage(QWidget):
                 status_text,
                 media_text,
                 record["updated_at"],
+                change_label(changes.get(record["survey_record_id"])),
             ]
 
             for column, value in enumerate(values):
-                item = QTableWidgetItem(str(value or ""))
+                item = (StakeTableItem(str(value or ""), stake_sort_key(record))
+                        if column == 7 else QTableWidgetItem(str(value or "")))
 
                 if incomplete_chainage:
                     item.setBackground(QBrush(QColor(255, 244, 204)))
@@ -759,6 +787,7 @@ class DataQueryPage(QWidget):
                     item,
                 )
 
+        self.table.setSortingEnabled(True)
         self._update_open_record_button()
 
     def _selected_record_identity(self):

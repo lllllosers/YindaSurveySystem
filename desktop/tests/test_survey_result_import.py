@@ -372,6 +372,9 @@ class SurveyResultImportTestCase(
             b"stage-12-7-media"
         )
 
+        from tests.local_task_fixture import receive_workspace_for_record
+        receive_workspace_for_record(self.source_record_id)
+
         import_survey_media(
             survey_record_id=(
                 self.source_record_id
@@ -382,6 +385,10 @@ class SurveyResultImportTestCase(
             media_role="overview",
             sequence_no=1,
         )
+
+        # Model a V1.2.0 source baseline for the existing incremental fixtures.
+        with database.get_connection() as connection:
+            connection.execute("UPDATE survey_records SET revision_no=1 WHERE id=?", (self.source_record_id,))
 
         export_survey_result_package(
             SurveyResultExportRequest(

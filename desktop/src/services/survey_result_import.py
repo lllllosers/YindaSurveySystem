@@ -16,6 +16,7 @@ from services.database_backup import (
 )
 from services.survey_result_import_preflight import (
     preflight_survey_result_import,
+    _media_signature,
 )
 from services.survey_result_package_reader import (
     load_survey_result_package,
@@ -98,6 +99,21 @@ def ensure_survey_result_import_schema():
                 imported_at,
                 id
             );
+
+            CREATE TABLE IF NOT EXISTS survey_result_import_record_changes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_import_id INTEGER NOT NULL REFERENCES survey_result_imports(id),
+                survey_record_uid TEXT NOT NULL,
+                change_type TEXT NOT NULL CHECK (change_type IN ('new', 'updated', 'existing', 'stale')),
+                incoming_revision_no INTEGER NOT NULL,
+                UNIQUE (result_import_id, survey_record_uid)
+            );
+            CREATE INDEX IF NOT EXISTS idx_result_record_changes_import
+                ON survey_result_import_record_changes(result_import_id);
+            CREATE INDEX IF NOT EXISTS idx_result_record_changes_record
+                ON survey_result_import_record_changes(survey_record_uid);
+            CREATE INDEX IF NOT EXISTS idx_result_record_changes_type
+                ON survey_result_import_record_changes(change_type);
             """
         )
 
@@ -1486,6 +1502,13 @@ def _insert_media(
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?
         )
+        ON CONFLICT(media_uid) DO UPDATE SET
+            media_kind=excluded.media_kind, media_role=excluded.media_role,
+            item_code=excluded.item_code, part_name=excluded.part_name,
+            sequence_no=excluded.sequence_no, original_filename=excluded.original_filename,
+            stored_relative_path=excluded.stored_relative_path, file_sha256=excluded.file_sha256,
+            file_size=excluded.file_size, captured_at=excluded.captured_at,
+            notes=excluded.notes, updated_at=excluded.updated_at
         """,
         (
             item[
@@ -1874,8 +1897,12 @@ def import_survey_result_package(
                 "pre_result_import"
             ),
             skip_if_unchanged=False,
+            database_path=database.DB_PATH,
+            backup_dir=database.DATA_DIR / "backups",
         )
     )
+    if backup_path is None:
+        raise RuntimeError("成果接收前数据库备份未生成，已停止导入。")
 
     staging_root = (
         database.DATA_DIR
@@ -1884,9 +1911,7 @@ def import_survey_result_package(
     )
 
     if staging_root.exists():
-        shutil.rmtree(
-            staging_root
-        )
+        raise ValueError("成果包暂存目录已存在，请先检查其中的影像恢复副本：" + str(staging_root))
 
     staging_root.mkdir(
         parents=True,
@@ -1894,48 +1919,16 @@ def import_survey_result_package(
     )
 
     installed_files = []
+    replaced_files = []
+    record_changes = []
+    committed = False
     managed_package_path = None
 
     try:
-        with database.get_connection() as connection:
-            existing_media_uids = set()
-
-            for media in contents.survey_media:
-                media_uid = _clean_text(
-                    media.get(
-                        "media_uid"
-                    )
-                )
-
-                current = (
-                    _load_existing_media_row(
-                        connection,
-                        media_uid,
-                    )
-                )
-
-                if current is not None:
-                    _verify_existing_media_file(
-                        current
-                    )
-                    existing_media_uids.add(
-                        media_uid
-                    )
-
-            new_media_uids = {
-                _clean_text(
-                    media.get(
-                        "media_uid"
-                    )
-                )
-                for media in contents.survey_media
-                if _clean_text(
-                    media.get(
-                        "media_uid"
-                    )
-                )
-                not in existing_media_uids
-            }
+        new_media_uids = {
+            media["media_uid"] for media in contents.survey_media
+            if media["survey_record_uid"] not in preflight.record_stale_uids
+        }
 
         staged_media = (
             _stage_new_media(
@@ -2003,6 +1996,15 @@ def import_survey_result_package(
             connection.execute(
                 "BEGIN IMMEDIATE"
             )
+
+            locked_preflight = preflight_survey_result_import(package_path)
+            if (not locked_preflight.can_import
+                or locked_preflight.record_update_uids != preflight.record_update_uids
+                or locked_preflight.record_stale_uids != preflight.record_stale_uids
+                or locked_preflight.asset_update_uids != preflight.asset_update_uids
+                or locked_preflight.asset_stale_uids != preflight.asset_stale_uids
+                or locked_preflight.new_records != preflight.new_records):
+                raise ValueError("目标数据在预检后发生变化，请重新检查成果包。")
 
             current_workspace_ids = (
                 _suspend_current_task_workspace(
@@ -2091,6 +2093,11 @@ def import_survey_result_package(
                             uid,
                         )
                     )
+
+                    change_type = ("new" if record_id is None else
+                                   "stale" if uid in record_stale_uids else
+                                   "updated" if uid in record_update_uids else "existing")
+                    record_changes.append((uid, change_type, _incoming_revision(item)))
 
                     if record_id is None:
                         asset_uid = _clean_text(
@@ -2239,110 +2246,66 @@ def import_survey_result_package(
                         )
                         imported_inspections += 1
 
-                for item in (
-                    contents.survey_media
-                ):
-                    media_uid = _clean_text(
-                        item[
-                            "media_uid"
-                        ]
-                    )
+                def retire_file(path, record_id):
+                    path = Path(path).resolve()
+                    # Only this accepted record's managed directory can be touched.
+                    expected = (database.DATA_DIR / "media" / f"project_{project_id}" /
+                                f"batch_{batch_id}" / f"record_{record_id}").resolve()
+                    if not path.is_relative_to(expected):
+                        raise ValueError("影像托管路径超出当前记录目录，拒绝替换。")
+                    if path.exists():
+                        saved = staging_root / "previous_files" / str(len(replaced_files))
+                        saved.parent.mkdir(parents=True, exist_ok=True)
+                        os.replace(path, saved)
+                        replaced_files.append((path, saved))
 
-                    existing = (
-                        _load_existing_media_row(
-                            connection,
-                            media_uid,
-                        )
-                    )
+                media_by_record = {}
+                for item in contents.survey_media:
+                    media_by_record.setdefault(item["survey_record_uid"], {})[item["media_uid"]] = item
 
-                    if existing is not None:
-                        _verify_existing_media_file(
-                            existing
-                        )
-                        existing_media += 1
+                for record_uid, record_id in record_id_by_uid.items():
+                    if record_uid in record_stale_uids:
                         continue
-
-                    record_uid = _clean_text(
-                        item[
-                            "survey_record_uid"
-                        ]
-                    )
-
-                    record_id = (
-                        record_id_by_uid.get(
-                            record_uid
+                    incoming = media_by_record.get(record_uid, {})
+                    current_rows = connection.execute(
+                        "SELECT * FROM survey_media WHERE survey_record_id=?", (record_id,)
+                    ).fetchall()
+                    current = {row["media_uid"]: row for row in current_rows}
+                    for uid, row in current.items():
+                        if uid not in incoming:
+                            retire_file(database.DATA_DIR / row["stored_relative_path"], record_id)
+                            connection.execute("DELETE FROM survey_media WHERE id=?", (row["id"],))
+                    for uid, item in incoming.items():
+                        row = current.get(uid)
+                        if row is not None:
+                            local_item = dict(row)
+                            local_item["survey_record_uid"] = record_uid
+                            if _media_signature(local_item) == _media_signature(item):
+                                try:
+                                    _verify_existing_media_file(row)
+                                except (OSError, ValueError):
+                                    pass
+                                else:
+                                    existing_media += 1
+                                    continue
+                        staged = staged_media[uid]
+                        relative, final = _build_media_target(
+                            project_id=project_id, batch_id=batch_id,
+                            survey_record_id=record_id, media_uid=uid, suffix=staged["suffix"],
                         )
-                        or _lookup_record_id(
-                            connection,
-                            record_uid,
-                        )
-                    )
-
-                    if record_id is None:
-                        raise ValueError(
-                            "影像引用的调查记录"
-                            "无法在目标数据库定位："
-                            f"{record_uid}"
-                        )
-
-                    staged_info = (
-                        staged_media.get(
-                            media_uid
-                        )
-                    )
-
-                    if staged_info is None:
-                        raise ValueError(
-                            "没有找到已经暂存的成果影像："
-                            f"{media_uid}"
-                        )
-
-                    (
-                        relative_path,
-                        final_path,
-                    ) = _build_media_target(
-                        project_id=(
-                            project_id
-                        ),
-                        batch_id=(
-                            batch_id
-                        ),
-                        survey_record_id=(
-                            record_id
-                        ),
-                        media_uid=(
-                            media_uid
-                        ),
-                        suffix=(
-                            staged_info[
-                                "suffix"
-                            ]
-                        ),
-                    )
-
-                    _install_staged_media_file(
-                        staged_info[
-                            "path"
-                        ],
-                        final_path,
-                    )
-
-                    installed_files.append(
-                        final_path
-                    )
-
-                    _insert_media(
-                        connection,
-                        item,
-                        survey_record_id=(
-                            record_id
-                        ),
-                        stored_relative_path=(
-                            relative_path.as_posix()
-                        ),
-                    )
-
-                    imported_media += 1
+                        # Validated incoming bytes repair missing/corrupt targets.
+                        if row is not None:
+                            retire_file(database.DATA_DIR / row["stored_relative_path"], record_id)
+                        if final.exists():
+                            retire_file(final, record_id)
+                        _install_staged_media_file(staged["path"], final)
+                        installed_files.append(final)
+                        _insert_media(connection, item, survey_record_id=record_id,
+                                      stored_relative_path=relative.as_posix())
+                        if row is None:
+                            imported_media += 1
+                        else:
+                            existing_media += 1
 
                 os.replace(
                     staged_package,
@@ -2453,6 +2416,13 @@ def import_survey_result_package(
                     ),
                 )
 
+                import_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                connection.executemany(
+                    "INSERT INTO survey_result_import_record_changes "
+                    "(result_import_id, survey_record_uid, change_type, incoming_revision_no) VALUES (?, ?, ?, ?)",
+                    [(import_id, uid, kind, revision) for uid, kind, revision in record_changes],
+                )
+
                 _restore_current_task_workspace(
                     connection,
                     current_workspace_ids,
@@ -2469,6 +2439,7 @@ def import_survey_result_package(
                 )
                 raise
 
+        committed = True
         return SurveyResultImportResult(
             package_path=(
                 package_path
@@ -2540,10 +2511,18 @@ def import_survey_result_package(
             except OSError:
                 pass
 
+        restoration_errors = []
+        for original, saved in reversed(replaced_files):
+            try:
+                os.replace(saved, original)
+            except OSError as error:
+                restoration_errors.append(str(error))
+        if restoration_errors:
+            raise RuntimeError("影像回滚失败，恢复副本保留在 " + str(staging_root) + ": " + "; ".join(restoration_errors))
         raise
 
     finally:
-        if staging_root.exists():
+        if staging_root.exists() and (committed or not any(saved.exists() for _, saved in replaced_files)):
             shutil.rmtree(
                 staging_root,
                 ignore_errors=True,

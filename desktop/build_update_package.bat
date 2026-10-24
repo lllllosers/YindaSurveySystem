@@ -19,9 +19,9 @@ set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 
 if not "%EXIT_CODE%"=="0" (
-    echo [FAILED] V1.1.1 to V1.2.0 update package build failed.
+    echo [FAILED] V1.2.0 to V1.2.1 update package build failed.
 ) else (
-    echo [SUCCESS] V1.1.1 to V1.2.0 update package build finished.
+    echo [SUCCESS] V1.2.0 to V1.2.1 update package build finished.
 )
 
 echo.

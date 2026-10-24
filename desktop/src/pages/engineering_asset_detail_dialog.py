@@ -48,7 +48,8 @@ class EngineeringAssetDetailDialog(QDialog):
         self.engineering_asset_id = engineering_asset_id
 
         self.setWindowTitle("工程详情")
-        self.resize(1000, 650)
+        from pages.components.window_geometry import fit_window_to_screen
+        fit_window_to_screen(self, 1000, 650)
 
         self.init_ui()
         self.load_data()
@@ -268,15 +269,17 @@ class EngineeringAssetDetailDialog(QDialog):
             asset["canal_level"] or "",
         )
 
-        if asset["single_stake_text"]:
-            stake_text = asset["single_stake_text"]
-
-        elif asset["start_stake_text"] or asset["end_stake_text"]:
+        from shared.protocol.stake import normalize_stake_fields
+        asset = normalize_stake_fields(asset)
+        if asset["start_stake_text"] or asset["end_stake_text"]:
             stake_text = (
                 f"{asset['start_stake_text'] or ''}"
                 " ～ "
                 f"{asset['end_stake_text'] or ''}"
             )
+
+        elif asset["single_stake_text"]:
+            stake_text = asset["single_stake_text"]
 
         else:
             stake_text = ""

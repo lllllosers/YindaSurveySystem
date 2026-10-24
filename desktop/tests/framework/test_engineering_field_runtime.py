@@ -239,13 +239,13 @@ class EngineeringFieldRuntimeTestCase(unittest.TestCase):
 
         self.assertEqual(
             runtime.get_value(),
-            "CH12+350",
+            "CH12+350.000",
         )
 
         self.assertEqual(
             runtime.get_stake_parts(),
             (
-                "CH12+350",
+                "CH12+350.000",
                 12350.0,
             ),
         )

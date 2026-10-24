@@ -105,9 +105,9 @@ class Forms21To24GenericPageTestCase(
                 position_data,
                 {
                     "kind": "range",
-                    "start_stake_text": ("CH10+000"),
+                    "start_stake_text": ('CH10+000.000'),
                     "start_stake_value": (10000.0),
-                    "end_stake_text": ("CH11+250"),
+                    "end_stake_text": ('CH11+250.000'),
                     "end_stake_value": (11250.0),
                 },
             )

@@ -940,6 +940,10 @@ class EngineeringSurveyListPage(QWidget):
             return
 
         survey_record_id = int(selected_record["survey_record_id"])
+        from services.survey_record_editability import is_survey_record_locally_editable, READ_ONLY_MESSAGE
+        if not is_survey_record_locally_editable(survey_record_id):
+            QMessageBox.information(self, "下级成果只读", READ_ONLY_MESSAGE)
+            return
 
         business_code = str(selected_record["business_code"] or "")
 

@@ -191,13 +191,10 @@ def _prepare_plan(rows):
         start_value = row.get("start_stake_value")
         end_value = row.get("end_stake_value")
 
-        if single_value is not None:
-            position = float(single_value)
-            secondary = position
-        elif start_value is not None:
+        if start_value is not None:
             position = float(start_value)
             secondary = float(end_value) if end_value is not None else position
-            if end_value is not None and float(end_value) <= float(start_value):
+            if end_value is not None and float(end_value) < float(start_value):
                 issues.append(
                     EngineeringNumberingIssue(
                         code="RANGE_STAKE_REVERSED",
@@ -206,6 +203,9 @@ def _prepare_plan(rows):
                     )
                 )
                 continue
+        elif single_value is not None:
+            position = float(single_value)
+            secondary = position
         else:
             issues.append(
                 EngineeringNumberingIssue(
@@ -343,6 +343,15 @@ def renumber_engineering_business_codes(*, project_id, survey_batch_id):
             project_id=project_id,
             survey_batch_id=survey_batch_id,
         )
+        from services.survey_record_editability import require_survey_record_editable
+        for row in rows:
+            records = connection.execute(
+                "SELECT id FROM survey_records WHERE engineering_asset_id=? AND survey_batch_id=? AND record_status!='void'",
+                (row["engineering_asset_id"], survey_batch_id),
+            ).fetchall()
+            for record in records:
+                require_survey_record_editable(record["id"], connection=connection)
+
         assignments, issues = _prepare_plan(rows)
 
         if issues:

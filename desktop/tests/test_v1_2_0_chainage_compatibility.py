@@ -124,7 +124,7 @@ class V120ChainageCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(record['updated_at'], '2026-09-20 11:00:00')
         rows = database.get_engineering_survey_query_records(project_id=project_id, survey_batch_id=batch_id, form_code='form_2_2')
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]['engineering_position'], 'CH12+350')
+        self.assertEqual(rows[0]['engineering_position'], 'CH12+350.000')
         self.assertTrue(rows[0]['chainage_incomplete'])
 
 if __name__ == '__main__':

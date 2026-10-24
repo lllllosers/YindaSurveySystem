@@ -218,7 +218,7 @@ class TunnelWorkflowTestCase(
 
         self.assertEqual(
             asset["start_stake_text"],
-            "K20+000",
+            "CH20+000.000",
         )
 
         self.assertAlmostEqual(
@@ -228,7 +228,7 @@ class TunnelWorkflowTestCase(
 
         self.assertEqual(
             asset["end_stake_text"],
-            "K21+200",
+            "CH21+200.000",
         )
 
         self.assertAlmostEqual(
@@ -318,12 +318,12 @@ class TunnelWorkflowTestCase(
 
         self.assertEqual(
             updated_record["start_stake_text"],
-            "K20+500",
+            "CH20+500.000",
         )
 
         self.assertEqual(
             updated_record["end_stake_text"],
-            "K21+800",
+            "CH21+800.000",
         )
 
         self.assertEqual(
@@ -511,12 +511,12 @@ class TunnelWorkflowTestCase(
 
         self.assertEqual(
             worksheet["G2"].value,
-            "K20+000",
+            "CH20+000.000",
         )
 
         self.assertEqual(
             worksheet["H2"].value,
-            "K21+200",
+            "CH21+200.000",
         )
 
         self.assertEqual(
@@ -569,7 +569,7 @@ class TunnelWorkflowTestCase(
 
         self.assertEqual(
             worksheet["F5"].value,
-            "K20+000～K21+200",
+            "CH20+000.000～CH21+200.000",
         )
 
         self.assertEqual(

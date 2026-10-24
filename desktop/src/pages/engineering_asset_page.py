@@ -17,6 +17,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pages.components.stake_table_item import StakeTableItem, stake_sort_key
+from services.survey_result_changes import latest_record_changes, change_label
+from shared.protocol.stake import display_stake
+
 from database import (
     get_current_context,
     get_engineering_assets,
@@ -145,7 +149,7 @@ class EngineeringAssetPage(QWidget):
             self.update_action_buttons
         )
 
-        self.table.setColumnCount(14)
+        self.table.setColumnCount(15)
 
         self.table.setHorizontalHeaderLabels(
             [
@@ -163,6 +167,7 @@ class EngineeringAssetPage(QWidget):
                 "影像",
                 "工程状态",
                 "编号状态",
+                "成果变化",
             ]
         )
 
@@ -190,6 +195,9 @@ class EngineeringAssetPage(QWidget):
         self.table.setColumnWidth(13, 100)
         self.table.horizontalHeader().setStretchLastSection(True)
 
+        self.table.setColumnWidth(14, 175)
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+
         layout.addWidget(
             self.table,
             1,
@@ -206,6 +214,8 @@ class EngineeringAssetPage(QWidget):
             survey_batch_id=self.current_context["batch_id"],
         )
 
+        changes = latest_record_changes()
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(assets))
 
         for row_index, asset in enumerate(assets):
@@ -214,9 +224,9 @@ class EngineeringAssetPage(QWidget):
                     asset["asset_type"]
                 )
             )
-            single_stake = str(asset["single_stake_text"] or "").strip()
-            start_stake = str(asset["start_stake_text"] or "").strip()
-            end_stake = str(asset["end_stake_text"] or "").strip()
+            single_stake = display_stake(asset["single_stake_text"])
+            start_stake = display_stake(asset["start_stake_text"])
+            end_stake = display_stake(asset["end_stake_text"])
 
             incomplete_chainage = not bool(start_stake and end_stake)
 
@@ -308,8 +318,11 @@ class EngineeringAssetPage(QWidget):
                 ),
             ]
 
+            values.append(change_label(changes.get(asset["survey_record_id"])))
+
             for column, value in enumerate(values):
-                item = QTableWidgetItem(str(value or ""))
+                item = (StakeTableItem(str(value or ""), stake_sort_key(dict(asset)))
+                        if column == 6 else QTableWidgetItem(str(value or "")))
 
                 if incomplete_chainage:
                     item.setBackground(QBrush(QColor(255, 244, 204)))
@@ -336,6 +349,8 @@ class EngineeringAssetPage(QWidget):
                     column,
                     item,
                 )
+
+        self.table.setSortingEnabled(True)
 
         provisional_count = sum(
             1

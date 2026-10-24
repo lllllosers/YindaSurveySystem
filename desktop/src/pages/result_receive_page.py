@@ -32,6 +32,7 @@ from services.survey_result_import_history import (
 
 class ResultReceivePage(QWidget):
     result_imported = Signal(object)
+    view_import_changes_requested = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -193,7 +194,15 @@ class ResultReceivePage(QWidget):
             self.history_summary_label
         )
 
+        self.view_changes_button = QPushButton("查看本次新增/更新")
+        self.view_changes_button.setEnabled(False)
+        self.view_changes_button.clicked.connect(self._view_import_changes)
+        history_layout.addWidget(self.view_changes_button)
+
         self.history_table = QTableWidget()
+        self.history_table.itemSelectionChanged.connect(
+            lambda: self.view_changes_button.setEnabled(self.history_table.currentRow() >= 0)
+        )
         self.history_table.setColumnCount(
             8
         )
@@ -278,6 +287,12 @@ class ResultReceivePage(QWidget):
         )
 
         self.refresh_history()
+
+    def _view_import_changes(self):
+        row = self.history_table.currentRow()
+        if row >= 0:
+            item = self.history_table.item(row, 0)
+            self.view_import_changes_requested.emit(int(item.data(Qt.ItemDataRole.UserRole)))
 
     def _handle_result_imported(
         self,
@@ -503,6 +518,8 @@ class ResultReceivePage(QWidget):
                         value or ""
                     )
                 )
+
+                cell.setData(Qt.ItemDataRole.UserRole, item.import_id)
 
                 if column_index in (
                     3,

@@ -90,12 +90,9 @@ def format_stake_range_spaced(
     K10+000 ～ K11+000
     """
 
-    start_text = str(
-        start_stake or ""
-    ).strip()
-    end_text = str(
-        end_stake or ""
-    ).strip()
+    from shared.protocol.stake import display_stake
+    start_text = display_stake(start_stake)
+    end_text = display_stake(end_stake)
 
     if start_text and end_text:
         return (
@@ -114,12 +111,9 @@ def format_stake_range_compact(
     K20+000～K21+200
     """
 
-    start_text = str(
-        start_stake or ""
-    ).strip()
-    end_text = str(
-        end_stake or ""
-    ).strip()
+    from shared.protocol.stake import display_stake
+    start_text = display_stake(start_stake)
+    end_text = display_stake(end_stake)
 
     if start_text and end_text:
         return (

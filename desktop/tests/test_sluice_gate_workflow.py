@@ -614,7 +614,7 @@ class SluiceGateWorkflowTestCase(
         )
         self.assertEqual(
             worksheet["H5"].value,
-            "K6+500～K6+500",
+            "CH6+500.000～CH6+500.000",
         )
         self.assertEqual(
             worksheet["J5"].value,

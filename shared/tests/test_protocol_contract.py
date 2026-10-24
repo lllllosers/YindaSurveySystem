@@ -9,7 +9,7 @@ def test_shared_identity_and_code_examples_remain_stable() -> None:
         "d3f2f31e9c37ede995b19ab5a821792e"
     )
     assert build_business_code("1", "01", "03", "02", 1) == "1-01-03-02-001"
-    assert parse_stake("K12+350") == ("CH12+350", 12350.0)
+    assert parse_stake("K12+350") == ("CH12+350.000", 12350.0)
 
 def test_shared_revision_contract_covers_idempotency_and_divergence() -> None:
     assert classify_revision_values(

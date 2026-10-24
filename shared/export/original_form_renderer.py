@@ -9,6 +9,9 @@ def render_original_form(
     definition, *, template_root, output, record, record_data,
     evaluation_map, fill_header,
 ):
+    from shared.protocol.stake import normalize_stake_fields
+    record = normalize_stake_fields(record)
+    record_data = normalize_stake_fields(record_data)
     export = definition.original_form_export_definition
     if export is None:
         raise ValueError(f"{definition.form_code} 尚未配置正式原表定义。")

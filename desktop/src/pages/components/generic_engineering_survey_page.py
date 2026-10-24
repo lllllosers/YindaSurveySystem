@@ -1297,6 +1297,18 @@ class GenericEngineeringSurveyPage(QWidget):
         统一控制标题、按钮和状态提示。
         """
 
+        from services.survey_record_editability import is_survey_record_locally_editable, READ_ONLY_MESSAGE
+        editable = is_survey_record_locally_editable(self.editing_record_id)
+        self.form_container.setEnabled(editable)
+        self.save_shortcut.setEnabled(editable)
+        if not editable:
+            self.title_label.setText("查看下级调查成果（只读）")
+            self.save_button.setEnabled(False)
+            self.complete_button.setEnabled(False)
+            self.runtime_status_label.setText(READ_ONLY_MESSAGE)
+            self.runtime_status_label.setWordWrap(True)
+            return
+
         base_title = self.definition.display_name
 
         # =====================================================
@@ -1376,6 +1388,9 @@ class GenericEngineeringSurveyPage(QWidget):
         已完成记录保存修改前，
         必须继续满足完整的完成条件。
         """
+        from services.survey_record_editability import is_survey_record_locally_editable
+        if not is_survey_record_locally_editable(self.editing_record_id):
+            return None
 
         try:
             self._refresh_runtime_context()
@@ -1531,6 +1546,9 @@ class GenericEngineeringSurveyPage(QWidget):
         数据库 completed 转换仍由
         persistence/database 层负责。
         """
+        from services.survey_record_editability import is_survey_record_locally_editable
+        if not is_survey_record_locally_editable(self.editing_record_id):
+            return None
 
         try:
             if self.editing_record_status == "completed":

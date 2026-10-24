@@ -43,14 +43,18 @@ def _v120_upgrade_marker_path():
 
 
 def prepare_v120_upgrade_backup():
+    return _prepare_upgrade_backup("1.2.0", _V120_UPGRADE_BACKUP_REASON, _v120_upgrade_marker_path())
+
+
+def prepare_v121_upgrade_backup():
+    return _prepare_upgrade_backup("1.2.1", "pre_v1_2_1_upgrade", database_module.DATA_DIR / ".v1_2_1_upgrade_backup_complete")
+
+
+def _prepare_upgrade_backup(version, reason, marker_path):
     # V1.2.0 首次启动安全保护：
     # - 新数据库不创建空备份；
     # - 既有数据库在任何迁移前创建一次强制备份；
     # - 只有完整初始化成功后才写完成标记。
-
-    marker_path = (
-        _v120_upgrade_marker_path()
-    )
 
     if marker_path.exists():
         return {
@@ -77,55 +81,15 @@ def prepare_v120_upgrade_backup():
             "state": "fresh_database",
         }
 
-    original_data_dir = (
-        database_backup_module.DATA_DIR
+    backup_path = database_backup_module.create_database_backup(
+        reason=reason, skip_if_unchanged=False,
+        database_path=database_module.DB_PATH,
+        backup_dir=database_module.DATA_DIR / "backups",
     )
-    original_db_path = (
-        database_backup_module.DB_PATH
-    )
-    original_backup_dir = (
-        database_backup_module.BACKUP_DIR
-    )
-
-    try:
-        # 测试会动态替换 database.DATA_DIR / DB_PATH。
-        # database_backup 历史上持有自己的模块级路径，
-        # 因此仅在本次调用期间临时同步，finally 后恢复。
-        database_backup_module.DATA_DIR = (
-            database_module.DATA_DIR
-        )
-        database_backup_module.DB_PATH = (
-            database_module.DB_PATH
-        )
-        database_backup_module.BACKUP_DIR = (
-            database_module.DATA_DIR
-            / "backups"
-        )
-
-        backup_path = (
-            database_backup_module
-            .create_database_backup(
-                reason=(
-                    _V120_UPGRADE_BACKUP_REASON
-                ),
-                skip_if_unchanged=False,
-            )
-        )
-
-    finally:
-        database_backup_module.DATA_DIR = (
-            original_data_dir
-        )
-        database_backup_module.DB_PATH = (
-            original_db_path
-        )
-        database_backup_module.BACKUP_DIR = (
-            original_backup_dir
-        )
 
     if backup_path is None:
         raise RuntimeError(
-            "V1.2.0 升级前数据库备份未生成，"
+            f"V{version} 升级前数据库备份未生成，"
             "已停止启动以避免无备份迁移。"
         )
 
@@ -139,11 +103,15 @@ def prepare_v120_upgrade_backup():
 
 
 def mark_v120_upgrade_backup_complete():
-    # 仅在完整应用数据库初始化成功后写入一次性完成标记。
-    marker_path = (
-        _v120_upgrade_marker_path()
-    )
+    return _mark_upgrade_backup_complete("1.2.0", _v120_upgrade_marker_path())
 
+
+def mark_v121_upgrade_backup_complete():
+    return _mark_upgrade_backup_complete("1.2.1", database_module.DATA_DIR / ".v1_2_1_upgrade_backup_complete")
+
+
+def _mark_upgrade_backup_complete(version, marker_path):
+    # 仅在完整应用数据库初始化成功后写入一次性完成标记。
     marker_path.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -155,7 +123,7 @@ def mark_v120_upgrade_backup_complete():
 
     temp_path.write_text(
         (
-            "V1.2.0 upgrade bootstrap completed\n"
+            f"V{version} upgrade bootstrap completed\n"
             f"{datetime.now().isoformat(timespec='seconds')}\n"
         ),
         encoding="utf-8",
@@ -187,6 +155,8 @@ def initialize_application_database():
     v120_upgrade_backup_result = (
         prepare_v120_upgrade_backup()
     )
+
+    v121_upgrade_backup_result = prepare_v121_upgrade_backup()
 
     init_database()
     create_initial_forms()
@@ -220,8 +190,10 @@ def initialize_application_database():
     )
 
     mark_v120_upgrade_backup_complete()
+    mark_v121_upgrade_backup_complete()
 
     return {
+        "v1_2_1_upgrade_backup": v121_upgrade_backup_result,
         "v1_2_0_upgrade_backup": (
             v120_upgrade_backup_result
         ),

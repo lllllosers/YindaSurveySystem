@@ -198,7 +198,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             record["single_stake_text"],
-            "K30+500",
+            "CH30+500.000",
         )
 
         self.assertAlmostEqual(
@@ -224,7 +224,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             records[0]["engineering_position"],
-            "K30+500",
+            "CH30+500.000",
         )
 
     # =========================================================
@@ -317,7 +317,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             updated_record["single_stake_text"],
-            "K30+800",
+            "CH30+800.000",
         )
 
         self.assertEqual(
@@ -494,7 +494,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K33+500～K33+500",
+            "CH33+500.000～CH33+500.000",
         )
 
         self.assertEqual(
@@ -689,7 +689,7 @@ class CulvertWorkflowTestCase(
 
         self.assertEqual(
             worksheet["G2"].value,
-            "K35+600～K35+600",
+            "CH35+600.000～CH35+600.000",
         )
 
         self.assertEqual(

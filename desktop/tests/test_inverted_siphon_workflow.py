@@ -160,7 +160,7 @@ class InvertedSiphonWorkflowTestCase(
 
         self.assertEqual(
             record["engineering_position"],
-            "K10+500",
+            "CH10+500.000",
         )
 
         self.assertEqual(
@@ -201,7 +201,7 @@ class InvertedSiphonWorkflowTestCase(
 
         self.assertEqual(
             row["single_stake_text"],
-            "K10+500",
+            "CH10+500.000",
         )
 
         self.assertAlmostEqual(
@@ -283,7 +283,7 @@ class InvertedSiphonWorkflowTestCase(
 
         self.assertEqual(
             record["single_stake_text"],
-            "K10+500",
+            "CH10+500.000",
         )
 
         updated_data = dict(record["record_data"])
@@ -327,7 +327,7 @@ class InvertedSiphonWorkflowTestCase(
 
         self.assertEqual(
             updated_record["single_stake_text"],
-            "K10+800",
+            "CH10+800.000",
         )
 
         self.assertEqual(
@@ -817,7 +817,7 @@ class InvertedSiphonWorkflowTestCase(
 
         self.assertEqual(
             worksheet["H5"].value,
-            "K10+500～K10+500",
+            "CH10+500.000～CH10+500.000",
         )
 
         self.assertEqual(
