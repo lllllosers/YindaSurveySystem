@@ -369,18 +369,29 @@ def evaluate_preflight(db: Session, row: ResultSubmission, path: Path) -> Prefli
     return PreflightResult(tuple(issues), summary, documents, task)
 
 
-def run_preflight(db: Session, row: ResultSubmission, path: Path) -> PreflightResult:
-    if row.status == "imported":
-        raise WorkflowStateError("已经正式入库的成果不能重新预检。")
-    result = evaluate_preflight(db, row, path)
+def _save_preflight(row: ResultSubmission, result: PreflightResult) -> None:
     row.preflight_error_count = result.error_count
     row.preflight_warning_count = result.warning_count
     row.preflight_issues_json = [item.as_dict() for item in result.issues]
     row.preflight_summary_json = result.summary
     row.preflight_checked_at = datetime.now().astimezone()
-    row.status = "preflight_passed" if result.error_count == 0 else "conflict"
+    if result.error_count:
+        row.status = "conflict"
+        row.review_notes = None
+        row.reviewed_by_user_uid = None
+        row.reviewed_by_username = None
+        row.reviewed_at = None
+    elif row.status != "accepted":
+        row.status = "preflight_passed"
     if result.error_count == 0 and result.task is not None and result.task.status not in {"cancelled", "closed"}:
         result.task.status = "result_received"
+
+
+def run_preflight(db: Session, row: ResultSubmission, path: Path) -> PreflightResult:
+    if row.status == "imported":
+        raise WorkflowStateError("已经正式入库的成果不能重新预检。")
+    result = evaluate_preflight(db, row, path)
+    _save_preflight(row, result)
     db.commit()
     db.refresh(row)
     return result
@@ -417,6 +428,10 @@ def import_submission(db: Session, row: ResultSubmission, path: Path) -> dict[st
         raise WorkflowStateError("只有审核接收的成果才能正式入库。")
     preflight = evaluate_preflight(db, row, path)
     if preflight.error_count or preflight.documents is None:
+        # No formal data has been written. Persist the invalidated approval so
+        # resolving the conflict always requires a fresh preflight and review.
+        _save_preflight(row, preflight)
+        db.commit()
         raise WorkflowStateError("成果在入库前复检发现问题，请重新执行业务预检。")
     documents = preflight.documents
     changed_records: set[str] = set()

@@ -21,6 +21,7 @@ import {
   type ResultSubmission,
 } from "../api/results";
 import { useAuthStore } from "../stores/auth";
+import { resolveImportError } from "../api/resultImportOutcome";
 
 const route = useRoute();
 const router = useRouter();
@@ -29,6 +30,7 @@ const auth = useAuthStore();
 const loading = ref(false);
 const verifying = ref(false);
 const workflowBusy = ref(false);
+const importUnconfirmed = ref(false);
 const row = ref<ResultSubmission | null>(null);
 const verification = ref<ResultFileVerification | null>(null);
 
@@ -139,6 +141,7 @@ async function refresh() {
     row.value = await getResultSubmission(
       submissionUid.value,
     );
+    if (row.value.status === "imported") importUnconfirmed.value = false;
   } catch (error: any) {
     ElMessage.error(actionErrorMessage(error, "成果详情读取失败"));
   } finally {
@@ -223,6 +226,7 @@ async function review(decision: "accepted" | "rejected") {
 }
 
 async function importResult() {
+  if (workflowBusy.value || importUnconfirmed.value) return;
   try {
     await ElMessageBox.confirm(
       "入库前系统会再次核对调查范围和数据版本。确认将该成果纳入正式成果库？",
@@ -238,7 +242,12 @@ async function importResult() {
     await refresh();
     ElMessage.success(`入库完成：${result.records} 条调查记录`);
   } catch (error: any) {
-    ElMessage.error(actionErrorMessage(error, "成果入库失败"));
+    const outcome = await resolveImportError(error, () => getResultSubmission(submissionUid.value));
+    if (outcome.submission) row.value = outcome.submission;
+    importUnconfirmed.value = outcome.uncertain;
+    if (outcome.imported) ElMessage.success(outcome.message);
+    else if (outcome.uncertain) ElMessage.warning(outcome.message);
+    else ElMessage.error(outcome.message);
   } finally {
     workflowBusy.value = false;
   }
@@ -261,6 +270,14 @@ onMounted(refresh);
 </script>
 
 <template>
+  <el-alert
+    v-if="importUnconfirmed"
+    type="warning"
+    :closable="false"
+    title="入库结果尚未确认，请稍后刷新成果状态，勿重复提交。"
+  >
+    <el-button text :loading="loading" @click="refresh">刷新成果状态</el-button>
+  </el-alert>
   <div class="module-header">
     <div>
       <div class="eyebrow">成果质量核验</div>
@@ -319,6 +336,7 @@ onMounted(refresh);
         v-if="canImport && row?.status === 'accepted'"
         type="primary"
         :loading="workflowBusy"
+        :disabled="importUnconfirmed"
         @click="importResult"
       >
         正式入库

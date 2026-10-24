@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Literal
 
 from fastapi import (
@@ -42,6 +43,7 @@ router = APIRouter(
     prefix="/result-submissions",
     tags=["Result Submissions"],
 )
+logger = logging.getLogger(__name__)
 DbSession = Annotated[Session, Depends(get_db)]
 ResultReader = Annotated[
     User,
@@ -507,7 +509,11 @@ def import_submission(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         db.rollback()
-        raise
+        logger.exception("Formal result import failed: %s", submission_uid)
+        raise HTTPException(
+            status_code=500,
+            detail="成果入库未完成，数据已回滚。请联系管理员检查服务日志。",
+        ) from None
 
     request.state.audit_summary = "调查成果正式入库"
     request.state.audit_details = {

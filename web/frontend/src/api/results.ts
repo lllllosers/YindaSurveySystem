@@ -179,6 +179,8 @@ export async function importResultSubmission(
 ): Promise<ResultImportResult> {
   const response = await api.post<ResultImportResult>(
     `/result-submissions/${submissionUid}/import`,
+    undefined,
+    { timeout: 120000 },
   );
   return response.data;
 }

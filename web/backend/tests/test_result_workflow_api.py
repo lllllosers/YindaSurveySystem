@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import base64
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 from pathlib import Path
 import shutil
+from threading import Event
 import zipfile
 from uuid import uuid4
 
+import pytest
+
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from app.db.session import SessionLocal
+from app.db.session import engine
 from app.main import app
 from app.models.central_record import (
     CentralEngineeringAsset,
@@ -36,6 +42,8 @@ def create_project_batch_and_task(
     client: TestClient,
     csrf: str,
     token: str,
+    *,
+    department: bool = False,
 ) -> tuple[str, str, dict, object]:
     project = client.post(
         "/api/v1/projects",
@@ -69,8 +77,8 @@ def create_project_batch_and_task(
             "project_uid": project_uid,
             "survey_batch_uid": batch_uid,
             "task_name": "成果闭环正式协议测试",
-            "target_unit_type": "water_office",
-            "target_master_key": office.master_key,
+            "target_unit_type": "department" if department else "water_office",
+            "target_master_key": office.parent_master_key if department else office.master_key,
             "selected_management_scope_uids": [scope.stable_uid],
         },
     )
@@ -85,7 +93,13 @@ def make_formal_result_package(
     batch_uid: str,
     task_uid: str,
     scope,
+    record_count: int = 1,
+    media_count: int = 0,
+    media_uid_length: int = 36,
+    source_task_uids: tuple[str, ...] | None = None,
 ) -> tuple[bytes, str, str]:
+    source_task_uids = source_task_uids or (task_uid,)
+    single_source_task_uid = source_task_uids[0] if len(source_task_uids) == 1 else None
     package_uid = uuid4().hex
     result_uid = uuid4().hex
     asset_uid = uuid4().hex
@@ -157,12 +171,36 @@ def make_formal_result_package(
         "remark": None,
         "updated_at": created_at,
     }
+    assets, records, inspections, media = [], [], [], []
+    media_files = {}
+    for index in range(record_count):
+        next_asset_uid = asset_uid if index == 0 else uuid4().hex
+        next_record_uid = record_uid if index == 0 else uuid4().hex
+        assets.append({**asset, "engineering_asset_uid": next_asset_uid,
+                       "asset_name": asset["asset_name"] + (f"-{index}" if index else "")})
+        records.append({**record, "engineering_asset_uid": next_asset_uid, "survey_record_uid": next_record_uid,
+                        "source_task_uid": source_task_uids[index % len(source_task_uids)]})
+        inspections.append({**inspection, "survey_record_uid": next_record_uid})
+    for index in range(media_count):
+        uid = str(uuid4()) if media_uid_length == 36 else uuid4().hex
+        path = f"media/{uid}.png"
+        # A one pixel PNG, embedded so the fixture needs no image dependency.
+        content = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBZwAAAAASUVORK5CYII="
+        )
+        media_files[path] = content
+        media.append({
+            "media_uid": uid, "survey_record_uid": records[index % record_count]["survey_record_uid"],
+            "media_kind": "photo", "media_role": "overview", "item_code": None,
+            "part_name": None, "sequence_no": index + 1, "original_filename": f"photo-{index}.png",
+            "package_path": path, "file_sha256": sha256(content).hexdigest(), "file_size": len(content),
+        })
     result = {
         "result_schema_version": "2.2",
         "result_uid": result_uid,
         "result_name": "成果闭环测试包",
-        "source_task_uid": task_uid,
-        "source_task_uids": [task_uid],
+        "source_task_uid": single_source_task_uid,
+        "source_task_uids": list(source_task_uids),
         "submission_task_uid": task_uid,
         "project": {"project_uid": project_uid, "name": "测试项目", "short_name": "测试"},
         "survey_batch": {
@@ -175,19 +213,20 @@ def make_formal_result_package(
         "creator": "pytest",
         "notes": None,
         "counts": {
-            "engineering_assets": 1,
-            "survey_records": 1,
-            "inspection_results": 1,
-            "survey_media": 0,
+            "engineering_assets": len(assets),
+            "survey_records": len(records),
+            "inspection_results": len(inspections),
+            "survey_media": len(media),
         },
         "created_at": created_at,
     }
     payloads = {
         "result.json": encode_json(result),
-        "data/engineering_assets.json": encode_json({"items": [asset]}),
-        "data/survey_records.json": encode_json({"items": [record]}),
-        "data/inspection_results.json": encode_json({"items": [inspection]}),
-        "data/survey_media.json": encode_json({"items": []}),
+        "data/engineering_assets.json": encode_json({"items": assets}),
+        "data/survey_records.json": encode_json({"items": records}),
+        "data/inspection_results.json": encode_json({"items": inspections}),
+        "data/survey_media.json": encode_json({"items": media}),
+        **media_files,
     }
     manifest = {
         "package_uid": package_uid,
@@ -198,8 +237,8 @@ def make_formal_result_package(
         "app_version": "1.2.0",
         "app_version_label": "V1.2.0",
         "result_uid": result_uid,
-        "source_task_uid": task_uid,
-        "source_task_uids": [task_uid],
+        "source_task_uid": single_source_task_uid,
+        "source_task_uids": list(source_task_uids),
         "submission_task_uid": task_uid,
         "project_uid": project_uid,
         "survey_batch_uid": batch_uid,
@@ -218,6 +257,9 @@ def make_formal_result_package(
 
 def cleanup_workflow(submission_uid: str | None, task_uid: str | None, record_uid: str | None, asset_uid: str | None) -> None:
     with SessionLocal() as db:
+        if submission_uid:
+            for model in (CentralInspectionResult, CentralSurveyMedia, CentralSurveyRecord, CentralEngineeringAsset):
+                db.execute(delete(model).where(model.current_submission_uid == submission_uid))
         if record_uid:
             db.execute(delete(CentralInspectionResult).where(CentralInspectionResult.survey_record_uid == record_uid))
             db.execute(delete(CentralSurveyMedia).where(CentralSurveyMedia.survey_record_uid == record_uid))
@@ -386,3 +428,187 @@ def test_desktop_preflight_blocks_name_already_waiting_for_web_review() -> None:
         if project_uid:
             client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
         cleanup_test_user(admin.user_uid)
+
+
+@pytest.fixture
+def formal_media_submission():
+    admin = create_test_user("admin")
+    client = TestClient(app)
+    csrf = login_client(client, admin.username)
+    project_uid = batch_uid = task_uid = submission_uid = None
+    try:
+        project_uid, batch_uid, task, scope = create_project_batch_and_task(client, csrf, uuid4().hex[:8], department=True)
+        task_uid = task["task_uid"]
+
+        def upload(uid_length=36):
+            nonlocal submission_uid
+            package, _, _ = make_formal_result_package(
+                project_uid=project_uid, batch_uid=batch_uid, task_uid=task_uid, scope=scope,
+                record_count=10, media_count=25, media_uid_length=uid_length,
+                source_task_uids=(uuid4().hex, uuid4().hex),
+            )
+            response = client.post("/api/v1/result-submissions/upload", headers={"X-CSRF-Token": csrf},
+                                   files={"file": ("media.ydresult", package, "application/octet-stream")})
+            assert response.status_code == 201, response.text
+            assert response.json()["inspection_error_count"] == 0, response.text
+            submission_uid = response.json()["submission_uid"]
+            with zipfile.ZipFile(io.BytesIO(package)) as archive:
+                documents = {name: json.loads(archive.read(f"data/{name}.json"))["items"]
+                             for name in ("engineering_assets", "survey_records", "inspection_results", "survey_media")}
+            return submission_uid, documents
+
+        yield client, csrf, task_uid, upload
+    finally:
+        cleanup_workflow(submission_uid, task_uid, None, None)
+        if batch_uid:
+            client.delete(f"/api/v1/survey-batches/{batch_uid}", headers={"X-CSRF-Token": csrf})
+        if project_uid:
+            client.delete(f"/api/v1/projects/{project_uid}", headers={"X-CSRF-Token": csrf})
+        cleanup_test_user(admin.user_uid)
+
+
+def accept_formal(client, csrf, uid):
+    headers = {"X-CSRF-Token": csrf}
+    preflight = client.post(f"/api/v1/result-submissions/{uid}/preflight", headers=headers)
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.json()["status"] == "preflight_passed", preflight.text
+    reviewed = client.post(f"/api/v1/result-submissions/{uid}/review", headers=headers,
+                           json={"decision": "accepted", "notes": "回归审核"})
+    assert reviewed.status_code == 200, reviewed.text
+    return reviewed.json()
+
+
+def assert_formal_counts(uid, expected):
+    with SessionLocal() as db:
+        for model, count in zip((CentralEngineeringAsset, CentralSurveyRecord, CentralInspectionResult, CentralSurveyMedia), expected):
+            assert len(list(db.scalars(select(model).where(model.current_submission_uid == uid)))) == count
+
+
+@pytest.mark.parametrize("uid_length", [36, 32])
+def test_formal_ten_records_twenty_five_media(formal_media_submission, uid_length):
+    client, csrf, task_uid, upload = formal_media_submission
+    uid, documents = upload(uid_length)
+    reviewed = accept_formal(client, csrf, uid)
+    headers = {"X-CSRF-Token": csrf}
+    repeated = client.post(f"/api/v1/result-submissions/{uid}/preflight", headers=headers)
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["status"] == "accepted"
+    for field in ("reviewed_at", "reviewed_by_username", "review_notes"):
+        assert repeated.json()[field] == reviewed[field]
+    imported = client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["records"] == 10
+    assert imported.json()["media"] == 25
+    assert_formal_counts(uid, (10, 10, 10, 25))
+    with SessionLocal() as db:
+        saved_records = {item.survey_record_uid: item for item in db.scalars(
+            select(CentralSurveyRecord).where(CentralSurveyRecord.current_submission_uid == uid))}
+        for item in documents["survey_records"]:
+            assert saved_records[item["survey_record_uid"]].payload_json == item
+            assert saved_records[item["survey_record_uid"]].source_task_uid == item["source_task_uid"]
+        actual = {item.media_uid: item for item in db.scalars(select(CentralSurveyMedia).where(CentralSurveyMedia.current_submission_uid == uid))}
+        for item in documents["survey_media"]:
+            saved = actual[item["media_uid"]]
+            assert len(saved.media_uid) == uid_length
+            for field in ("package_path", "file_sha256", "file_size", "survey_record_uid"):
+                assert getattr(saved, field) == item[field]
+            assert saved.payload_json == item
+        assert db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid)).status == "closed"
+    duplicate = client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+    assert duplicate.status_code == 409, duplicate.text
+    assert_formal_counts(uid, (10, 10, 10, 25))
+    assert client.get(f"/api/v1/result-submissions/{uid}").json()["status"] == "imported"
+
+
+@pytest.mark.parametrize("table", ["central_engineering_assets", "central_survey_records",
+                                  "central_inspection_results", "central_survey_media", "survey_tasks"])
+def test_formal_database_failure_rolls_back_and_retries(formal_media_submission, table):
+    client, csrf, task_uid, upload = formal_media_submission
+    uid, _ = upload()
+    accept_formal(client, csrf, uid)
+    headers = {"X-CSRF-Token": csrf}
+
+    def fail_in_postgres(conn, cursor, statement, parameters, context, executemany):
+        verb = "UPDATE" if table == "survey_tasks" else "INSERT INTO"
+        if statement.startswith(f"{verb} {table} "):
+            # Real PostgreSQL error inside the import transaction, not a mock
+            # commit. The media/task cases also exercise late flush failures.
+            cursor.execute("SELECT 1 / 0")
+
+    event.listen(engine, "before_cursor_execute", fail_in_postgres)
+    try:
+        failed = client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_in_postgres)
+    assert failed.status_code == 500, failed.text
+    assert "traceback" not in failed.text.lower()
+    assert "division" not in failed.text.lower()
+    assert_formal_counts(uid, (0, 0, 0, 0))
+    assert client.get(f"/api/v1/result-submissions/{uid}").json()["status"] == "accepted"
+    assert client.get(f"/api/v1/survey-tasks/{task_uid}").json()["status"] == "result_received"
+    retried = client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+    assert retried.status_code == 200, retried.text
+    assert_formal_counts(uid, (10, 10, 10, 25))
+
+
+@pytest.mark.parametrize("operation", ["preflight", "import"])
+def test_new_conflict_invalidates_previous_review(formal_media_submission, operation):
+    client, csrf, task_uid, upload = formal_media_submission
+    uid, _ = upload()
+    accept_formal(client, csrf, uid)
+    headers = {"X-CSRF-Token": csrf}
+    # Cancellation is a real business conflict that can occur after review.
+    with SessionLocal() as db:
+        task = db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid))
+        task.status = "cancelled"
+        db.commit()
+    response = client.post(f"/api/v1/result-submissions/{uid}/{operation}", headers=headers)
+    assert response.status_code == (200 if operation == "preflight" else 409), response.text
+    detail = client.get(f"/api/v1/result-submissions/{uid}").json()
+    assert detail["status"] == "conflict"
+    assert detail["reviewed_at"] is None
+    assert detail["reviewed_by_username"] is None
+    assert detail["review_notes"] is None
+    assert any(issue["code"] == "SUBMISSION_TASK_CANCELLED" for issue in detail["preflight_issues"])
+    assert_formal_counts(uid, (0, 0, 0, 0))
+    with SessionLocal() as db:
+        db.scalar(select(SurveyTask).where(SurveyTask.task_uid == task_uid)).status = "result_received"
+        db.commit()
+    # The old approval cannot authorize importing once the conflict is fixed.
+    assert client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers).status_code == 409
+    accept_formal(client, csrf, uid)
+    assert client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers).status_code == 200
+
+
+def test_concurrent_import_requests_are_serialized(formal_media_submission):
+    client, csrf, _, upload = formal_media_submission
+    uid, _ = upload()
+    accept_formal(client, csrf, uid)
+    headers = {"X-CSRF-Token": csrf}
+    first_writing, second_locking = Event(), Event()
+
+    def coordinate(conn, cursor, statement, parameters, context, executemany):
+        if first_writing.is_set() and "result_submissions" in statement and "FOR UPDATE" in statement:
+            second_locking.set()
+        if statement.startswith("INSERT INTO central_survey_media "):
+            first_writing.set()
+            assert second_locking.wait(10), "Second request did not reach the submission lock"
+
+    second_client = TestClient(app)
+    second_client.cookies.update(client.cookies)
+
+    def second_request():
+        assert first_writing.wait(10), "First request did not reach media write"
+        return second_client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+
+    event.listen(engine, "before_cursor_execute", coordinate)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(client.post, f"/api/v1/result-submissions/{uid}/import", headers=headers)
+            second = pool.submit(second_request)
+            assert first.result(timeout=20).status_code == 200
+            assert second.result(timeout=20).status_code == 409
+    finally:
+        event.remove(engine, "before_cursor_execute", coordinate)
+        second_client.close()
+    assert_formal_counts(uid, (10, 10, 10, 25))

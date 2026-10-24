@@ -75,7 +75,7 @@ class CentralSurveyMedia(Base):
     __tablename__ = "central_survey_media"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    media_uid: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    media_uid: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
     survey_record_uid: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     package_path: Mapped[str] = mapped_column(String(600), nullable=False)
     file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
