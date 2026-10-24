@@ -6,7 +6,7 @@
 Desktop 离线调查端 ──→ Shared contracts ←── Web Center 中心端
 ```
 
-- [Desktop](desktop/README.md)：PySide6 + SQLite，正式版本 1.2.1。
+- [Desktop](desktop/README.md)：PySide6 + SQLite，正式版本 1.2.2（候选验收）。
 - [Web Center](web/README.md)：Vue 3 + FastAPI + PostgreSQL；acceptance baseline / version pending。
 - [Shared](docs/architecture/BOUNDARIES.md)：交换协议、正式表定义、评价标准与原表渲染规则。
 
