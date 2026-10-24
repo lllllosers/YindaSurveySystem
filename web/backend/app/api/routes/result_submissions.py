@@ -512,7 +512,7 @@ def import_submission(
         logger.exception("Formal result import failed: %s", submission_uid)
         raise HTTPException(
             status_code=500,
-            detail="成果入库未完成，数据已回滚。请联系管理员检查服务日志。",
+            detail="成果入库处理发生异常，请刷新页面确认最终状态。如未完成，请联系管理员检查服务日志。",
         ) from None
 
     request.state.audit_summary = "调查成果正式入库"

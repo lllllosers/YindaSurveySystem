@@ -141,9 +141,15 @@ async function refresh() {
     row.value = await getResultSubmission(
       submissionUid.value,
     );
-    if (row.value.status === "imported") importUnconfirmed.value = false;
+    if (row.value.status !== "accepted") {
+      if (importUnconfirmed.value && row.value.status === "imported") {
+        ElMessage.success("已查询确认：成果已正式入库。");
+      }
+      importUnconfirmed.value = false;
+    }
   } catch (error: any) {
-    ElMessage.error(actionErrorMessage(error, "成果详情读取失败"));
+    if (importUnconfirmed.value) ElMessage.warning("成果状态查询失败，入库结果尚未确认，请恢复连接后再次查询。");
+    else ElMessage.error(actionErrorMessage(error, "成果详情读取失败"));
   } finally {
     loading.value = false;
   }
@@ -226,19 +232,62 @@ async function review(decision: "accepted" | "rejected") {
 }
 
 async function importResult() {
-  if (workflowBusy.value || importUnconfirmed.value) return;
-  try {
-    await ElMessageBox.confirm(
-      "入库前系统会再次核对调查范围和数据版本。确认将该成果纳入正式成果库？",
-      "正式入库",
-      { confirmButtonText: "确认入库", cancelButtonText: "取消", type: "warning" },
-    );
-  } catch {
-    return;
-  }
+  if (workflowBusy.value || loading.value || importUnconfirmed.value) return;
   workflowBusy.value = true;
   try {
+    try {
+      await ElMessageBox.confirm(
+        "入库前系统会再次核对调查范围和数据版本。确认将该成果纳入正式成果库？",
+        "正式入库",
+        { confirmButtonText: "确认入库", cancelButtonText: "取消", type: "warning" },
+      );
+    } catch {
+      return;
+    }
+    await performImport();
+  } finally {
+    workflowBusy.value = false;
+  }
+}
+
+async function retryImport() {
+  if (workflowBusy.value || loading.value || !importUnconfirmed.value || !canImport.value) return;
+  workflowBusy.value = true;
+  try {
+    try {
+      await ElMessageBox.confirm(
+        "系统将重新查询成果状态，仅在仍为已接收时再次请求入库。原请求可能仍在执行，服务器会等待其结束并再次核对状态，避免重复入库。",
+        "核对状态并再次尝试",
+        { confirmButtonText: "核对并再次尝试", cancelButtonText: "取消", type: "warning" },
+      );
+    } catch {
+      return;
+    }
+    try {
+      row.value = await getResultSubmission(submissionUid.value);
+    } catch {
+      ElMessage.warning("成果状态查询失败，入库结果尚未确认，本次未再次提交入库请求。");
+      return;
+    }
+    if (row.value.status !== "accepted") {
+      importUnconfirmed.value = false;
+      if (row.value.status === "imported") ElMessage.success("已查询确认：成果已正式入库。");
+      else ElMessage.warning(`当前成果状态为${statusLabels[row.value.status] ?? row.value.status}，请按最新状态处理。`);
+      return;
+    }
+    // accepted is only the latest saved state, not proof the first request
+    // ended. This explicit retry is serialized by the existing server row lock.
+    await performImport();
+  } finally {
+    workflowBusy.value = false;
+  }
+}
+
+async function performImport() {
+  try {
     const result = await importResultSubmission(submissionUid.value);
+    importUnconfirmed.value = false;
+    if (row.value) row.value.status = result.status;
     await refresh();
     ElMessage.success(`入库完成：${result.records} 条调查记录`);
   } catch (error: any) {
@@ -248,8 +297,6 @@ async function importResult() {
     if (outcome.imported) ElMessage.success(outcome.message);
     else if (outcome.uncertain) ElMessage.warning(outcome.message);
     else ElMessage.error(outcome.message);
-  } finally {
-    workflowBusy.value = false;
   }
 }
 
@@ -274,9 +321,12 @@ onMounted(refresh);
     v-if="importUnconfirmed"
     type="warning"
     :closable="false"
-    title="入库结果尚未确认，请稍后刷新成果状态，勿重复提交。"
+    title="入库结果尚未确认。请先刷新状态；若仍为已接收，可手工核对并再次尝试。"
   >
-    <el-button text :loading="loading" @click="refresh">刷新成果状态</el-button>
+    <el-button text :loading="loading" :disabled="workflowBusy" @click="refresh">刷新成果状态</el-button>
+    <el-button v-if="canImport" text :loading="workflowBusy" :disabled="loading" @click="retryImport">
+      核对状态并再次尝试
+    </el-button>
   </el-alert>
   <div class="module-header">
     <div>

@@ -541,6 +541,8 @@ def test_formal_database_failure_rolls_back_and_retries(formal_media_submission,
     finally:
         event.remove(engine, "before_cursor_execute", fail_in_postgres)
     assert failed.status_code == 500, failed.text
+    assert "已回滚" not in failed.text
+    assert "刷新页面确认最终状态" in failed.json()["detail"]
     assert "traceback" not in failed.text.lower()
     assert "division" not in failed.text.lower()
     assert_formal_counts(uid, (0, 0, 0, 0))
@@ -580,7 +582,8 @@ def test_new_conflict_invalidates_previous_review(formal_media_submission, opera
     assert client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers).status_code == 200
 
 
-def test_concurrent_import_requests_are_serialized(formal_media_submission):
+@pytest.mark.parametrize("first_commits", [True, False])
+def test_concurrent_import_requests_are_serialized(formal_media_submission, first_commits):
     client, csrf, _, upload = formal_media_submission
     uid, _ = upload()
     accept_formal(client, csrf, uid)
@@ -590,15 +593,22 @@ def test_concurrent_import_requests_are_serialized(formal_media_submission):
     def coordinate(conn, cursor, statement, parameters, context, executemany):
         if first_writing.is_set() and "result_submissions" in statement and "FOR UPDATE" in statement:
             second_locking.set()
-        if statement.startswith("INSERT INTO central_survey_media "):
+        if statement.startswith("INSERT INTO central_survey_media ") and not first_writing.is_set():
             first_writing.set()
             assert second_locking.wait(10), "Second request did not reach the submission lock"
+            if not first_commits:
+                cursor.execute("SELECT 1 / 0")
 
     second_client = TestClient(app)
     second_client.cookies.update(client.cookies)
 
     def second_request():
         assert first_writing.wait(10), "First request did not reach media write"
+        # The first transaction is still running. A plain GET legitimately
+        # sees accepted; a manual retry must still wait on FOR UPDATE.
+        latest = second_client.get(f"/api/v1/result-submissions/{uid}")
+        assert latest.status_code == 200, latest.text
+        assert latest.json()["status"] == "accepted"
         return second_client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
 
     event.listen(engine, "before_cursor_execute", coordinate)
@@ -606,9 +616,37 @@ def test_concurrent_import_requests_are_serialized(formal_media_submission):
         with ThreadPoolExecutor(max_workers=2) as pool:
             first = pool.submit(client.post, f"/api/v1/result-submissions/{uid}/import", headers=headers)
             second = pool.submit(second_request)
-            assert first.result(timeout=20).status_code == 200
-            assert second.result(timeout=20).status_code == 409
+            assert first.result(timeout=20).status_code == (200 if first_commits else 500)
+            assert second.result(timeout=20).status_code == (409 if first_commits else 200)
     finally:
         event.remove(engine, "before_cursor_execute", coordinate)
         second_client.close()
     assert_formal_counts(uid, (10, 10, 10, 25))
+
+
+def test_import_500_may_follow_a_successful_commit(formal_media_submission, monkeypatch):
+    from app.services import result_workflow_service
+
+    client, csrf, task_uid, upload = formal_media_submission
+    uid, _ = upload()
+    accept_formal(client, csrf, uid)
+    original_import = result_workflow_service.import_submission
+
+    def lose_commit_acknowledgement(*args):
+        original_import(*args)
+        # Simulate loss of the commit acknowledgement after PostgreSQL has
+        # committed, so a subsequent rollback cannot undo the saved result.
+        raise ConnectionError("private SQL parameters and traceback")
+
+    monkeypatch.setattr(result_workflow_service, "import_submission", lose_commit_acknowledgement)
+    headers = {"X-CSRF-Token": csrf}
+    response = client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers)
+    assert response.status_code == 500, response.text
+    assert response.json()["detail"] == "成果入库处理发生异常，请刷新页面确认最终状态。如未完成，请联系管理员检查服务日志。"
+    assert "已回滚" not in response.text
+    assert "private SQL" not in response.text
+    assert "traceback" not in response.text
+    assert client.get(f"/api/v1/result-submissions/{uid}").json()["status"] == "imported"
+    assert client.get(f"/api/v1/survey-tasks/{task_uid}").json()["status"] == "closed"
+    assert_formal_counts(uid, (10, 10, 10, 25))
+    assert client.post(f"/api/v1/result-submissions/{uid}/import", headers=headers).status_code == 409
