@@ -5,6 +5,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QFrame,
     QAbstractItemView,
+    QAbstractScrollArea,
     QComboBox,
     QFileDialog,
     QGridLayout,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -121,7 +123,27 @@ class EngineeringSurveyListPage(QWidget):
     # =========================================================
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 小窗口滚动整页，大窗口仍把剩余高度交给表格。
+        # 忽略内容 sizeHint，避免隐藏列表反向撑大调查录入堆栈。
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        root_layout.addWidget(self.scroll_area)
+
+        self.list_container = QWidget()
+        layout = QVBoxLayout(self.list_container)
 
         layout.setContentsMargins(
             0,
@@ -517,6 +539,7 @@ class EngineeringSurveyListPage(QWidget):
 
         self.count_label = QLabel()
         self.count_label.setMinimumHeight(42)
+        self.count_label.setWordWrap(True)
         self.count_label.setObjectName("summaryLabel")
 
         self.count_label.setStyleSheet("font-size: 14px; " "color: #52606d;")
@@ -529,6 +552,7 @@ class EngineeringSurveyListPage(QWidget):
 
         self.table = QTableWidget()
         self.table.setObjectName("dataTable")
+        self.table.setMinimumHeight(300)
 
         self.table.setColumnCount(len(self.TABLE_HEADERS))
 
@@ -555,6 +579,10 @@ class EngineeringSurveyListPage(QWidget):
             self.table,
             1,
         )
+
+        self.scroll_area.setWidget(self.list_container)
+        self.list_container.setAutoFillBackground(False)
+        self.scroll_area.viewport().setAutoFillBackground(False)
 
     # =========================================================
     # 数据加载

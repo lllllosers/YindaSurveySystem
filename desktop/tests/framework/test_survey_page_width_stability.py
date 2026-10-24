@@ -22,6 +22,7 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
+from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
     QApplication,
@@ -38,6 +39,7 @@ from pages.components.generic_engineering_survey_page import (
     GenericEngineeringSurveyPage,
 )
 from pages.survey_page import SurveyPage
+from styles.app_theme import APP_QSS
 
 
 class SurveyPageWidthStabilityTestCase(
@@ -145,6 +147,47 @@ class SurveyPageWidthStabilityTestCase(
                     0,
                 )
         finally:
+            page.deleteLater()
+
+    def test_all_14_lists_scroll_without_expanding_the_survey_stack(self):
+        page = SurveyPage()
+        try:
+            page.setStyleSheet(APP_QSS)
+            page.resize(1040, 560)
+            page.show()
+            self.app.processEvents()
+            self.assertEqual(len(page.engineering_pages), 14)
+            self.assertEqual(page.width(), 1040)
+            page.resize(760, 560)
+            self.app.processEvents()
+            for pages in page.engineering_pages.values():
+                listing = pages["list_page"]
+                with self.subTest(form_code=listing.FORM_CODE):
+                    listing._update_statistics([])
+                    page.stack.setCurrentWidget(listing)
+                    self.app.processEvents()
+                    area = listing.scroll_area
+                    self.assertTrue(area.widgetResizable())
+                    self.assertEqual(
+                        area.sizeAdjustPolicy(),
+                        QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored,
+                    )
+                    self.assertEqual(page.width(), 760)
+                    self.assertEqual(area.horizontalScrollBar().maximum(), 0)
+                    self.assertGreater(area.verticalScrollBar().maximum(), 0)
+                    self.assertGreaterEqual(listing.table.height(), 300)
+                    bar = area.verticalScrollBar()
+                    bar.setValue(bar.maximum())
+                    self.app.processEvents()
+                    bottom = listing.table.mapTo(
+                        area.viewport(), QPoint(0, listing.table.height())
+                    )
+                    self.assertLessEqual(bottom.y(), area.viewport().height())
+                    page.stack.setCurrentWidget(pages["edit_page"])
+                    self.app.processEvents()
+                    self.assertEqual(page.width(), 760)
+        finally:
+            page.close()
             page.deleteLater()
 
 
