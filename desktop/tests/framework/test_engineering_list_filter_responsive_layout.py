@@ -22,14 +22,18 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
     QGridLayout,
+    QScrollArea,
 )
 
 from pages.components.engineering_survey_list_page import (
     EngineeringSurveyListPage,
 )
+from styles.app_theme import APP_QSS
 
 
 class _TestEngineeringListPage(
@@ -195,6 +199,87 @@ class EngineeringListFilterResponsiveLayoutTestCase(
                 )
         finally:
             page.deleteLater()
+
+    def _show_page(self, height=360, width=1040):
+        page = self._make_page()
+        self.addCleanup(page.deleteLater)
+        self.addCleanup(page.close)
+        page.setStyleSheet(APP_QSS)
+        page.resize(width, height)
+        page.show()
+        self.app.processEvents()
+        return page
+
+    def _scroll_area(self, page):
+        area = page.findChild(QScrollArea)
+        self.assertIsNotNone(area, "The list needs its own page scroll area")
+        return area
+
+    def test_small_viewport_can_reach_table_without_squeezing_it(self):
+        page = self._show_page(width=760)
+        area = self._scroll_area(page)
+        self.assertEqual(page.height(), 360)
+        self.assertGreaterEqual(page.table.minimumHeight(), 280)
+        self.assertLessEqual(page.table.minimumHeight(), 320)
+        self.assertGreaterEqual(page.table.height(), page.table.minimumHeight())
+        self.assertGreater(area.verticalScrollBar().maximum(), 0)
+        self.assertEqual(area.horizontalScrollBar().maximum(), 0)
+
+        area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+        self.app.processEvents()
+        bottom = page.table.mapTo(area.viewport(), QPoint(0, page.table.height()))
+        self.assertLessEqual(bottom.y(), area.viewport().height())
+        self.assertGreater(bottom.y(), 0)
+
+    def test_tall_viewport_expands_table_and_removes_page_scrollbar(self):
+        page = self._show_page(height=1000)
+        area = self._scroll_area(page)
+        self.assertEqual(area.verticalScrollBar().maximum(), 0)
+        initial_height = page.table.height()
+        self.assertGreater(initial_height, page.table.minimumHeight())
+
+        page.resize(1040, 1200)
+        self.app.processEvents()
+        self.assertGreaterEqual(page.table.height() - initial_height, 190)
+        self.assertEqual(area.verticalScrollBar().maximum(), 0)
+
+    def test_row_counts_keep_page_height_bounded_and_table_scrolls_internally(self):
+        page = self._show_page()
+        area = self._scroll_area(page)
+        table_height = page.table.height()
+        page_range = area.verticalScrollBar().maximum()
+        for count in (0, 1, 20, 2000):
+            with self.subTest(count=count):
+                page.table.setRowCount(count)
+                self.app.processEvents()
+                self.assertEqual(page.table.height(), table_height)
+                self.assertEqual(area.verticalScrollBar().maximum(), page_range)
+                if count >= 20:
+                    bar = page.table.verticalScrollBar()
+                    self.assertGreater(bar.maximum(), 0)
+                    bar.setValue(bar.maximum())
+                    self.assertEqual(bar.value(), bar.maximum())
+
+    def test_default_wheel_and_focus_can_reach_both_ends_of_page(self):
+        page = self._show_page()
+        area = self._scroll_area(page)
+        position = QPointF(10, 10)
+        event = QWheelEvent(
+            position, QPointF(area.viewport().mapToGlobal(QPoint(10, 10))),
+            QPoint(), QPoint(0, -120), Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
+        )
+        self.app.sendEvent(area.viewport(), event)
+        self.assertGreater(area.verticalScrollBar().value(), 0)
+
+        page.table.setFocus()
+        self.app.processEvents()
+        self.assertGreater(area.verticalScrollBar().value(), 0)
+        page.keyword_edit.setFocus()
+        self.app.processEvents()
+        top = page.keyword_edit.mapTo(area.viewport(), QPoint())
+        self.assertGreaterEqual(top.y(), 0)
+        self.assertLess(top.y(), area.viewport().height())
 
 
 if __name__ == "__main__":
