@@ -46,9 +46,9 @@ class V1ReleaseBuilderContractTestCase(
         ast.parse(source)
 
         for expected in (
-            'EXPECTED_VERSION = "1.2.1"',
+            'EXPECTED_VERSION = "1.2.2"',
             'EXPECTED_STAGE = "正式版"',
-            'EXPECTED_BRANCH = "release/v1.2.1"',
+            'EXPECTED_BRANCH = "release/v1.2.2"',
             "require_clean=True",
             "run_tests.py",
             "PyInstaller",
@@ -56,10 +56,10 @@ class V1ReleaseBuilderContractTestCase(
             "verify_zip",
             "calculate_sha256",
             "build_update_package.py",
-            "V1.2.0 -> V1.2.1",
+            "V1.2.1 -> V1.2.2",
             "RELEASE_INFO.txt",
-            "V1.2.1_发布说明.md",
-            "V1.2.1_生产验收记录.md",
+            "V1.2.2_发布说明.md",
+            "V1.2.2_生产验收记录.md",
             "local_data",
         ):
             self.assertIn(

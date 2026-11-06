@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
 DOCS_ROOT = REPO_ROOT / "docs" / "desktop"
 
-EXPECTED_BRANCH = "release/v1.2.1"
+EXPECTED_BRANCH = "release/v1.2.2"
 EXPECTED_APP_NAME = "引大入秦工程现状调查采集系统"
-EXPECTED_VERSION = "1.2.1"
+EXPECTED_VERSION = "1.2.2"
 EXPECTED_STAGE = "正式版"
 
 VENV_PYTHON = (
@@ -189,8 +189,8 @@ def check_required_paths():
         ROOT / "src" / "version.py",
         ROOT / "build_update_package.py",
         ROOT / "README.md",
-        DOCS_ROOT / "16_V1.2.1发布说明.md",
-        DOCS_ROOT / "17_V1.2.1生产升级验收记录.md",
+        DOCS_ROOT / "18_V1.2.2发布说明.md",
+        DOCS_ROOT / "19_V1.2.2生产升级验收记录.md",
     )
 
     missing = [
@@ -249,7 +249,7 @@ def check_release_identity(
 
     if errors:
         raise RuntimeError(
-            "Release identity is not V1.2.1 final:\n"
+            "Release identity is not V1.2.2 final:\n"
             + "\n".join(
                 f"- {item}"
                 for item in errors
@@ -285,7 +285,7 @@ def check_git_state(
     ):
         raise RuntimeError(
             "Tracked working tree is not clean. "
-            "Commit V1.2.1 release closeout changes before building:\n"
+            "Commit V1.2.2 release closeout changes before building:\n"
             + tracked_status
         )
 
@@ -397,15 +397,15 @@ def copy_release_docs(
         ),
         (
             DOCS_ROOT
-            / "16_V1.2.1发布说明.md",
+            / "18_V1.2.2发布说明.md",
             release_dir
-            / "V1.2.1_发布说明.md",
+            / "V1.2.2_发布说明.md",
         ),
         (
             DOCS_ROOT
-            / "17_V1.2.1生产升级验收记录.md",
+            / "19_V1.2.2生产升级验收记录.md",
             release_dir
-            / "V1.2.1_生产验收记录.md",
+            / "V1.2.2_生产验收记录.md",
         ),
     )
 
@@ -485,7 +485,7 @@ def write_release_info(
         f"PyInstaller={pyinstaller_version}\n"
         f"ExecutableSHA256={exe_sha256}\n"
         "\n"
-        "该目录为 V1.2.1 正式发布包。\n"
+        "该目录为 V1.2.2 正式发布包。\n"
         "正式运行数据由程序在本目录下 local_data 中创建；"
         "发布包本身不预置开发数据库。\n"
     )
@@ -554,9 +554,9 @@ def verify_release_tree(
         release_dir
         / "README.md",
         release_dir
-        / "V1.2.1_发布说明.md",
+        / "V1.2.2_发布说明.md",
         release_dir
-        / "V1.2.1_生产验收记录.md",
+        / "V1.2.2_生产验收记录.md",
     )
 
     missing = [
@@ -606,8 +606,8 @@ def verify_zip(
         "_internal/sqlite3.dll",
         "RELEASE_INFO.txt",
         "README.md",
-        "V1.2.1_发布说明.md",
-        "V1.2.1_生产验收记录.md",
+        "V1.2.2_发布说明.md",
+        "V1.2.2_生产验收记录.md",
     }
 
     missing = [
@@ -737,7 +737,7 @@ def build_release(*, skip_tests=False):
         ]
     )
     print(
-        "V1.2.1 Production Release Builder"
+        "V1.2.2 Production Release Builder"
     )
     print(
         f"Version: V{version_info['version']}"
@@ -939,7 +939,7 @@ def build_release(*, skip_tests=False):
             ),
         ],
         label=(
-            "V1.2.0 -> V1.2.1 "
+            "V1.2.1 -> V1.2.2 "
             "safe update package"
         ),
     )
@@ -949,7 +949,7 @@ def build_release(*, skip_tests=False):
         "=" * 72
     )
     print(
-        "[SUCCESS] V1.2.1 production release completed."
+        "[SUCCESS] V1.2.2 production release completed."
     )
     print(
         f"Directory: {release_dir}"
@@ -972,9 +972,9 @@ def build_release(*, skip_tests=False):
     print()
     print(
         "NEXT: smoke-test both deliverables: "
-        "(1) the full V1.2.1 release on a clean directory; "
-        "(2) the V1.2.0 -> V1.2.1 update package against "
-        "a copy of a V1.2.0 installation."
+        "(1) the full V1.2.2 release on a clean directory; "
+        "(2) the V1.2.1 -> V1.2.2 update package against "
+        "a copy of a V1.2.1 installation."
     )
     print(
         "=" * 72

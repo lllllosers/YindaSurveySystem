@@ -24,6 +24,9 @@ if str(SRC_DIR) not in sys.path:
     )
 
 
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import (
     QApplication,
 )
@@ -39,6 +42,7 @@ from pages.components.engineering_survey_list_page import (
 from pages.components.generic_engineering_list_page import (
     GenericEngineeringListPage,
 )
+from styles.app_theme import APP_QSS
 
 
 class GenericEngineeringListPageTestCase(
@@ -303,6 +307,71 @@ class GenericEngineeringListPageTestCase(
             result["survey_record_id"],
             123,
         )
+
+    def test_filters_and_table_navigation_work_inside_page_scroll_area(self):
+        self.page.all_records = [
+            {
+                "survey_record_id": number + 1,
+                "business_code": f"CODE-{number:03d}",
+                "asset_name": "测试渡槽",
+                "department_name": "处", "office_name": "所", "canal_name": "渠",
+                "engineering_position": "CH1+000.000～CH1+010.000",
+                "overall_grade": "B", "record_status": "draft",
+                "survey_date": "2026-10-24", "updated_at": None, "record_data": {},
+            }
+            for number in range(40)
+        ]
+        self.page._refresh_filter_options()
+        self.page.apply_filters()
+        self.page.setStyleSheet(APP_QSS)
+        self.page.resize(1040, 420)
+        self.page.show()
+        self.addCleanup(self.page.close)
+        self.app.processEvents()
+
+        self.page.keyword_edit.setText("CODE-005")
+        self.page.apply_filters()
+        self.assertEqual(self.page.table.rowCount(), 1)
+        self.page.table.selectRow(0)
+        self.assertEqual(self.page._get_selected_record_id(), 6)
+        self.page.reset_filters()
+        self.assertEqual(self.page.table.rowCount(), 40)
+
+        area = self.page.scroll_area
+        area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+        table = self.page.table
+        table.setFocus()
+        table.setCurrentCell(0, 0)
+        self.app.processEvents()
+        outer_position = area.verticalScrollBar().value()
+        wheel = QWheelEvent(
+            QPointF(10, 10), QPointF(table.viewport().mapToGlobal(QPoint(10, 10))),
+            QPoint(), QPoint(0, -120), Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
+        )
+        self.app.sendEvent(table.viewport(), wheel)
+        self.assertGreater(table.verticalScrollBar().value(), 0)
+        self.assertEqual(area.verticalScrollBar().value(), outer_position)
+
+        QTest.keyClick(table, Qt.Key.Key_End, Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(table.currentRow(), 39)
+        self.assertEqual(self.page._get_selected_record_id(), 40)
+        horizontal = table.horizontalScrollBar()
+        self.assertGreater(horizontal.maximum(), 0)
+        horizontal.setValue(horizontal.maximum())
+        self.assertEqual(horizontal.value(), horizontal.maximum())
+
+        table.setCurrentCell(20, 0)
+        horizontal.setValue(0)
+        item = table.item(20, 0)
+        table.scrollToItem(item)
+        self.app.processEvents()
+        edits = QSignalSpy(self.page.edit_requested)
+        position = table.visualItemRect(item).center()
+        QTest.mouseClick(table.viewport(), Qt.MouseButton.LeftButton, pos=position)
+        QTest.mouseDClick(table.viewport(), Qt.MouseButton.LeftButton, pos=position)
+        self.assertEqual(edits.count(), 1)
+        self.assertEqual(edits.at(0), [21])
 
 
 if __name__ == "__main__":
