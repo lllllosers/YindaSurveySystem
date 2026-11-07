@@ -36,7 +36,9 @@ from shared.protocol.identity import deterministic_master_uid as _deterministic_
 from shared.protocol.stake import parse_stake
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+from app.core.config import RESOURCE_ROOT
+
+REPOSITORY_ROOT = RESOURCE_ROOT
 CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "master_data" / "official_master_contract.json"
 SUPPORTED_CONTRACT_SCHEMA_VERSION = "1.0"
 ALLOWED_RANGE_MODES = {"whole", "segment_known", "segment_unknown"}

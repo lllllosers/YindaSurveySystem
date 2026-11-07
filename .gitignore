@@ -98,6 +98,7 @@ web/frontend/node_modules/
 web/frontend/dist/
 web/frontend/.env.local
 web/.runtime/
+.test-runtime/
 web/build/
 web/release/
 desktop/.venv/

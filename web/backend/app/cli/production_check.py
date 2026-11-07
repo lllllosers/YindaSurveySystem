@@ -38,6 +38,8 @@ def main() -> int:
         report("BLOCKER", "APP_ENV must be production.")
     if settings.session_cookie_secure:
         report("PASS", "Session cookie requires HTTPS.")
+    elif settings.transport_mode == "lan_http":
+        report("WARNING", "Explicit LAN HTTP mode: traffic and cookies are not encrypted; do not expose to public networks.")
     else:
         report("BLOCKER", "SESSION_COOKIE_SECURE must be true.")
     if settings.db_password and settings.db_password != "replace-with-local-password":
@@ -64,11 +66,11 @@ def main() -> int:
         else:
             report("BLOCKER", "Production API documentation is still enabled.")
 
-    frontend = BACKEND_DIR.parent / "frontend" / "dist" / "index.html"
+    frontend = settings.frontend_dist / "index.html"
     report("PASS" if frontend.is_file() else "BLOCKER", "Frontend production build exists." if frontend.is_file() else "Missing frontend/dist/index.html.")
 
     for label in ("storage", "backups"):
-        folder = BACKEND_DIR / label
+        folder = settings.storage_dir if label == "storage" else settings.backups_dir
         try:
             folder.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryFile(dir=folder):
@@ -79,7 +81,7 @@ def main() -> int:
             report("PASS", f"{label} directory is writable.")
 
     try:
-        free = shutil.disk_usage(BACKEND_DIR / "storage").free
+        free = shutil.disk_usage(settings.storage_dir).free
         if free <= settings.min_free_disk_bytes:
             report("BLOCKER", "Free space on the storage volume is below the reserve.")
         else:

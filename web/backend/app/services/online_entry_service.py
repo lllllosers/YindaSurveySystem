@@ -24,7 +24,7 @@ from app.schemas.online_entry import OnlineEntryPayload, OnlineEntryUpdate
 from app.services.master_data_service import REPOSITORY_ROOT
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = settings.file_base
 ONLINE_MEDIA_ROOT = BACKEND_ROOT / "storage" / "online_media"
 MEDIA_CHUNK_SIZE = 1024 * 1024
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}

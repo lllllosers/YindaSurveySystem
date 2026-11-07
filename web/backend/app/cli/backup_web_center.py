@@ -25,7 +25,7 @@ def main() -> None:
         raise SystemExit("没有找到 pg_dump，请安装 PostgreSQL 客户端并加入 PATH。")
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = (args.output or BACKEND_DIR / "backups" / stamp).resolve()
+    target = (args.output or settings.backups_dir / stamp).resolve()
     target.mkdir(parents=True, exist_ok=False)
     dump_path = target / "database.dump"
     env = os.environ.copy()
@@ -49,7 +49,7 @@ def main() -> None:
         )
         if result.returncode:
             raise RuntimeError("pg_dump 失败：" + result.stderr.strip()[-500:])
-        storage = BACKEND_DIR / "storage"
+        storage = settings.storage_dir
         if not args.database_only and storage.exists():
             shutil.copytree(storage, target / "storage")
         (target / "manifest.json").write_text(

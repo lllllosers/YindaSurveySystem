@@ -42,8 +42,8 @@ class RequestBodyLimitMiddleware:
         } or (path.startswith("/api/v1/online-entries/") and path.endswith("/media"))
 
     def has_disk_reserve(self, incoming_bytes: int) -> bool:
-        storage = BACKEND_DIR / "storage"
-        locations = (storage if storage.exists() else BACKEND_DIR, Path(tempfile.gettempdir()))
+        storage = self.settings.storage_dir
+        locations = (storage if storage.exists() else self.settings.file_base, Path(tempfile.gettempdir()))
         try:
             return all(
                 shutil.disk_usage(location).free - incoming_bytes >= self.settings.min_free_disk_bytes

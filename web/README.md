@@ -1,5 +1,7 @@
 # Web Center 开发入口
 
+Server Console V1 的 Windows Service 与独立 EXE 正式路线见 [部署说明](../docs/web/SERVER_CONSOLE_V1.md)，使用 `web/build_formal_windows.py` 构建；旧便携包和历史验收记录继续保留。
+
 Vue 3 + FastAPI + PostgreSQL。当前为 acceptance baseline / version pending，没有人工确认的正式 Web 产品版本。
 
 源码目录是 `web/`；部署包内部和既有服务器目录继续使用 `web_center/`。DB `yinda_web_center`、source_channel `web_center` 和 `backup_web_center` CLI 不变。

@@ -30,6 +30,8 @@ def main() -> None:
     parser.add_argument("--execute", action="store_true", help="执行清空；默认仅预览数量")
     parser.add_argument("--confirm", help="必须填写当前数据库名称，防止误操作")
     args = parser.parse_args()
+    if settings.data_root is not None:
+        raise SystemExit("正式部署不支持旧版清空工具；请使用经审核的维护流程。")
 
     with engine.connect() as connection:
         existing = set(inspect(connection).get_table_names())

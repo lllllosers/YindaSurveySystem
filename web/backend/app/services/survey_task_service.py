@@ -30,7 +30,7 @@ from shared.protocol.package import encode_json_bytes, write_package
 from shared.protocol.task_package_reader import load_survey_task_package
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = settings.file_base
 TASK_STORAGE_ROOT = BACKEND_ROOT / "storage" / "tasks"
 TASK_INCOMING_ROOT = BACKEND_ROOT / "storage" / "incoming_tasks"
 FORM_CONTRACT_PATH = REPOSITORY_ROOT / "shared" / "forms" / "engineering_form_contract.json"

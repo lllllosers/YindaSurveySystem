@@ -42,7 +42,7 @@ def create_app(config: Settings = settings) -> FastAPI:
     @app.get("/{full_path:path}", include_in_schema=False)
     def serve_web_frontend(full_path: str):
         """Serve a built SPA from the same origin as the API in deployments."""
-        dist = (Path(__file__).resolve().parents[2] / "frontend" / "dist").resolve()
+        dist = config.frontend_dist.resolve()
         blocked_docs = (
             full_path.rstrip("/") in {"docs", "redoc", "openapi.json"}
             or full_path.startswith(("docs/", "redoc/"))

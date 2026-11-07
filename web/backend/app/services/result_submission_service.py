@@ -19,7 +19,7 @@ from app.models.survey_task import SurveyTask
 from app.services.result_package_inspection import inspect_result_package
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = settings.file_base
 STORAGE_ROOT = BACKEND_ROOT / "storage"
 INCOMING_DIR = STORAGE_ROOT / "incoming"
 SUBMISSIONS_DIR = STORAGE_ROOT / "result_submissions"
