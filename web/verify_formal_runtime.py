@@ -20,6 +20,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from deployment.config import DeploymentConfig
+from deployment.installer import install_payload
 from branding import PRODUCT_EXE
 from server_console_core import lan_ipv4
 from shared.forms.engineering.registry import get_engineering_form_definitions
@@ -83,6 +84,7 @@ def main():
     parser.add_argument("--create-database", action="store_true")
     parser.add_argument("--pg-bin", default="")
     parser.add_argument("--lan", action="store_true")
+    parser.add_argument("--legacy-config", action="store_true", help="Exercise a pre-layout-v2 config and state without moving storage")
     args = parser.parse_args()
     if not args.database.startswith("yinda_console_") or not args.root.is_absolute():
         raise SystemExit("只允许显式的 yinda_console_* 测试数据库及绝对测试目录。")
@@ -91,16 +93,22 @@ def main():
         db_user=args.database + "_app" if args.create_database else os.environ["YINDA_TEST_DB_USER"],
         db_password="Frozen-App-Test-Password-2026!" if args.create_database else os.environ["YINDA_TEST_DB_PASSWORD"],
         listen_host="0.0.0.0" if args.lan else "127.0.0.1", web_port=args.web_port, pg_bin=args.pg_bin,
-        allowed_hosts=",".join(["127.0.0.1", "localhost", *(lan_ipv4() if args.lan else [])]))
+        allowed_hosts=",".join(["127.0.0.1", "localhost", *(lan_ipv4() if args.lan else [])]),
+        data_layout="legacy" if args.legacy_config else "flat")
+    package = args.server.resolve().parents[2]
+    install_payload(package, config.install_root)
     config.save()
+    if args.legacy_config:
+        config.config_file.write_text("\n".join(line for line in config.config_file.read_text(encoding="utf-8").splitlines()
+            if not line.startswith("DATA_LAYOUT=")), encoding="utf-8")
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
-    command = [str(args.server.resolve()), "--config", str(config.config_file)]
+    server = config.install_root / "service/YindaWebServer/YindaWebServer.exe"
+    command = [str(server), "--config", str(config.config_file)]
     password = "Pass1234"  # The documented minimum must initialize and log in.
     def call(action, payload=None):
         return subprocess.run([*command, action], input=json.dumps(payload) if payload else None,
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, **options)
     checks = []
-    package = args.server.resolve().parents[2]
     manifest = json.loads((package / "build-manifest.json").read_text(encoding="utf-8"))
     assert manifest["gui_entry"] == "launcher.py" and manifest["operations_entry"] == "server_console_core.py"
     checks.append("single_gui_and_operations_entry_in_manifest")
@@ -112,6 +120,12 @@ def main():
     init = call("--initialize", {"mode": "new", "username": "admin", "password": password})
     assert init.returncode == 0, init.stdout + init.stderr
     checks.append("frozen_initialize_postgresql17_alembic_admin")
+    if args.legacy_config:
+        state = json.loads(config.state_file.read_text(encoding="utf-8"))
+        state.pop("data_layout")
+        config.state_file.write_text(json.dumps(state), encoding="utf-8")
+        assert config.storage_dir.is_dir() and not (config.data_root / "storage").exists()
+        checks.append("old_config_and_state_keep_nested_storage_without_migration")
     assert call("--check").returncode == 0
     checks.append("frozen_preflight")
     diagnostic = call("--diagnose")
@@ -134,7 +148,7 @@ def main():
     try:
         process = start()
         checks.append("frozen_server_http_database_health")
-        console = args.server.resolve().parents[2] / PRODUCT_EXE
+        console = config.install_root / PRODUCT_EXE
         assert console.is_file()
         gui = subprocess.run([str(console), "--home", str(config.install_root), "--smoke-test"],
                              timeout=30, **options)

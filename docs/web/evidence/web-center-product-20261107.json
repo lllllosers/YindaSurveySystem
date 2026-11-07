@@ -1,0 +1,165 @@
+{
+  "windows": "Windows-11-10.0.26300-SP0",
+  "admin_token": 0,
+  "stable_service": {
+    "state": "absent",
+    "owned": false
+  },
+  "legacy_task": false,
+  "winsw_status_exit": 0,
+  "winsw_status": "NonExistent",
+  "frozen": {
+    "local": {
+      "passed": [
+        "single_gui_and_operations_entry_in_manifest",
+        "frozen_controlled_dedicated_database_and_user_creation",
+        "frozen_initialize_postgresql17_alembic_admin",
+        "frozen_preflight",
+        "frozen_full_environment_diagnostics",
+        "frozen_server_http_database_health",
+        "console_exit_does_not_stop_independent_web_process",
+        "vue_spa_production_auth_cookie_csrf_project_creation",
+        "frozen_shared_master_data_and_fourteen_real_excel_http_exports",
+        "duplicate_instance_rejected_original_survives",
+        "windows_named_event_graceful_stop",
+        "frozen_database_and_storage_backup_with_completion_marker",
+        "project_admin_storage_survive_binary_restart",
+        "frozen_reinitialize_refused"
+      ],
+      "not_verified": [
+        "SCM_install_start_stop_LocalService",
+        "SCM_backup_stop_resume",
+        "Windows_logoff",
+        "Windows_reboot_automatic_start",
+        "other_LAN_computer_access"
+      ],
+      "passed_count": 14
+    },
+    "lan": {
+      "passed": [
+        "single_gui_and_operations_entry_in_manifest",
+        "frozen_controlled_dedicated_database_and_user_creation",
+        "frozen_initialize_postgresql17_alembic_admin",
+        "frozen_preflight",
+        "frozen_full_environment_diagnostics",
+        "frozen_server_http_database_health",
+        "console_exit_does_not_stop_independent_web_process",
+        "vue_spa_production_auth_cookie_csrf_project_creation",
+        "frozen_shared_master_data_and_fourteen_real_excel_http_exports",
+        "lan_listen_and_server_own_ipv4_http_only_not_peer_acceptance",
+        "duplicate_instance_rejected_original_survives",
+        "windows_named_event_graceful_stop",
+        "frozen_database_and_storage_backup_with_completion_marker",
+        "project_admin_storage_survive_binary_restart",
+        "frozen_reinitialize_refused"
+      ],
+      "not_verified": [
+        "SCM_install_start_stop_LocalService",
+        "SCM_backup_stop_resume",
+        "Windows_logoff",
+        "Windows_reboot_automatic_start",
+        "other_LAN_computer_access"
+      ],
+      "passed_count": 15
+    },
+    "legacy": {
+      "passed": [
+        "single_gui_and_operations_entry_in_manifest",
+        "frozen_controlled_dedicated_database_and_user_creation",
+        "frozen_initialize_postgresql17_alembic_admin",
+        "old_config_and_state_keep_nested_storage_without_migration",
+        "frozen_preflight",
+        "frozen_full_environment_diagnostics",
+        "frozen_server_http_database_health",
+        "console_exit_does_not_stop_independent_web_process",
+        "vue_spa_production_auth_cookie_csrf_project_creation",
+        "frozen_shared_master_data_and_fourteen_real_excel_http_exports",
+        "duplicate_instance_rejected_original_survives",
+        "windows_named_event_graceful_stop",
+        "frozen_database_and_storage_backup_with_completion_marker",
+        "project_admin_storage_survive_binary_restart",
+        "frozen_reinitialize_refused"
+      ],
+      "not_verified": [
+        "SCM_install_start_stop_LocalService",
+        "SCM_backup_stop_resume",
+        "Windows_logoff",
+        "Windows_reboot_automatic_start",
+        "other_LAN_computer_access"
+      ],
+      "passed_count": 15
+    }
+  },
+  "gui_actual": {
+    "root_exe_double_click": true,
+    "unique_formal_gui": "launcher.py",
+    "blue_official_branding": true,
+    "advanced_fields_collapsed_by_default": true,
+    "lan_default_public_disabled": true,
+    "isolated_db_port": 56439,
+    "final_button_clicked": true,
+    "result": "environment failed: Windows administrator token required",
+    "remaining_six_steps": "not started",
+    "return_to_console": true,
+    "runtime_config_created": false,
+    "gui_exit": true,
+    "browser_vue_login_dashboard": true
+  },
+  "installation_events": [
+    {
+      "step": "environment",
+      "state": "running",
+      "detail": "",
+      "time": "2026-11-07T21:17:30.210297+08:00"
+    },
+    {
+      "step": "environment",
+      "state": "failed",
+      "detail": "安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。",
+      "time": "2026-11-07T21:17:30.212313+08:00"
+    }
+  ],
+  "artifact": {
+    "archive": "E:\\gitProject\\YindaSurveySystem-WebCenter\\web\\release\\web-center-windows\\20261107-210612-477487\\YindaWebCenter-Windows-x64.zip",
+    "bytes": 87357132,
+    "sha256": "8cc14f0c9596f7543c1794ec31cc4fefb593b63b4d12dfa166ccf49620a21f6b",
+    "files": 964,
+    "manifest_files_verified": 963,
+    "gui_subsystem": 2,
+    "backend_subsystem": 3,
+    "embedded_icon_sizes": 7,
+    "original_logo_unchanged": true,
+    "clean_windows_path_smokes": 2,
+    "source_commit": "6aa64957b17961986e4c7ebaac8c372c8b775569"
+  },
+  "regression": {
+    "backend_pass": 109,
+    "backend_skipped_opt_in": 2,
+    "provision_isolated_pass": 1,
+    "continuation_isolated_pass": 1,
+    "shared_pass": 56,
+    "frontend_pass": 28,
+    "frontend_build": "passed, existing large chunk warning"
+  },
+  "not_executed": [
+    "SCM install and actual LocalService wrapper/backend",
+    "SCM stop/restart and backup resume",
+    "SCM survives GUI exit",
+    "Windows logoff survival",
+    "Windows reboot automatic start",
+    "other LAN computer access"
+  ],
+  "baseline_reproduction": {
+    "accepted_wizard": "NameError: QWizard is not defined",
+    "busy_status_race": "deployment silently dropped before fix",
+    "final_entry_tests": "2 passed; includes duplicate-submit rejection"
+  },
+  "cleanup": {
+    "own_test_cluster_stopped": true,
+    "test_data_and_files_retained": true
+  },
+  "proof_files": [
+    "web-center-product-gui-20261107.txt",
+    "web-center-frozen-browser-20261107.jpg"
+  ]
+}

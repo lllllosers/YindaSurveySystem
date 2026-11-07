@@ -63,7 +63,9 @@ def test_deployment_is_not_dropped_when_status_refresh_is_running(tmp_path):
     window = ServerConsole(Manager())
     try:
         assert window.busy
-        window.submit("deploy", lambda: called.set() or "deployment completed")
+        assert window.submit("deploy", lambda: called.set() or "deployment completed")
+        assert not window.submit("deploy", lambda: called.set()), "duplicate deployment must be rejected"
+        assert window.deploying and not window.timer.isActive()
         release.set()
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline and not called.is_set():

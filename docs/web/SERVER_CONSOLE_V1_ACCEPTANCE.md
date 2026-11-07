@@ -2,7 +2,73 @@
 
 日期：2026-11-07（Asia/Shanghai）。结论：**实际代码与可运行 Windows EXE 已交付，服务级现场验收尚未完成，不能标记为正式投产通过。**
 
-## 最新：唯一正式控制台整合（基于 1255f2c）
+## 最新：完整 Web Center 交付与首次安装整改（基于 390e04b）
+
+本次交付名称为**引大调查数据采集系统 · Web Center**。沿用唯一 `web/launcher.py` 和 `web/server_console_core.py`，没有第二套 GUI、数据库初始化引擎或正式构建路线。应用代码提交为 `6aa64957b17961986e4c7ebaac8c372c8b775569`；后续提交仅补充验收脚本、证据和记录。未修改 Desktop、业务流程或正式数据，原 `.vscode/settings.json` 修改保留且未提交。
+
+### 本轮修正及根因
+
+- 基线 `390e04b` 的 `ServerConsole.setup()` 在向导 `exec()` 返回后使用了**未导入的 `QWizard.Accepted`**，实际复现 `NameError: name 'QWizard' is not defined`。因此最终按钮完成校验后，尚未调用部署核心就中断。已改用显式导入的 `QDialog.DialogCode.Accepted`，增加覆盖 `setup()` 实际接收结果及提交部署的回归。复现日志：`web/build/product-accepted-wizard-before.log`。
+- 另一个独立问题是向导期间定时状态检查可能占用共享 busy 标记，使 `submit('deploy')` 静默返回。修改前回归确实失败（`product-feedback-before.log`）；现在向导/部署暂停轮询，已有状态任务后可排队部署，拒绝重复部署，提交失败必须显示结果。最终两项入口回归均通过（`product-feedback-final.log`）。
+- 同一安装引擎提供七步状态、中文失败阶段/建议/日志，以及成功地址、打开页面和返回控制台。管理密码仍仅短暂通过 stdin 使用，运行密码逐次随机生成，配置保存前检查 ACL。
+- 正式 GUI 直接打包为根 `引大调查Web中心.exe`，没有 BAT 默认入口或 `console/` GUI。蓝色界面使用原始正式 Logo；小图标裁取符号，ICO 含 16/24/32/48/64/128/256 七个尺寸，窗口、托盘、任务栏及 PE 图标共用。原 Logo 文件 SHA256 未改变。
+- 数据页/网络页高级项默认收起，默认专用库 `yinda_web_center`、普通账号 `yinda_web_user`、Web 管理员 `admin`。管理员密码由用户设置，GUI 和初始化后端统一至少 8 位。默认局域网，公网禁用并说明 HTTPS 前提。
+- 新安装为 `data/{storage,backups,logs,config,packages}`；旧配置缺少 `DATA_LAYOUT` 时保持 legacy 物理映射 `原数据根/data/storage`。数据库中的 `storage/...` 引用不变，不自动移动旧文件；配置/状态布局不一致或新安装发现旧成果目录时拒绝继续。
+
+### 实际产物与唯一入口
+
+目录：`web/release/web-center-windows/20261107-210612-477487/YindaWebCenter/`。
+
+- 主程序：根 `引大调查Web中心.exe`，PE Windows GUI 子系统；源码仅 `launcher.py`。
+- 后台：`service/YindaWebServer/YindaWebServer.exe`，PE Console 子系统；WinSW 固定版本/哈希未变。
+- ZIP：同时间戳目录的 **YindaWebCenter-Windows-x64.zip**，**87,357,132 字节**。
+- SHA256：`8cc14f0c9596f7543c1794ec31cc4fefb593b63b4d12dfa166ccf49620a21f6b`。
+- 964 个归档文件、manifest 的 963 个文件哈希逐一匹配；无 BAT、旧 console 目录、runtime.env、业务成果或 PostgreSQL 数据。manifest 记录源代码提交与构建版本。先前交付目录全部保留。
+- FastAPI 及依赖、Vue dist/assets、Shared 正式资料/协议/渲染器、Alembic 和正式 Excel 模板均在程序资源内；下表以实际执行验证其可用性。
+
+### 已通过：实际运行与回归证据
+
+汇总原始记录见 [本轮机器与产物证据](evidence/web-center-product-20261107.json)。构建使用 Windows 11 x64 10.0.26300、CPython 3.12.14、PyInstaller 6.22.2、PySide6 6.11.2、PG17.11。
+
+| 项目 | 实际结果及证据 |
+|---|---|
+| 唯一入口、完整包和图标 | 文件资源管理器中实际双击隔离副本的根 EXE，打开唯一正式 GUI。检查了正式窗口和任务栏标识、蓝色导航、版本 `20261107 · 6aa64957`；PE 仅根程序为正式 GUI，内嵌七尺寸图标。`web/build/product-artifact.json` |
+| 不依赖开发 PATH | 仅 Windows/System32 PATH，移除 Python/Qt 开发环境变量，根 GUI 和后台二进制烟测均退出 0 |
+| 冻结 GUI 首次安装交互 | 逐页确认默认 data、PG17 检测、收起的高级项、默认 LAN、禁用公网、admin 和两次 8 位密码。高级端口指定自己的测试集群 56439，实际点击最终按钮。21:17:30 +08:00 立即显示进度和**环境检查失败/管理员权限**，其他六步未开始；显示修复建议及 install.log，返回控制台和退出可用。不是 CLI 代替 GUI |
+| GUI 失败证据 | [实际界面文字](evidence/web-center-product-gui-20261107.txt)；`.test-runtime/product-gui-install/data/logs/install.log` 和 `config/install-status.json`。该失败没有生成 runtime.env、创建库或注册服务 |
+| 后端完整回归 | **109 passed / 2 skipped**，`web/build/product-full-tests.log`。2 个显式隔离集成另行执行如下，不是遗留失败 |
+| 自动建库与保护（真实 PG17） | **1 passed**，`product-provision-tests.log`：受控创建、普通角色无 superuser/createdb/createrole/replication/bypassrls、同名对象不覆盖、同身份安全继续、已有部署拒绝新库、迁移、真实 pg_dump/成果备份及诊断，配置不含管理密码 |
+| 接续与保留（真实 PG17） | **1 passed**，`product-continuation-tests.log`：管理员 UID/哈希、探针业务表与成果文件不变；拒绝重复新初始化 |
+| Shared / Vue | Shared **56 passed**；前端 **28 passed**；Vue 正式构建通过，只有既有大 chunk 提示。对应 `product-shared-tests.log`、`product-frontend-tests.log`、`product-frontend-build.log` |
+| 冻结程序本机模式 | **14 项通过**，`.test-runtime/product-frozen-local/acceptance.json` 和 `product-frozen-local.log` |
+| 冻结程序局域网监听 | **15 项通过**，`product-frozen-lan/acceptance.json` 和 `product-frozen-lan.log`。验证服务器自己活动 IPv4 的 HTTP，**不是其他电脑的可达证明**；Windows 防火墙授权提示未作操作 |
+| 冻结程序旧布局兼容 | **15 项通过**，`product-frozen-legacy/acceptance.json` 和 `product-frozen-legacy.log`。配置与状态均去掉新布局字段，实际冻结程序仍从旧嵌套 storage 读取、备份、重启保留，无搬迁 |
+| 实际业务资源 | 三种冻结配置均自动建测试库、迁移、使用 **8 位**管理员密码登录、创建项目、加载中央基础资料；通过真实业务 HTTP 接口分别导出全部 **14 类正式 Excel 原表**，重新打开工作簿核对值。输出位于每个测试目录 `exports/`，不是只检查资源列表 |
+| 正式前端浏览器验证 | 在冻结服务 `127.0.0.1:58139` 实际打开 Vue 登录页并登录；工作台显示测试项目 1、正式测试成果 14、中央资料 5/20/68/63，页面无空白。见 [实际浏览器画面](evidence/web-center-frozen-browser-20261107.jpg) |
+| 生命周期与文件 | 上述冻结测试均验证独立控制台退出后 Web 进程响应、重复实例拒绝、真实命名事件停止、备份完成标识、重启后项目/管理员/成果保留、拒绝重复初始化；均为独立进程证据，不能替代 SCM |
+| WinSW 本体与服务只读查询 | 新根目录布局在隔离副本生成 XML，实际 WinSW status 退出 0、NonExistent。SCM 正式服务/旧草案均未注册，旧任务不存在；没有更改历史任务 |
+
+全部数据库验证仅使用本轮新建 `.test-runtime/product-delivery-pg/cluster`，绑定 `127.0.0.1:56439`，仅创建 `yinda_console_*` 测试库；测试程序和文件也在 `.test-runtime/product-*` 下。本轮测试集群及后台进程已停止，数据、备份和证据保留。未连接既有 PG 业务数据库。
+
+### 失败、未执行与现场门槛
+
+**实际部署结果：未完成服务安装。** 当前进程 `IsUserAnAdmin=0`，冻结 GUI 在环境步骤明确失败，符合权限保护预期；这不是安装成功的证据。已执行的自动回归及冻结运行检查没有未修复失败。
+
+| 未执行项目 | 原因 / 下一步 |
+|---|---|
+| WinSW 安装、SCM 注册、wrapper/后端实际 LocalService 身份与 ACL | 没有管理员令牌，需授权 Windows 11 测试机管理员执行 |
+| 真实服务停止/重启、服务备份停复服、退出控制台后 SCM 保持运行 | 同上；现有适配器自动测试及独立进程验证不能替代 |
+| Windows 注销后服务存活、重启后自动启动与测试成果保留 | 同上；未注销或重启用户电脑 |
+| 办公室其他电脑访问 | 无其他测试电脑，明确人工待验；防火墙和网络策略仍需现场处理 |
+| 冻结 GUI 管理员权限下全部七步成功、地址和打开按钮 | 已验证同一管线七步成功/失败回归，真实冻结 GUI 仅执行到非管理员失败。须在管理员现场补齐最终成功链路 |
+
+最小现场步骤：在无真实业务实例的 Windows 11 测试机安装 PG17 独立测试服务 → 解压本 ZIP 并核对哈希 → 双击确认图标后退出，以管理员身份运行同一根 EXE → 在高级设置指定新测试库名/账号及测试端口 → 逐页完成并观察七步成功 → 打开网页登录、保存测试成果并备份 → 按模板验证服务账户、控制台退出、停止/重启、注销、重启及另一电脑访问。失败收集阶段原文、install-status/install.log、WinSW 日志和 SCM 事件/退出码，**不收集密码或 runtime.env**。详见随包 [操作步骤](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md) 和 [记录模板](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md)。
+
+恢复界面、定时备份、在线升级、HTTPS/反向代理管理、PG 自动安装和正式数据迁移均未开发。**本轮产品整改已形成实际可运行交付，第一批现场服务验收仍未闭环，尚不满足完整进入第二批或正式投产条件。**
+
+## 历史：唯一正式控制台整合（390e04b，基于 1255f2c）
+
+以下记录和产物名属于该阶段历史，不是上方本轮完整 Web Center 包。
 
 本轮纠正产品路线，升级原 `web/launcher.py`，不再并行维护 `console_v1.py`。原控制台的实际功能、第一批差距及逐项整合结果见 [功能对照与唯一入口方案](SERVER_CONSOLE_UNIFICATION.md)。本轮不修改 Web 业务、Desktop，不启动正式数据迁移；原有 `.vscode/settings.json` 修改保留。
 

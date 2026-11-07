@@ -1,0 +1,94 @@
+Window: "引大调查数据采集系统 · Web Center", App: 引大调查Web中心.exe.
+	0 窗口 (settable, string) 引大调查数据采集系统 · Web Center Secondary Actions: Raise ID: QApplication.ServerConsole
+		320 窗口 (settable, string) 引大调查数据采集系统 · 安装进度 Secondary Actions: Raise ID: QApplication.DeploymentProgress
+			321 标题栏 (settable, string) Value: 引大调查数据采集系统 · 安装进度
+				322 菜单栏 系统 ID: MenuBar
+					323 菜单项 系统
+				324 按钮 关闭
+			325 文本 安装未完成，请按提示处理 ID: QApplication.DeploymentProgress.title
+			326 进度栏 Value: 0 ID: QApplication.DeploymentProgress.QProgressBar
+			327 文本 ! 检查安装环境 失败 ID: QApplication.DeploymentProgress.QLabel
+			328 文本 ○ 检查 PostgreSQL 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			329 文本 ○ 准备专用数据库与运行账号 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			330 文本 ○ 初始化 Web Center 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			331 文本 ○ 安装 Windows 后台服务 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			332 文本 ○ 启动 Web Center 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			333 文本 ○ 检查访问是否正常 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			334 编辑 Value: 检查安装环境：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。 检查安装环境失败：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。 请确认目录可写，使用完整部署包，并右键主程序选择“以管理员身份运行”。 安装日志：E:\gitProject\YindaSurveySystem-WebCenter\.test-runtime\product-gui-install\data\logs\install.log ID: QApplication.DeploymentProgress.QTextEdit
+				335 组 (settable, string) ID: QApplication.DeploymentProgress.QTextEdit.qt_scrollarea_viewport
+			336 按钮 (settable, string) 返回控制台 ID: QApplication.DeploymentProgress.QPushButton
+		1 标题栏 (settable, string) Value: 引大调查数据采集系统 · Web Center
+			2 菜单栏 系统 ID: MenuBar
+				3 菜单项 系统
+			4 按钮 最小化
+			5 按钮 最大化
+			6 按钮 关闭
+		7 组 (settable, string) ID: QApplication.ServerConsole.workspace
+			8 自定义 (settable, string) ID: QApplication.ServerConsole.workspace.sidebar
+				9 图像 ID: QApplication.ServerConsole.workspace.sidebar.QLabel
+				10 文本 引大调查 ID: QApplication.ServerConsole.workspace.sidebar.brand
+				11 文本 数据采集系统 WEB CENTER ID: QApplication.ServerConsole.workspace.sidebar.brandSub
+				12 列表 (settable, string) ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+					13 列表项目 (selectable, settable, string) 中心总览 ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+					14 列表项目 (selectable, settable, string) 运行与诊断 ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+					15 列表项目 (selectable, settable, string) 网络访问 ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+					16 列表项目 (selectable, settable, string) 数据与备份 ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+					17 列表项目 (selectable, settable, string) 安装与设置 ID: QApplication.ServerConsole.workspace.sidebar.QListWidget
+				18 文本 办公室数据中心 Windows 后台服务 ID: QApplication.ServerConsole.workspace.sidebar.QLabel
+			19 窗格 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget
+				208 组 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget
+					209 文本 Web Center 总览 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.title
+					210 文本 引大调查数据采集系统 · 运行状态与数据保护 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.hint
+					211 文本 Web Center · 20261107 · 6aa64957 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.version
+					212 文本 尚未完成首次安装。请到“安装与设置”开始，控制台会引导创建本系统专用数据库。 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.banner
+					213 按钮 (settable, string) 首次安装 / 运行配置 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.primary
+					214 自定义 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard
+						215 文本 WEB 后台服务 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardTitle
+						216 文本 尚未安装 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardValue
+						217 文本 正式 Windows 后台服务 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.hint
+					218 自定义 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard
+						219 文本 POSTGRESQL 17 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardTitle
+						220 文本 等待配置 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardValue
+						221 文本 使用本机 PostgreSQL 17 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.hint
+					222 自定义 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard
+						223 文本 最近完整备份 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardTitle
+						224 文本 暂无备份 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.cardValue
+						225 文本 完成安装后可立即备份 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.statusCard.hint
+					226 自定义 (settable, string) ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.panel
+						227 文本 办公室访问地址 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.panel.cardTitle
+						228 文本 完成安装后显示访问地址 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.panel.address
+						229 文本 局域网地址为候选地址，需由办公室另一台电脑验证。 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.panel.hint
+						230 按钮 (settable, string) 复制访问地址 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.panel.QPushButton
+					231 按钮 (settable, string) 启动服务 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.primary
+					232 按钮 (settable, string) 停止服务 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.danger
+					233 按钮 (settable, string) 重启服务 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.QPushButton
+					234 按钮 (settable, string) 打开管理端 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.QPushButton
+					235 按钮 (settable, string) 检查运行环境 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.QPushButton
+					236 按钮 (settable, string) 立即备份 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.QPushButton
+					237 文本 安装完成后，可在这里查看数据库版本、磁盘空间和环境检查结果。 ID: QApplication.ServerConsole.workspace.QStackedWidget.QWidget.hint
+		50 状态栏 检查安装环境失败：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。 请确认目录可写，使用完整部署包，并右键主程序选择“以管理员身份运行”。 安装日志：E:\gitProject\YindaSurveySystem-WebCenter\.test-runtime\product-gui-install\data\logs\install.log ID: QApplication.ServerConsole.QStatusBar
+			51 缩略图 (settable, string) ID: QApplication.ServerConsole.QStatusBar.QSizeGrip
+		320 窗口 (settable, string) 引大调查数据采集系统 · 安装进度 Secondary Actions: Raise ID: QApplication.DeploymentProgress
+			321 标题栏 (settable, string) Value: 引大调查数据采集系统 · 安装进度
+				322 菜单栏 系统 ID: MenuBar
+					323 菜单项 系统
+				324 按钮 关闭
+			325 文本 安装未完成，请按提示处理 ID: QApplication.DeploymentProgress.title
+			326 进度栏 Value: 0 ID: QApplication.DeploymentProgress.QProgressBar
+			327 文本 ! 检查安装环境 失败 ID: QApplication.DeploymentProgress.QLabel
+			328 文本 ○ 检查 PostgreSQL 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			329 文本 ○ 准备专用数据库与运行账号 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			330 文本 ○ 初始化 Web Center 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			331 文本 ○ 安装 Windows 后台服务 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			332 文本 ○ 启动 Web Center 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			333 文本 ○ 检查访问是否正常 尚未开始 ID: QApplication.DeploymentProgress.QLabel
+			334 编辑 Value: 检查安装环境：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。 检查安装环境失败：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。 请确认目录可写，使用完整部署包，并右键主程序选择“以管理员身份运行”。 安装日志：E:\gitProject\YindaSurveySystem-WebCenter\.test-runtime\product-gui-install\data\logs\install.log ID: QApplication.DeploymentProgress.QTextEdit
+				335 组 (settable, string) ID: QApplication.DeploymentProgress.QTextEdit.qt_scrollarea_viewport
+			336 按钮 (settable, string) 返回控制台 ID: QApplication.DeploymentProgress.QPushButton
+
+Document text: ```
+检查安装环境：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。
+检查安装环境失败：安装后台服务需要 Windows 管理员权限；请右键根目录主程序，选择“以管理员身份运行”后重试。
+请确认目录可写，使用完整部署包，并右键主程序选择“以管理员身份运行”。
+安装日志：E:\gitProject\YindaSurveySystem-WebCenter\.test-runtime\product-gui-install\data\logs\install.log
+```
