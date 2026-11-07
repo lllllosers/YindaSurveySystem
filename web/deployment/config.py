@@ -12,6 +12,15 @@ from urllib.parse import urlparse
 from dotenv import dotenv_values
 
 
+def validate_admin(username: str, password: str) -> str:
+    username = username.strip().lower()
+    if not 1 <= len(username) <= 80 or not username.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("管理员账号请使用字母、数字、中文、下划线或连字符，最多 80 个字符。")
+    if not 8 <= len(password) <= 128:
+        raise ValueError("系统管理员密码需要 8 至 128 个字符。")
+    return username
+
+
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".yinda-")
@@ -32,7 +41,7 @@ class DeploymentConfig:
     db_host: str = "127.0.0.1"
     db_port: int = 5432
     db_name: str = "yinda_web_center"
-    db_user: str = "yinda_app"
+    db_user: str = "yinda_web_user"
     db_password: str = field(default="", repr=False)
     listen_host: str = "0.0.0.0"
     web_port: int = 8000
@@ -41,6 +50,15 @@ class DeploymentConfig:
     pg_bin: str = ""
     postgres_service_name: str = ""
     public_base_url: str = ""
+    data_layout: str = "flat"
+
+    @property
+    def file_base(self) -> Path:
+        return self.data_root / "data" if self.data_layout == "legacy" else self.data_root
+
+    @property
+    def storage_dir(self) -> Path:
+        return self.file_base / "storage"
 
     @property
     def config_file(self) -> Path:
@@ -59,13 +77,13 @@ class DeploymentConfig:
         if not self.install_root.is_absolute() or not self.data_root.is_absolute():
             raise ValueError("安装目录和持久化目录必须使用绝对路径。")
         if self.install_root.resolve().is_relative_to(self.data_root.resolve()):
-            raise ValueError("持久化目录不能等于或包含程序安装目录；建议使用安装目录下的 persistent 子目录。")
+            raise ValueError("数据存储目录不能等于或包含程序安装目录；建议使用安装目录下的 data 文件夹。")
         for root in (self.install_root, self.data_root):
             if any(c in str(root) for c in ('\n', '\r', '"', '%')):
                 raise ValueError("目录不能含引号、百分号或换行。")
         # Never put persistent files inside a replaceable executable directory.
         if any(self.data_root.resolve().is_relative_to(self.install_root / part)
-               for part in ("console", "service", "releases")):
+               for part in ("console", "_internal", "service", "releases")):
             raise ValueError("持久化目录不能位于程序发布目录内。")
         if not 1 <= self.web_port <= 65535 or not 1 <= self.db_port <= 65535:
             raise ValueError("端口必须在 1 至 65535 之间。")
@@ -76,6 +94,8 @@ class DeploymentConfig:
             raise ValueError("数据库名只能使用字母、数字、下划线，不能以数字开头。")
         if self.transport_mode != "lan_http":
             raise ValueError("本批向导支持明确的内网 HTTP；HTTPS 请由后续部署流程配置。")
+        if self.data_layout not in {"flat", "legacy"}:
+            raise ValueError("无法识别数据存储布局，不能自动调整已有成果目录。")
         if self.pg_bin and not Path(self.pg_bin).is_absolute():
             raise ValueError("PostgreSQL 工具目录必须为绝对路径。")
         if self.public_base_url:
@@ -112,6 +132,7 @@ class DeploymentConfig:
         values = dotenv_values(path, interpolate=False)
         kwargs = {k: values[k.upper()] for k in cls.__dataclass_fields__ if k != "install_root" and k.upper() in values}
         kwargs["data_root"] = Path(kwargs["data_root"])
+        kwargs["data_layout"] = values.get("DATA_LAYOUT", "legacy")
         for key in ("db_port", "web_port"):
             kwargs[key] = int(kwargs[key])
         result = cls(install_root=install_root.resolve(), **kwargs)
@@ -119,12 +140,15 @@ class DeploymentConfig:
         return result
 
     def ensure_directories(self) -> None:
-        for name in ("config", "data/storage", "backups", "logs", "packages"):
+        for name in ("config", "backups", "logs", "packages"):
             (self.data_root / name).mkdir(parents=True, exist_ok=True)
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
         (self.install_root / "releases").mkdir(parents=True, exist_ok=True)
 
 
 def safe_error(exc: Exception) -> str:
+    if type(exc).__name__ == "DeploymentError" and type(exc).__module__ == "deployment.installer":
+        return str(exc)
     if isinstance(exc, ModuleNotFoundError):
         return f"程序资源缺少模块：{exc.name}。请重新构建完整交付包。"
     if type(exc).__name__ == "OperationalError":

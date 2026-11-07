@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     transport_mode: Literal["https", "lan_http"] = "https"
     data_root: Path | None = None
+    data_layout: Literal["legacy", "flat"] = "legacy"
     pg_bin: str = ""
     allowed_hosts: str = ""
     registration_mode: Literal["open", "invite_only", "closed"] | None = None
@@ -94,7 +95,9 @@ class Settings(BaseSettings):
     @property
     def file_base(self) -> Path:
         # Retain database values such as storage/tasks/... across relocation.
-        return (self.data_root / "data").resolve() if self.data_root else BACKEND_DIR
+        if not self.data_root:
+            return BACKEND_DIR
+        return (self.data_root / "data").resolve() if self.data_layout == "legacy" else self.data_root.resolve()
 
     @property
     def storage_dir(self) -> Path:

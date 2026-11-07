@@ -35,7 +35,7 @@ def test_controlled_provision_initialization_backup_and_no_overwrite(tmp_path):
     assert "正常" in preflight(config)
     with pytest.raises(RuntimeError, match="已有部署"):
         create_dedicated_database(config, credentials)
-    storage = config.data_root / "data/storage"
+    storage = config.storage_dir
     (storage / "test-result.ydresult").write_bytes(b"isolated-test-result")
     server = Path(__file__).resolve().parents[2] / "server_entry.py"
     command = [sys.executable, str(server), "--config", str(config.config_file)]

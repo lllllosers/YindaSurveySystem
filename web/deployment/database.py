@@ -11,7 +11,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.pool import NullPool
 
-from deployment.config import DeploymentConfig, atomic_write
+from deployment.config import DeploymentConfig, atomic_write, validate_admin
 
 
 def migration_config() -> Config:
@@ -40,7 +40,9 @@ def check_adoption(config: DeploymentConfig, mode: str, snapshot: dict) -> None:
     if mode not in {"new", "continue"}:
         raise ValueError("请选择新部署或接续已有部署。")
     if mode == "new":
-        if config.state_file.exists() or snapshot["tables"] or any((config.data_root / "data" / "storage").rglob("*")):
+        if config.data_layout == "flat" and (config.data_root / "data/storage").exists():
+            raise RuntimeError("发现旧版成果目录，请由维护人员核对原部署；不会创建空目录替代。")
+        if config.state_file.exists() or snapshot["tables"] or any(config.storage_dir.rglob("*")):
             raise RuntimeError("发现已有部署、数据库表或成果文件；禁止初始化，请选择接续。")
     else:
         # No automatic copy or guessing of old storage paths.
@@ -50,7 +52,9 @@ def check_adoption(config: DeploymentConfig, mode: str, snapshot: dict) -> None:
         identity = [config.db_host, config.db_port, config.db_name]
         if state.get("database") != identity or state.get("data_root") != str(config.data_root.resolve()):
             raise RuntimeError("数据库或数据目录与部署标识不匹配，拒绝接续。")
-        if not (config.data_root / "data" / "storage").is_dir():
+        if state.get("data_layout", "legacy") != config.data_layout:
+            raise RuntimeError("成果目录布局与原部署不匹配，未移动或修改数据。")
+        if not config.storage_dir.is_dir():
             raise RuntimeError("登记部署的 storage 目录丢失，拒绝创建空目录替代。")
         if not snapshot["revision"]:
             # A failed new deployment may resume only if the database remains empty.
@@ -62,8 +66,7 @@ def check_adoption(config: DeploymentConfig, mode: str, snapshot: dict) -> None:
 
 def initialize(config: DeploymentConfig, mode: str, username: str, password: str) -> str:
     config.validate()
-    if len(password) < 12 or len(password) > 128:
-        raise ValueError("首次管理员密码需要 12 至 128 个字符。")
+    username = validate_admin(username, password)
     engine = connect_engine(config)
     try:
         with engine.connect() as connection:
@@ -74,7 +77,7 @@ def initialize(config: DeploymentConfig, mode: str, username: str, password: str
                 check_adoption(config, mode, snapshot)
                 config.ensure_directories()
                 state = {"schema": 1, "database": [config.db_host, config.db_port, config.db_name],
-                         "data_root": str(config.data_root.resolve()), "phase": "initializing"}
+                         "data_root": str(config.data_root.resolve()), "data_layout": config.data_layout, "phase": "initializing"}
                 atomic_write(config.state_file, json.dumps(state, ensure_ascii=False, indent=2))
                 connection.commit()
                 cfg = migration_config()

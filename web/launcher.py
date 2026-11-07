@@ -7,63 +7,57 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QGridLayout,
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPixmap
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout,
     QHBoxLayout, QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
 from server_console_core import CONSOLE_VERSION, ServerManager, safe_error
-from server_setup import SetupWizard
+from server_setup import SetupWizard, DeploymentProgress
+from branding import PRODUCT_NAME, asset
 
 STYLE = """
-QWidget { color:#243e3d; font-family:'Microsoft YaHei UI'; font-size:14px; }
-QMainWindow, QWidget#workspace { background:#f1f5f3; }
-QFrame#sidebar { background:#183b37; border:0; }
-QFrame#sidebar QLabel { color:#e0efeb; background:transparent; }
-QLabel#brand { font-size:25px; font-weight:700; } QLabel#brandSub { color:#9bbcb3; font-size:12px; }
-QListWidget { background:transparent; border:0; outline:0; color:#a8c5bc; }
+QWidget { color:#243b59; font-family:'Microsoft YaHei UI'; font-size:14px; }
+QMainWindow, QDialog, QWizard, QWizardPage, QWidget#workspace { background:#f1f5fb; }
+QFrame#sidebar { background:#12335c; border:0; }
+QFrame#sidebar QLabel { color:#e4efff; background:transparent; }
+QLabel#brand { font-size:24px; font-weight:700; } QLabel#brandSub { color:#a5c3ed; font-size:14px; }
+QListWidget { background:transparent; border:0; outline:0; color:#b5cceb; }
 QListWidget::item { padding:15px 18px; margin:3px 0; border-radius:8px; }
-QListWidget::item:selected { background:#2a534a; color:white; font-weight:600; }
-QLabel#title { font-size:27px; font-weight:700; color:#183b37; }
-QLabel#hint { color:#6d827d; background:transparent; } QLabel#eyebrow { color:#66827a; font-size:12px; }
-QLabel#version { color:#376c5e; background:#e2eee6; padding:8px 14px; border-radius:15px; }
-QFrame#panel, QFrame#statusCard { background:white; border:1px solid #dae5df; border-radius:13px; }
+QListWidget::item:selected { background:#244f82; color:white; font-weight:600; }
+QLabel#title { font-size:26px; font-weight:700; color:#153b6d; }
+QLabel#hint { color:#647b98; background:transparent; } QLabel#eyebrow { color:#6683a6; font-size:12px; }
+QLabel#version { color:#245a9c; background:#e1ecfc; padding:8px 14px; border-radius:15px; }
+QFrame#panel, QFrame#statusCard { background:white; border:1px solid #d8e3f2; border-radius:13px; }
 QFrame#statusCard QLabel, QFrame#panel QLabel { background:transparent; }
-QLabel#cardTitle { color:#6b8079; font-size:13px; } QLabel#cardValue { color:#234c40; font-size:23px; font-weight:700; }
-QLabel#section { font-size:16px; font-weight:600; } QLabel#address { font-size:23px; font-weight:600; color:#1a5d4c; }
-QLabel#banner { color:#5e704c; background:#e9eedb; border:1px solid #d8e0c5; border-radius:8px; padding:13px; }
-QPushButton { background:white; border:1px solid #cddbd2; border-radius:7px; padding:10px 16px; color:#2f5147; }
-QPushButton:hover { background:#e9f1eb; border-color:#7fa18b; } QPushButton:disabled { background:#edf1ed; color:#9caaa1; border-color:#e0e7e1; }
-QPushButton#primary { background:#256a50; border-color:#256a50; color:white; }
-QPushButton#primary:hover { background:#20583f; } QPushButton#danger { color:#ae594d; }
-QPushButton#primary:disabled, QPushButton#danger:disabled { background:#edf1ed; color:#9caaa1; border-color:#e0e7e1; }
-QPlainTextEdit, QTreeWidget { background:white; border:1px solid #d6e2d9; border-radius:8px; padding:12px; }
+QLabel#cardTitle { color:#647b98; font-size:13px; } QLabel#cardValue { color:#205a9f; font-size:23px; font-weight:700; }
+QLabel#section { font-size:16px; font-weight:600; } QLabel#address { font-size:23px; font-weight:600; color:#205a9f; }
+QLabel#banner { color:#315f98; background:#e6eefb; border:1px solid #d2e0f6; border-radius:8px; padding:13px; }
+QPushButton { background:white; border:1px solid #cbd9ed; border-radius:7px; padding:10px 16px; color:#244f82; }
+QPushButton:hover { background:#e9f0fc; border-color:#81a9e0; } QPushButton:disabled { background:#edf1f8; color:#9baabd; border-color:#e0e7f0; }
+QPushButton#primary { background:#2369c5; border-color:#2369c5; color:white; }
+QPushButton#primary:hover { background:#1b55a2; } QPushButton#danger { color:#ae594d; }
+QPushButton#primary:disabled, QPushButton#danger:disabled { background:#edf1f8; color:#9baabd; border-color:#e0e7f0; }
+QPlainTextEdit, QTextEdit, QTreeWidget { background:white; border:1px solid #d5e1f1; border-radius:8px; padding:12px; }
 QPlainTextEdit { font-family:'Cascadia Mono','Microsoft YaHei UI'; font-size:13px; }
-QHeaderView::section { background:#e9f0ea; padding:9px; border:0; }
-QLineEdit,QComboBox { background:white; border:1px solid #c8d9cd; border-radius:5px; padding:7px; color:#244b3c; }
-QWizard,QWizardPage { background:#f3f7f3; } QGroupBox { border:1px solid #d0ddd3; border-radius:7px; margin-top:13px; padding-top:16px; }
-QGroupBox::title { subcontrol-origin:margin; left:10px; } QStatusBar { background:#e5ede7; color:#688175; }
+QHeaderView::section { background:#e9eff9; padding:9px; border:0; }
+QLineEdit,QComboBox { background:white; border:1px solid #c8d8ee; border-radius:5px; padding:7px; color:#244f82; }
+QGroupBox { border:1px solid #d1ddf0; border-radius:7px; margin-top:13px; padding-top:16px; }
+QGroupBox::title { subcontrol-origin:margin; left:10px; } QStatusBar { background:#e4ecf8; color:#647fa2; }
+QProgressBar { border:0; background:#dce7f7; border-radius:5px; height:9px; } QProgressBar::chunk { background:#2876d4; border-radius:5px; }
+QScrollArea, QScrollArea > QWidget > QWidget { background:transparent; }
 """
 
 
 def icon():
-    pixmap = QPixmap(64, 64)
-    pixmap.fill(QColor("#256a50"))
-    painter = QPainter(pixmap)
-    painter.setPen(QColor("white"))
-    font = painter.font()
-    font.setPixelSize(38)
-    font.setBold(True)
-    painter.setFont(font)
-    painter.drawText(pixmap.rect(), Qt.AlignCenter, "引")
-    painter.end()
-    return QIcon(pixmap)
+    return QIcon(str(asset("YindaWebCenter.ico")))
 
 
 class Bridge(QObject):
     done = Signal(str, object)
     error = Signal(str, str)
+    progress = Signal(str, str, str)
 
 
 class StatusCard(QFrame):
@@ -97,16 +91,21 @@ class ServerConsole(QMainWindow):
         self.addresses = []
         self.last_status = {}
         self.busy = False
+        self.active_task = None
+        self.deploying = False
+        self.wizard_open = False
+        self.deployment_dialog = None
         self.exiting = False
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.bridge = Bridge()
         self.bridge.done.connect(self.finished)
         self.bridge.error.connect(self.failed)
+        self.bridge.progress.connect(self.show_progress)
         self.buttons = []
-        self.setWindowTitle("引大调查 · 服务器控制台")
+        self.setWindowTitle(PRODUCT_NAME + " · Web Center")
         self.setWindowIcon(icon())
         self.resize(1280, 850)
-        self.setMinimumSize(1120, 760)
+        self.setMinimumSize(1060, 680)
         self._build()
         self._tray()
         self.timer = QTimer(self)
@@ -133,10 +132,13 @@ class ServerConsole(QMainWindow):
         side.setFixedWidth(214)
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(20, 30, 20, 24)
+        mark = QLabel()
+        mark.setPixmap(QPixmap(str(asset("BrandMark.png"))).scaled(76, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        side_layout.addWidget(mark)
         brand = QLabel("引大调查")
         brand.setObjectName("brand")
         side_layout.addWidget(brand)
-        sub = QLabel("YINDA  /  SERVER CONSOLE")
+        sub = QLabel("数据采集系统\nWEB CENTER")
         sub.setObjectName("brandSub")
         side_layout.addWidget(sub)
         side_layout.addSpacing(32)
@@ -148,7 +150,7 @@ class ServerConsole(QMainWindow):
         self.stack = QStackedWidget()
         outer.addWidget(self.stack, 1)
         self.pages = []
-        for title, subtitle in (("中心服务总览", "运行状态、访问地址与数据保护"), ("运行与诊断", "检查环境、管理后台服务、查看运行日志"),
+        for title, subtitle in (("Web Center 总览", "引大调查数据采集系统 · 运行状态与数据保护"), ("运行与诊断", "检查环境、管理后台服务、查看运行日志"),
                 ("网络访问", "区分本机检查和办公室其他电脑的访问"), ("数据与备份", "数据库与成果文件一起保存，完成后记录备份结果"),
                 ("安装与设置", "首次安装、运行配置与后台服务设置")):
             page = QWidget()
@@ -283,7 +285,12 @@ class ServerConsole(QMainWindow):
 
     def submit(self, name, function):
         if self.busy:
-            return
+            if name != "deploy" or self.active_task != "status":
+                return False
+        if name == "deploy":
+            self.deploying = True
+            self.timer.stop()
+        self.active_task = name
         self.busy = True
         for button in self.buttons:
             button.setEnabled(False)
@@ -294,15 +301,27 @@ class ServerConsole(QMainWindow):
             except Exception as exc:
                 self.bridge.error.emit(name, safe_error(exc))
         self.pool.submit(worker)
+        return True
 
     def refresh(self):
+        if self.wizard_open or self.deploying:
+            return
         self.submit("status", self.manager.status)
 
     def finished(self, name, result):
+        if name == "status" and self.deploying:
+            return
+        self.active_task = None
         self.busy = False
         for button in self.buttons:
             button.setEnabled(True)
-        if name == "status":
+        if name == "deploy":
+            self.deploying = False
+            if self.deployment_dialog:
+                self.deployment_dialog.finish(result if isinstance(result, dict) else {"message": str(result)})
+            self.timer.start(15000)
+            QTimer.singleShot(0, self.refresh)
+        elif name == "status":
             self.show_status(result)
         elif name == "preflight":
             self.show_checks(result)
@@ -362,12 +381,20 @@ class ServerConsole(QMainWindow):
             button.setEnabled(self.current is not None)
 
     def failed(self, name, message):
+        if name == "status" and self.deploying:
+            return
+        self.active_task = None
         self.busy = False
         for button in self.buttons:
             button.setEnabled(True)
         self.statusBar().showMessage(message)
         self.log_view.setPlainText(message)
-        if name == "status":
+        if name == "deploy":
+            self.deploying = False
+            if self.deployment_dialog:
+                self.deployment_dialog.finish(error=message)
+            self.timer.start(15000)
+        elif name == "status":
             self.banner.setText("状态检查未完成：" + message)
         else:
             QMessageBox.warning(self, "操作未完成", message)
@@ -396,11 +423,26 @@ class ServerConsole(QMainWindow):
     def setup(self):
         if self.busy:
             return
+        self.wizard_open = True
+        self.timer.stop()
         wizard = SetupWizard(self.manager.home, self.current, self.addresses, self)
-        if wizard.exec() == QWizard.Accepted:
+        accepted = wizard.exec() == QDialog.DialogCode.Accepted
+        self.wizard_open = False
+        if accepted:
             args = (wizard.config, wizard.deploy_mode, wizard.username, wizard.password, wizard.database_admin)
             wizard.clear_secrets()
-            self.submit("deploy", lambda: self.manager.deploy(*args))
+            self.deployment_dialog = DeploymentProgress(self)
+            self.deployment_dialog.show()
+            submitted = self.submit("deploy", lambda: self.manager.deploy(*args, progress=self.bridge.progress.emit))
+            if not submitted:
+                self.deployment_dialog.finish(error="当前另一个维护操作正在执行，请等待其完成后重试；安装未被提交。")
+        else:
+            wizard.clear_secrets()
+            self.timer.start(15000)
+
+    def show_progress(self, step, state, detail):
+        if self.deployment_dialog:
+            self.deployment_dialog.update_step(step, state, detail)
 
     def read_logs(self):
         if self.current:
@@ -431,7 +473,12 @@ def main():
     parser.add_argument("--home", type=Path)
     parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args()
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("YindaSurvey.WebCenter")
     app = QApplication(sys.argv)
+    app.setApplicationName(PRODUCT_NAME + " Web Center")
+    app.setWindowIcon(icon())
     app.setStyleSheet(STYLE)
     window = ServerConsole(ServerManager(args.home))
     window.show()

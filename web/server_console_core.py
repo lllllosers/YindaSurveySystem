@@ -9,12 +9,13 @@ import sys
 
 from deployment.config import DeploymentConfig, atomic_write, safe_error
 from deployment.service import LEGACY_TASK_NOTICE, SERVICE_ID, ServiceManager, health, lan_ipv4, run
+from branding import product_version
 
-CONSOLE_VERSION = "V1 · 统一控制台"
+CONSOLE_VERSION = product_version()
 
 
 def resolve_home() -> Path:
-    return Path(sys.executable).resolve().parents[1] if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 
 
 def tail(path: Path, lines: int = 100) -> str:
@@ -112,9 +113,14 @@ class ServerManager:
             raise failure
         return message + ("\nWeb 服务已恢复运行。" if resume else "")
 
-    def deploy(self, config, mode, username, password, database_admin=None):
+    def deploy(self, config, mode, username, password, database_admin=None, *, progress=None):
         from deployment.installer import deploy
-        message = deploy(self.home, config, mode, username, password, database_admin=database_admin)
+        try:
+            message = deploy(self.home, config, mode, username, password, database_admin=database_admin, progress=progress)
+        except Exception:
+            if (config.install_root / "config/deployment.json").is_file():
+                self.home = config.install_root
+            raise
         self.home = config.install_root
         self._log("部署完成。")
         return message

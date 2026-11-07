@@ -83,7 +83,7 @@ def test_new_deployment_cannot_overwrite_any_table_or_file(config):
     with pytest.raises(RuntimeError, match="已有"):
         check_adoption(config, "new", {"tables": {"users"}, "revision": None})
     config.ensure_directories()
-    sentinel = config.data_root / "data/storage/keep.bin"
+    sentinel = config.storage_dir / "keep.bin"
     sentinel.write_bytes(b"retained")
     with pytest.raises(RuntimeError, match="已有"):
         check_adoption(config, "new", {"tables": set(), "revision": None})
@@ -98,7 +98,7 @@ def test_continue_requires_identity_and_storage(config):
     with pytest.raises(RuntimeError, match="不匹配"):
         check_adoption(config, "continue", {"tables": set(), "revision": None})
     config.state_file.write_text(json.dumps({"database": [config.db_host, config.db_port, config.db_name],
-        "data_root": str(config.data_root.resolve()), "phase": "initializing"}))
+        "data_root": str(config.data_root.resolve()), "data_layout": config.data_layout, "phase": "initializing"}))
     with pytest.raises(RuntimeError, match="丢失"):
         check_adoption(config, "continue", {"tables": set(), "revision": None})
 
@@ -198,7 +198,7 @@ def test_legacy_task_notice_is_consistent_without_mutations(config, monkeypatch,
             ServiceManager(config).install()
         else:
             ServiceManager(config).control(operation)
-    assert str(error.value) == service.LEGACY_TASK_NOTICE
+    assert service.LEGACY_TASK_NOTICE in str(error.value)
     for text in ("已禁用", "已停止", "导出", "移除", "不会自动删除"):
         assert text in str(error.value)
 

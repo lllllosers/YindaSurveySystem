@@ -1,13 +1,13 @@
 # Windows Service 人工验收步骤
 
-适用范围：Server Console V1 第一批收口。稳定服务 ID 为 `YindaWebCenterService`，显示名 `Yinda Web Center`。本文件是待执行步骤，不是验收已通过的证明。结果填写在随附的 `SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md`。
+适用范围：引大调查数据采集系统 · Web Center 完整 Windows 包。稳定服务 ID 为 `YindaWebCenterService`，显示名 `Yinda Web Center`。本文件是待执行步骤，不是验收已通过的证明。结果填写在随附的 `SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md`。
 
 ## 1. 由测试环境管理员准备
 
 1. 使用授权的 Windows 11 x64 测试电脑，安排可注销和重启的测试时段。不能在有甲方真实业务实例的电脑上照本流程初始化、删任务或重启。无管理员令牌时停止服务级验收，交给有权限的测试人员；不绕过 UAC 或 Windows 权限。
 2. 取得本轮完整交付 ZIP，记录 SHA256，解压到新的固定目录，例如 `C:\YindaWeb-Acceptance`。不要覆盖 b40c83d 的旧包或在旧安装目录里改 XML。
 3. 使用独立 PostgreSQL 17 **测试集群**及其 Windows 服务，确认其开机自动启动。本轮向导可选择自动创建专用数据库与账号，无需 pgAdmin。测试时把名称明确设为未使用过的 `yinda_console_service_acceptance_日期` 及对应专用账号，管理凭据只临时输入。也可选择维护人员已准备的专用空测试库。记录实际主机、端口、库名和集群目录；不连接正式实例，不复用正式账号、密码或数据库。临时 pg_ctl 进程不能代替开机自动启动的 PostgreSQL 测试服务。
-4. 为程序、持久化目录、PostgreSQL 数据和取证文件分别确定测试路径，持久化目录例如 `C:\YindaWeb-Acceptance\persistent`。确认旧数据不在这些目录。服务验收期间不要清空任何目录或数据库。
+4. 为程序、数据存储目录、PostgreSQL 数据和取证文件分别确定测试路径，数据存储目录例如 `C:\YindaWeb-Acceptance\data`，新布局成果为 `data\storage`。确认旧数据不在这些目录。服务验收期间不要清空任何目录或数据库。
 5. 在“服务”检查稳定 ID、早期草案 ID `YindaWebCenterV1` 是否已注册。发现同名服务时先核对完整 EXE 路径、归属和配置；不是本次测试的服务就停止操作。若是自己的旧草案服务，先留存配置和 `sc qc` 结果，由管理员使用**原配置与原 wrapper**停服并卸载，确认旧项消失后再从新目录安装。不能用新 XML 操作旧注册项，不自动迁移或删服务。
 
 ## 2. 旧计划任务处理
@@ -28,9 +28,9 @@ schtasks.exe /Query /TN YindaWebCenter /XML
 
 ## 3. 通过图形界面部署并确认真实账户
 
-1. 右键唯一 GUI `console\YindaServerConsole.exe`，选择“以管理员身份运行”。在“安装与设置”打开首次安装向导，选择本次新目录、正确测试集群端口，推荐自动创建专用测试库和普通账号。不得选择任何旧业务库；保留创建结果和账号非超级用户的证据。
-2. 监听默认可选 `0.0.0.0`，Web 端口使用未占用测试端口，例如 `58137`；允许的主机包括 `127.0.0.1`、`localhost` 和测试机实际办公室 IPv4。明确选择内网 HTTP；不对公网映射，不开放 PostgreSQL 端口。
-3. 选择初始化空测试库，创建独立测试管理员，执行部署。记录每一步提示和完成时间。如果失败，保留阶段标识和日志，修正同一测试部署后接续重试，不清库或换一个空库掩盖失败。
+1. 先双击根目录带正式图标的唯一 GUI `引大调查Web中心.exe`，确认窗口与任务栏图标、蓝色界面及程序身份正确。退出后右键同一 EXE，选择“以管理员身份运行”。在“安装与设置”打开首次安装向导，普通视图的数据库/网络高级字段应收起，局域网默认选中，公网标明需 HTTPS 且不可选。确认新数据目录默认 `data`。本测试集群端口和独立测试库名称到高级设置中填写，选择自动创建专用测试库和普通账号。不得选择任何旧业务库；保留创建结果和账号非超级用户的证据。
+2. 临时输入 PostgreSQL 管理密码，创建 Web 管理员 `admin` 并自行设置至少 8 位密码。点击“完成配置并启动”，逐项观察七步的正在执行/完成状态、重复提交被阻止，以及成功地址、“打开 Web Center”和“返回控制台”。任何失败必须显示阶段、建议与安装日志，不得静默消失。保留本次 `data\logs\install.log` 与 `data\config\install-status.json`，不收集 runtime.env 或密码。
+3. 默认局域网模式自动设置本机和办公室地址、Web 端口 8000；测试需要其他端口时由维护人员在高级设置中更改。只在受信测试内网使用，不对公网映射，不开放 PostgreSQL 端口。如果失败，保留阶段标识和日志，修正同一测试部署后接续重试，不清库或换一个空库掩盖失败。
 4. 在 Windows“服务”确认 `Yinda Web Center` 为运行中、自动（延迟启动），登录账户配置为 `NT AUTHORITY\LocalService`。再用下列只读命令核对注册路径和运行进程的**实际拥有者**；仅看到配置中的 StartName 不能证明实际运行账户。
 
 ```powershell
@@ -93,7 +93,7 @@ while ($yindaQueue.Count -gt 0) {
 
 - 新交付 ZIP 的 SHA256、代码提交、Windows 版本、管理员令牌结果、程序和持久化绝对目录、数据库测试边界；不记录测试或正式密码。
 - 控制台完整错误文字、发生步骤及截图，WinSW 安装/启动/停止命令的退出码和原文（如有人工使用），`sc qc/queryex/qfailure` 输出。路径和服务名称要完整保留。
-- `persistent\logs` 中对应时间段的 WinSW wrapper/out/err 日志。若安装在 XML 生成前就失败，同时查看本次 `service` 目录产生的 WinSW 日志。保留停止与启动前后时间段，不仅截取最后一句。
+- 数据存储目录 `data\logs` 中的 `install.log`、WinSW wrapper/out/err 日志，以及 `data\config\install-status.json`。若安装在 XML 生成前就失败，同时查看本次 `service` 目录产生的 WinSW 日志。保留停止与启动前后时间段，不仅截取最后一句。旧部署仍查看其原数据存储目录，不能为了统一名称搬动数据。
 - 事件查看器“Windows 日志 → 系统 → Service Control Manager”中本次 Yinda 服务的事件时间、ID 和完整错误；必要时采集“应用程序”中的 WinSW/.NET 崩溃事件。
 - wrapper 和后端实际账户、PID、创建时间、EXE 路径；程序/存储 ACL 的只读输出；端口被占用时仅收集该端口监听者 PID/路径，不结束未知进程。
 - PG **测试服务**状态、测试库地址/端口/名称、连接失败或迁移错误的已脱敏信息、部署 phase 和 Alembic revision；不要发 `runtime.env`、密码哈希、Cookie、CSRF token 或整个数据库目录。

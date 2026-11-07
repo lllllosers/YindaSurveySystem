@@ -49,8 +49,9 @@ def main() -> None:
         copy_file(template, bundle / "templates" / "excel" / filename)
 
     copy_python_tree(WEB_ROOT / "deployment", bundle / "web_center" / "deployment")
-    for name in ("launcher.py", "server_console_core.py", "server_setup.py", "server_entry.py", "console-requirements.txt"):
+    for name in ("launcher.py", "server_console_core.py", "server_setup.py", "server_entry.py", "branding.py", "console-requirements.txt"):
         copy_file(WEB_ROOT / name, bundle / "web_center" / name)
+    shutil.copytree(WEB_ROOT / "assets", bundle / "web_center" / "assets")
     copy_file(REPO_ROOT / "docs" / "web" / "DEPLOY.md", bundle / "DEPLOY.md")
     forbidden_parts = {".env", ".venv", "node_modules", "storage", "backups", ".runtime", ".git", ".pytest_cache"}
     forbidden_suffixes = {".key", ".pem", ".p12", ".token"}

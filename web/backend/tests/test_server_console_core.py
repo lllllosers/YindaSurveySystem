@@ -103,7 +103,7 @@ def test_old_backup_is_visible_but_not_claimed_new_complete_backup(manager):
 def test_continuation_never_creates_database_or_saves_config(manager, monkeypatch):
     from deployment.installer import deploy
     monkeypatch.setattr(DeploymentConfig, "save", lambda self: pytest.fail("must not save"))
-    with pytest.raises(ValueError, match="不能创建新库"):
+    with pytest.raises(RuntimeError, match="不能创建新库"):
         deploy(manager.home, manager.config, "continue", "admin", "test-only-password", database_admin={"create_dedicated": True})
 
 

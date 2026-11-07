@@ -8,6 +8,28 @@ from psycopg import sql
 from deployment.config import atomic_write
 
 
+def check_postgres(config, credentials: dict | None = None) -> str:
+    from deployment.postgres import dump_executable
+    dump_executable(config.pg_bin)
+    if credentials is None:
+        from deployment.database import connect_engine, inspect_database
+        engine = connect_engine(config)
+        try:
+            with engine.connect() as connection:
+                inspect_database(connection)
+        finally:
+            engine.dispose()
+    else:
+        with psycopg.connect(host=config.db_host, port=config.db_port, dbname="postgres",
+                user=credentials["username"], password=credentials["password"], connect_timeout=5) as connection:
+            if connection.info.server_version // 10000 != 17:
+                raise RuntimeError("需要 PostgreSQL 17。")
+            role = connection.execute("SELECT rolsuper,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user").fetchone()
+            if not role or not (role[0] or role[1] and role[2]):
+                raise RuntimeError("该 PostgreSQL 管理账号无创建专用库和账号的权限，请核对安装时的管理账号。")
+    return "PostgreSQL 17 连接和备份工具检查通过。"
+
+
 def create_dedicated_database(config, credentials: dict) -> str:
     config.validate()
     if credentials.get("create_dedicated") is not True:
@@ -17,7 +39,8 @@ def create_dedicated_database(config, credentials: dict) -> str:
     for value in (config.db_name, config.db_user):
         if not re.fullmatch(r"yinda_[a-z0-9_]{1,57}", value):
             raise ValueError("自动创建的数据库与账号名称需以 yinda_ 开头，使用小写字母、数字或下划线。")
-    if config.state_file.exists() or any((config.data_root / "data/storage").rglob("*")):
+    if (config.state_file.exists() or any(config.storage_dir.rglob("*"))
+            or config.data_layout == "flat" and (config.data_root / "data/storage").exists()):
         raise RuntimeError("已有部署或成果文件，不能创建新的数据库替代。")
     progress_file = config.data_root / "config/database-creation.json"
     identity = [config.db_host, config.db_port, config.db_name, config.db_user]

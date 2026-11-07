@@ -29,7 +29,7 @@
 - `server_entry.py` 是非 GUI 的冻结 Web Server/维护命令程序；通过标准输入短暂接收创建管理凭据，不把管理密码放在命令行或配置中。
 - 移除 `console_v1.py`、旧松散进程 worker、嵌入式 PG 运行管理和只验证旧机制的测试。保留有价值的行为测试，改为验证 SCM 归属、备份恢复原运行状态等实际合同。
 - `build_formal_windows.py` 是唯一正式构建实现；旧 `build_server_console.py` 命令转入同一实现，旧便携构建命令仅给出退役说明。`build_deploy_bundle.py` 只导出源码，不再夹带历史 EXE。`run_dev.bat` 仍是业务开发入口，不是甲方正式控制台。
-- 正式包仅有 `console/YindaServerConsole.exe` 一个 GUI；`service/YindaWebServer/YindaWebServer.exe` 和 WinSW 是后台程序。manifest 记录 GUI 与运维入口，验收同时检查 PE 子系统。
+- 正式包仅有根目录 `引大调查Web中心.exe` 一个 GUI；`service/YindaWebServer/YindaWebServer.exe` 和 WinSW 是后台程序。manifest 记录 GUI 与运维入口，验收同时检查 PE 子系统。旧 `console/` EXE 与 BAT 默认入口已退出本次产品交付。
 
 ## 普通用户的首次安装
 

@@ -32,3 +32,17 @@ def dump_executable(configured: str = "") -> Path:
     if version.returncode or not re.search(r"\b17\.", version.stdout):
         raise RuntimeError("备份工具需使用 PostgreSQL 17 的 pg_dump，请重新选择工具文件夹。")
     return result.resolve()
+
+
+def installation_status(configured: str = "", service_name: str = "") -> dict:
+    """Tool/service inspection only; never authenticates against a business DB."""
+    from deployment.service import run
+    try:
+        binary = dump_executable(configured)
+    except Exception:
+        return {"installed": False, "detail": "需要先安装 PostgreSQL 17，或在高级设置中选择其工具目录。", "pg_bin": configured}
+    name = service_name or "postgresql-x64-17"
+    result = run(["sc.exe", "query", name], timeout=10) if os.name == "nt" else None
+    running = bool(result and result.returncode == 0 and "RUNNING" in result.stdout)
+    return {"installed": True, "pg_bin": str(binary.parent), "service_name": name,
+            "running": running, "detail": "已检测到 PostgreSQL 17，系统服务运行中。" if running else "已检测到 PostgreSQL 17；实际连接将在部署时检查。"}

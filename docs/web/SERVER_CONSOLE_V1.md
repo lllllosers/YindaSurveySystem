@@ -1,63 +1,67 @@
-# Server Console V1 · 正式部署基础
+# 引大调查数据采集系统 · Web Center Windows 部署
 
-本路线升级原有 `web/launcher.py`，它是唯一正式 GUI 入口；运维统一从 `web/server_console_core.py` 进入。功能差距与入口合同见 [统一控制台整合记录](SERVER_CONSOLE_UNIFICATION.md)。旧便携路线已退役，历史 Git 和既有交付资产保留。Windows x64 包包含唯一 Console GUI、独立后台 Web Server、Vue 正式页面、Shared、Alembic、模板和 WinSW；正常运行无需 Python、Git、Node。PostgreSQL 17 独立运行。
+正式交付为完整 Web Center，包含业务后端、Vue 正式页面、Shared 协议和资料、Alembic、14 类正式 Excel 模板、Windows 服务及统一控制台。正常使用无需 Python、Node、Git 或 pgAdmin。PostgreSQL 17 仍需独立安装。
 
-## 首次安装
+## 第一次使用
 
-1. 解压完整 `YindaWeb` 到固定程序目录。不要只复制 EXE。
-2. 先安装 PostgreSQL 17。无需使用 pgAdmin 手动建库：向导推荐自动创建本系统专用数据库和普通运行账号。创建时临时填写 PostgreSQL 安装时的管理账号/密码，不保存管理密码。也可使用已准备的空库或接续已登记部署。
-3. 右键 `console/YindaServerConsole.exe`，以管理员身份运行。在“安装与设置”选择“首次安装 / 修改运行配置”，配置程序位置和成果、备份文件夹（默认 `YindaWeb/persistent`）。
-4. 按向导选择数据保存方式、网站端口、办公室地址及网页登录账号。自动创建仅支持本机、显式选择的新部署，发现同名数据库或账号立即停止，不修改已有对象。之后复用正式 Alembic 迁移及管理员创建，安装服务并验证本机 HTTP。部分创建失败保留对象与进度，需核对后处理，不自动删除或另建空库掩盖失败。
-5. 在“网络访问”复制候选内网地址，在办公室其他电脑实际访问。需要时由管理员在 Windows 防火墙中只允许办公室网络范围访问所选 Web TCP 端口。控制台不改防火墙、路由器，不开放数据库端口。
+1. 解压完整 `YindaWebCenter-Windows-x64.zip`，将 `YindaWebCenter` 文件夹放在固定位置。不要只复制主 EXE。
+2. 从 [PostgreSQL 官方 Windows 安装入口](https://www.postgresql.org/download/windows/) 安装 **17 x64**。记住安装时设置的管理密码；无需用 pgAdmin 手动建库。
+3. 双击根目录带引大调查图标的 `引大调查Web中心.exe`。首次安装后台服务时，退出后右键同一 EXE，选择“以管理员身份运行”。后续服务维护也需要相应 Windows 权限。
+4. 点击“首次安装 / 运行配置”。确认“程序安装目录”和“数据存储目录”，默认数据文件夹为 `data`。
+5. 数据库页会检测 PostgreSQL 17 和系统服务。默认选择“创建本系统专用数据库”，只需临时填写 PostgreSQL 安装时的管理密码。默认专用库 `yinda_web_center`、普通运行账号 `yinda_web_user`，运行密码为每次新安装独立生成的强随机密码，无需记住。
+6. 选择访问方式：仅本机或默认的局域网。通常不需要展开高级设置。公网选项须配置 HTTPS 后才能启用，本向导不直接开放公网 HTTP。
+7. 创建系统管理员账号，默认用户名 `admin`，自行设置并确认 8 至 128 位密码。这个账号用于网页登录，与 PostgreSQL 账号不同，没有固定默认密码。
+8. 点击“完成配置并启动”，查看七步安装进度。不要关闭正在部署的程序。成功后显示“Web Center 已成功启动”、访问地址及“打开 Web Center”按钮；失败则显示具体阶段、处理建议和安装日志位置。
+9. 返回同一个控制台管理启停、重启、环境检查、备份、自启及日志。退出控制台不会发送停服命令。
 
-默认是明确选择的 `APP_ENV=production` + `TRANSPORT_MODE=lan_http`，Cookie 的 Secure=false；认证、Argon2 密码、会话、CSRF、业务权限、精确 TrustedHost、生产安全头继续有效。生产 API 文档关闭，无开发 CORS。内网 HTTP 传输不加密，只适合受信办公室网络，不能向公网映射。HTTPS 生产配置仍要求 Secure Cookie，第一批不包含证书、反向代理或 HTTPS 安装管理。
+高级设置用于维护人员核对特殊端口、名称、已有空库、接续及网络地址，复用同一套安装流程。更改网络后仍需办公室其他电脑实际访问；本机检查通过不会显示为其他电脑已可达。
 
-## 目录与升级边界
+## 数据保护和失败重试
+
+自动创建只支持本机 PostgreSQL，先检查同名数据库与账号，已有任一对象就停止，不覆盖内容或修改密码。管理密码只通过子进程标准输入临时使用，不进入配置、日志或命令行。运行密码保存到受 ACL 保护的 `data/config/runtime.env`。
+
+创建失败保留对象与创建阶段；本次创建成功的资源只在部署身份和 OID 匹配时允许继续。不要删除数据库、账号或数据来重试，不会静默改用另一个空库。已登记部署可选择“接续本系统已有安装 / 修复配置”；已有管理员不会被重置。失败后保留安装日志及阶段，由维护人员核对后重试。
 
 ```text
-YindaWeb/
-  console/YindaServerConsole.exe + _internal/
-  service/YindaWebService.exe + .xml       # WinSW wrapper + generated XML
-  service/YindaWebServer/YindaWebServer.exe + _internal/
-  releases/                              # 下一批版本管理接口
-  config/deployment.json                 # 无密码的配置文件定位
-  persistent/                            # 可另选独立绝对目录
-    config/runtime.env                   # 唯一正式运行配置，含数据库密码
-    config/deployment-state.json          # 数据库身份、数据目录、初始化阶段
-    data/storage/                        # 成果包、任务包、在线照片和视频
+YindaWebCenter/
+  引大调查Web中心.exe                 # 唯一正式 GUI，直接运行
+  _internal/                         # 主程序依赖、官方 Logo
+  service/YindaWebService.exe         # WinSW
+  service/YindaWebServer/             # 独立后端及业务资源
+  config/deployment.json             # 无密码的配置定位文件
+  data/                              # 新安装默认位置，可另选绝对路径
+    storage/                         # 界面称“成果文件”
     backups/
-    logs/
+    logs/install.log                 # 安装阶段及错误
+    config/runtime.env               # 含运行密码，不得公开
+    config/install-status.json
+    config/deployment-state.json
     packages/
 ```
 
-数据库数据目录由已安装 PostgreSQL 独立管理，不包含在发布目录。程序替换仅允许触及 console、service、releases；不得删除 config、persistent 或外部持久化目录。V1 向导仅复制缺失的相同版本程序，拒绝覆盖不同版本文件，不实现版本升级。
+PostgreSQL 自己管理其数据库物理目录，不在程序更新范围内。内部 `storage/...` 数据库引用不变，由统一 `Settings.file_base` 解析。**新安装**记录 `DATA_LAYOUT=flat`，映射到 `data/storage`；**原 V1 配置没有 DATA_LAYOUT 时**按 `legacy` 解析到原 `persistent/data/storage`。不改名、不搬迁、不删除旧成果。布局与部署标识不一致会拒绝接续。
 
-所有数据库文件引用继续保存 `storage/...`，只由统一的 Settings.file_base 解析到 `persistent/data`；源码开发未配置 DATA_ROOT 时保持 `backend/storage` 的旧行为。备份 CLI 也使用统一配置，正式模式下成果目录缺失时拒绝完整备份。旧清空 CLI 在正式持久化模式下禁用。旧便携运行源码已退出当前路线，历史 Git、验收记录和既有交付资产保留，不删除旧数据。
+本向导只复制相同版本缺少的程序文件，拒绝覆盖目标的不同版本；不实现在线升级。程序替换只处理 EXE、`_internal`、`service` 等不可变资源，不覆盖根 `config`、数据存储目录或外部数据。旧源码/便携真实数据迁移仍需维护人员先制定离线备份方案，不在本轮范围。
 
-已有旧源码或便携部署不能直接接管。维护人员须先停旧 Web/计划任务，离线备份并搬迁**完整 storage**，核对数据库 Alembic 版本及成果引用，然后登记部署标识。V1 向导不会猜测路径、自动复制部分业务文件或为失败连接创建空库。已由 V1 登记的部署可选“安全接续”，重复运行迁移和管理员检查，不重置数据或管理员。失败时保留 initializing 阶段；修正同一数据库连接后可接续重试。数据库身份和数据目录不能在同一安装上改绑。
+## Windows 后台服务
 
-## 服务机制
+稳定服务 ID `YindaWebCenterService`、显示名 `Yinda Web Center`，长期复用且不随应用版本变化。WinSW v2.12.0 x64（MIT）以 `NT AUTHORITY\LocalService` 延迟自动启动，程序目录只读执行，数据目录允许必要读写。停止使用部署专属 Windows 命名事件，优雅退出 Uvicorn。控制台按 SCM 注册路径核对归属，不按端口杀其他程序。
 
-稳定服务 ID 为 `YindaWebCenterService`，显示名为 `Yinda Web Center`，后续应用版本长期复用，不随版本号变化。WinSW v2.12.0 x64 使用 MIT 许可，官方来源和 SHA256 固定在构建脚本，许可证随包分发。Windows 11 自带 .NET Framework 4.x，WinSW v2 x64 的 .NET Framework 运行要求在正式目标机仍须实测。
+旧 `YindaWebCenter` 计划任务存在时，**包括已禁用任务**，新部署及启动都会拒绝。先确认旧 Web 服务/进程已停止，必要时导出旧任务 XML，再由维护人员核对并人工移除任务注册项。仅禁用不够。本程序不会自动删除历史任务。若存在早期 `YindaWebCenterV1` 草案服务，由管理员用原配置和原 wrapper 核对后处理，不能用新 XML 操作旧项。
 
-早期开发提交 b40c83d 使用过 `YindaWebCenterV1`，不属于正式稳定名称。若测试机已注册该草案服务，应暂停新安装，先确认其归属和数据边界，由管理员使用原服务配置处理停服及卸载；新控制台不会自动删除或迁移旧服务。不要在旧服务运行时改写其 XML 或覆盖程序目录。
+默认生产内网 HTTP 保留会话、Argon2、CSRF、权限、精确 Host、安全头；生产 API 文档关闭，没有开发 CORS。内网 HTTP 不加密，不得映射到公网。控制台保留已有合法 HTTPS 地址检查，不提供证书或反向代理管理。控制台不更改路由器或防火墙，也不开放数据库端口。
 
-服务开机延迟自动启动，以 `NT AUTHORITY\LocalService` 运行，不依赖登录或控制台。持久化目录仅授予管理员、SYSTEM 和 LocalService；程序目录对 LocalService 只读执行。安装需要管理员权限；启动、停止等 SCM 操作通常也需要管理员权限，普通控制台不会自行提升整个服务。
-
-每次服务启动先检查 PostgreSQL 17、配置、部署标识、迁移 head、正式页面和监听端口。命名互斥量防重复实例，独占端口检测防误用端口；服务归属按 SCM 注册的精确 wrapper 路径判断，不按端口杀进程。停止由 WinSW 启动同账户 helper 发送部署专属 Windows 命名事件，Uvicorn 最多 30 秒优雅退出；WinSW 最多等待 45 秒后收回其子进程。异常最多连续自动重启三次，之后停止，连续正常一小时后重置计数。
-
-旧版 `YindaWebCenter` 计划任务存在时（包括已禁用），部署和启动均会被阻止。请先确认旧 Web 服务/进程已停止，必要时导出旧任务配置，再由维护人员移除该任务。本程序不会自动删除历史任务，也不会自动停止旧程序或其他端口占用者。只禁用任务不能通过检测；查询任务失败或无权查询时也不继续部署。
-
-控制台所有耗时操作在工作线程执行；退出不发送停服命令。控制台只把本机 HTTP、数据库健康检查成功报告为已验证；局域网候选地址始终标记需要其他电脑实测。下一批可基于 deployment-state、releases、packages、backups 扩展升级、备份恢复和管理员维护。
+立即备份会先停止本安装 Web 写入，转储数据库并复制完整成果文件，再恢复原运行状态。只有 dump、成果及完成标识齐全才显示完整备份；原服务停止则保持停止。旧备份无完成标识时显示待核对。恢复界面、定时备份及在线升级尚未开发。
 
 ## 开发机构建
 
-在独立 Windows x64 Python 3.12 虚拟环境安装 `web/console-requirements.txt` 和 `web/backend/requirements-dev.txt`。先在 web/frontend 执行 `npm ci`、`npm run build`。从官方发布下载 `https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe`，旁边保存同版本的 LICENSE.txt。
+在 Windows x64 Python 3.12 独立环境安装 `web/console-requirements.txt` 与 `web/backend/requirements-dev.txt`。在 `web/frontend` 执行 `npm ci`、`npm run build`。使用官方 WinSW v2.12.0 x64 和同版本 `LICENSE.txt`；构建脚本核对固定 SHA256。官方原 Logo 保存于 `web/assets`，`prepare_branding.py` 只做符号裁切及多尺寸 ICO 转换，不重新绘制。
 
 ```powershell
+web/build/console-native-venv/Scripts/python.exe web/prepare_branding.py
 web/build/console-native-venv/Scripts/python.exe web/build_formal_windows.py --winsw web/build/winsw-2.12.0/WinSW-x64.exe
 ```
 
-产物为 `web/release/server-console-v1/<时间戳>/YindaWeb/` 和同目录 ZIP。每次使用全新输出目录，不删除已有构建、不清理业务目录。构建后运行两个 EXE 的资源/启动烟测，再打 ZIP；包内只有显式程序资源，无 .env、PostgreSQL 数据、业务成果、生产密码或源码环境。build-manifest.json 记录文件哈希；完整依赖环境可用 `pip freeze` 留档。
+每次输出独立 `web/release/web-center-windows/<时间戳>/YindaWebCenter/` 和 `YindaWebCenter-Windows-x64.zip`，不覆盖历史包。唯一构建实现为 `build_formal_windows.py`，唯一 GUI 源码 `launcher.py`，运维门面 `server_console_core.py`；`server_setup.py` 是同一 GUI 内的向导，`server_entry.py` 是后台维护程序，没有第二套 GUI 或临时启动器。manifest 登记入口与文件哈希。
 
-实际验收结果另见 SERVER_CONSOLE_V1_ACCEPTANCE.md。管理员人工操作步骤见 [Windows 服务验收步骤](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md)，逐项记录使用 [验收记录模板](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md)。这两份文件随新交付包提供。注销、开机自启、真实其他电脑访问等未执行检查不能以单元测试或独立进程测试替代。
+实际结果见 [验收记录](SERVER_CONSOLE_V1_ACCEPTANCE.md)。非开发电脑需要按 [人工步骤](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md) 完成管理员服务、注销、重启和其他电脑 LAN 验收，并填写 [空白记录模板](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md)。自动测试或独立进程运行不代表真实 Windows Service 已通过。

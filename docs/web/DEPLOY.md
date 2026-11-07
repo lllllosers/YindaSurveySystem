@@ -1,6 +1,6 @@
 # Web 中心部署与数据初始化
 
-> 当前正式路线已统一到 `web/launcher.py` 和 Windows Service。请按 [正式部署说明](SERVER_CONSOLE_V1.md) 及 [功能整合记录](SERVER_CONSOLE_UNIFICATION.md) 操作。本文下方的源码/便携构建与公网验收步骤保留为历史参考；旧构建命令已重定向或退役，不能用其历史 EXE 名称作为新交付入口。
+> 当前正式交付为 `YindaWebCenter-Windows-x64.zip`，解压后双击根目录 `引大调查Web中心.exe`。唯一 GUI 为 `web/launcher.py`，使用 Windows Service。请按 [正式部署说明](SERVER_CONSOLE_V1.md) 及 [功能整合记录](SERVER_CONSOLE_UNIFICATION.md) 操作。本文下方的源码/便携构建与公网验收步骤保留为历史参考；旧构建命令已重定向或退役，不能用其历史 EXE 名称作为新交付入口。
 
 部署包由 `web/build_deploy_bundle.py` 生成，包含 Web 后端、编译后的页面、共享协议、正式主数据契约、在线表单规则、正式原表 Excel 模板和服务控制台。桌面调查 GUI、完整桌面源码、测试、`.venv`、`node_modules`、本地账号、上传文件和数据库备份均不进入部署包。
 

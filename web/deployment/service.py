@@ -115,7 +115,8 @@ class ServiceManager:
         raise RuntimeError("交付包缺少独立 Web Server 程序。")
 
     def server_action(self, action: str, *, payload: dict | None = None) -> str:
-        result = run(self.server_command(action), input=json.dumps(payload) if payload else None, encoding="utf-8", timeout=3700 if action == "--backup" else 120)
+        stream = {"input": json.dumps(payload)} if payload is not None else {"stdin": subprocess.DEVNULL}
+        result = run(self.server_command(action), **stream, encoding="utf-8", timeout=3700 if action == "--backup" else 120)
         if result.returncode:
             # server_entry emits only sanitized operational errors.
             raise RuntimeError(result.stdout.strip()[-1800:] or "服务程序检查失败，请查看日志与诊断。")

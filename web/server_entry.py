@@ -88,7 +88,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path)
     group = parser.add_mutually_exclusive_group(required=True)
-    for action in ("serve", "stop", "check", "initialize", "smoke-test", "diagnose", "status", "backup", "provision"):
+    for action in ("serve", "stop", "check", "initialize", "smoke-test", "diagnose", "status", "backup", "provision", "postgres-check"):
         group.add_argument("--" + action, action="store_true")
     args = parser.parse_args()
     if args.smoke_test:
@@ -114,9 +114,11 @@ def main() -> int:
             raise ValueError("缺少正式运行配置。")
         from dotenv import dotenv_values
         values = dotenv_values(args.config, interpolate=False)
+        # Configs created before layout v2 physically keep data/storage.
+        values.setdefault("DATA_LAYOUT", "legacy")
         # A service always uses its own file, never ambient developer DB_* or cwd .env.
         from deployment.config import DeploymentConfig
-        for key in ("APP_ENV", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DATA_ROOT",
+        for key in ("APP_ENV", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DATA_ROOT", "DATA_LAYOUT",
                     "SESSION_COOKIE_SECURE", "ENABLE_HSTS", "TRANSPORT_MODE", "ALLOWED_HOSTS", "REGISTRATION_MODE"):
             os.environ.pop(key, None)
         os.environ.update({k: v for k, v in values.items() if v is not None})
@@ -144,6 +146,10 @@ def main() -> int:
         elif args.provision:
             from deployment.provision import create_dedicated_database
             print(create_dedicated_database(config, json.loads(sys.stdin.read(16384))))
+        elif args.postgres_check:
+            from deployment.provision import check_postgres
+            payload = sys.stdin.read(16384)
+            print(check_postgres(config, json.loads(payload) if payload else None))
         elif args.initialize:
             payload = json.loads(sys.stdin.read(16384))
             print(initialize(config, payload["mode"], payload["username"], payload["password"]))

@@ -28,7 +28,7 @@ def test_real_initialization_continuation_preserves_database_and_storage(tmp_pat
             initial = connection.execute(text("SELECT user_uid,password_hash FROM users WHERE username='admin'")).one()
             connection.execute(text("CREATE TABLE deployment_preservation_probe (value TEXT)"))
             connection.execute(text("INSERT INTO deployment_preservation_probe VALUES ('keep')"))
-        sentinel = config.data_root / "data/storage/probe.bin"
+        sentinel = config.storage_dir / "probe.bin"
         sentinel.write_bytes(b"business-file-must-survive")
         with pytest.raises(RuntimeError, match="已有"):
             initialize(config, "new", "different", "Other-Test-Password-2026!")
