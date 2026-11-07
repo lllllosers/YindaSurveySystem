@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-11-07T18:28:58.536036+08:00",
+  "windows": "Windows-11-10.0.26300-SP0",
+  "architecture": "64bit",
+  "is_user_admin": false,
+  "service_queries": {
+    "YindaWebCenterService": {
+      "exit_code": 1060,
+      "stdout": "[SC] EnumQueryServicesStatus:OpenService 失败 1060:\n\n指定的服务未安装。",
+      "stderr": ""
+    },
+    "YindaWebCenterV1": {
+      "exit_code": 1060,
+      "stdout": "[SC] EnumQueryServicesStatus:OpenService 失败 1060:\n\n指定的服务未安装。",
+      "stderr": ""
+    }
+  },
+  "legacy_task_exists": false,
+  "service_install_attempted": false,
+  "windows_logoff_or_reboot_attempted": false,
+  "database_connected": false
+}

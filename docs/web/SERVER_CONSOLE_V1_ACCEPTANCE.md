@@ -2,7 +2,51 @@
 
 日期：2026-11-07（Asia/Shanghai）。结论：**实际代码与可运行 Windows EXE 已交付，服务级现场验收尚未完成，不能标记为正式投产通过。**
 
-## 基线与边界
+## 本轮验收收口（基于 b40c83d）
+
+本轮只完成第一批修正和验收准备，不进入第二批、不修改业务或 Desktop。原分支为 `feat/web-server-console-v1-foundation`，起点提交为 `b40c83de4d7b227da3a785ffa5251f741be0fd51`，原有 `.vscode/settings.json` 修改保留。
+
+两项修正：
+
+- 稳定 Windows Service ID 改为 `YindaWebCenterService`，显示名改为 `Yinda Web Center`，后续 Web 版本复用。部署专属命名事件/互斥量也使用稳定 Service ID 加配置路径摘要，不随应用版本变化。早期草案 `YindaWebCenterV1` 不会自动删除或迁移；如果测试机已安装草案服务，必须先核对归属，再由管理员使用原配置处理。
+- 部署、安装、启动、重启和 GUI 向导共用一条旧任务提示：旧 `YindaWebCenter` 任务存在时（**包括已禁用**）拒绝部署/启动；先确认旧 Web 服务/进程停止，必要时导出任务配置，再由维护人员人工移除。任务查询失败时也不继续。程序没有新增自动删除历史任务的行为。
+
+### 本轮已通过
+
+| 项目 | 实际证据 |
+|---|---|
+| 当前机器与权限核对 | 2026-11-07 18:28:58 +08:00，Windows 11 10.0.26300 x64，`IsUserAnAdmin=0`；原始只读记录见 [环境证据](evidence/server-console-v1-closure-20261107.json) |
+| SCM/任务只读核对 | `sc query YindaWebCenterService` 与 `sc query YindaWebCenterV1` 均返回 1060（服务未安装）；旧任务查询确认不存在。没有把权限错误当作不存在，没有安装或移除服务/任务 |
+| 相关自动回归 | **48 passed**，`web/build/acceptance-closure-tests.log`；覆盖稳定 XML ID/显示名、部署专属事件、启用/禁用任务均阻断、查询拒绝访问不继续、四个操作入口同一提示且不复制程序/保存配置/控制服务/改任务，以及旧控制台回归 |
+| 修正版 Windows EXE 构建 | 两个 PyInstaller onedir 程序构建及 EXE 启动/资源烟测成功，`web/build/acceptance-closure-build.log`；此烟测不连接数据库、不安装 SCM 服务 |
+| 稳定 ID 的 WinSW XML 只读验证 | WinSW 实际读取隔离目录中生成的新 XML，`status` 退出 0、返回 `NonExistent`；`web/build/acceptance-closure-winsw.json`。仅证明配置可读和服务不存在，不代表安装或 LocalService 运行 |
+| 包与文件核对 | 960 个归档文件，manifest 的 959 个文件哈希逐一匹配；人工步骤及模板与源码文档逐字节一致；无实际运行配置、数据库或成果目录，`web/build/acceptance-closure-artifact.json` |
+
+本轮修正版：`web/release/server-console-v1/20261107-182757-589552/YindaWeb/`，同目录 `yinda-server-console-v1-windows-x64.zip` 为 **85,877,907 字节**，SHA256 为 `59ac04d2faceb40b85a1691a9ed3e159dd6a3e224aab47fd3965360075e72d77`。下方旧时间戳产物属于首轮，不应代替本轮修正版。完整解压后运行 `console/YindaServerConsole.exe`；人工验收步骤和未填写模板已随新包提供。
+
+### 本轮失败
+
+当前已执行的相关自动测试无失败。管理员权限不足属于下面的**未执行阻塞**，不能记录为服务安装成功或用模拟测试代替实际验收。
+
+### 本轮未执行
+
+| 项目 | 原因 / 后续证据要求 |
+|---|---|
+| WinSW 安装、LocalService 实际运行和文件权限 | 当前令牌非管理员；需管理员安装后采集 SCM 配置、wrapper/后端实际 GetOwner、存储上传下载和 ACL |
+| 控制台退出后真实 SCM 服务继续运行 | 新服务尚未安装；历史独立 Web 进程测试不算本项 |
+| Windows 注销后服务继续运行 | 未注销当前电脑；需前后 PID/创建时间、SCM 和注销期间外部新请求证据 |
+| 重启电脑后的 PG/Web 自动启动 | 未重启当前电脑；需无需打开控制台或人工启动的启动时间、服务状态、进程和请求证据 |
+| 真实服务停止、启动、重启 | 新服务尚未安装；需 SCM 状态变化、进程退出/新建和 Uvicorn 优雅退出日志 |
+| 上述生命周期后的测试业务数据与成果文件保留 | 本轮未连接数据库；需同一项目/成果 UID、业务引用和下载文件大小/SHA256 一致 |
+| 办公室另一台电脑 LAN 访问 | 无其他办公室电脑可操作，明确列为人工待验；本机访问内网 IP 不替代此项 |
+
+没有尝试提权绕过、服务安装、注销、重启、防火墙修改、连接或改写正式/测试数据库。人工步骤见 [Windows Service 验收步骤](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md)，记录使用 [未填写验收模板](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md)；包含隔离 PG 测试边界、旧草案服务/旧任务处理、真实 LocalService 账户、生命周期、业务成果及故障取证要求。
+
+**第二批条件：目前不满足。** 核心阻塞是尚无管理员完成真实服务安装、账户与生命周期验收。应先执行模板中的服务级项目并保留证据，修复直接相关缺陷；LAN 无法实测时保持人工待验，不宣称第一批现场验收全部通过。
+
+## 首轮历史记录的基线与边界
+
+以下保留首轮 b40c83d 的既有测试与产物记录。本轮没有重新执行其中的数据库/业务回归或独立冻结进程验收；这些历史结果不能证明稳定 Service ID 的 SCM 现场验收通过。
 
 - 开始时本地 HEAD、fetch 后 origin/main 均为 `afb50c56a9f9b250443c211f9d6f800f2e25694b`，没有新增主线变更。
 - 开发分支 `feat/web-server-console-v1-foundation`。原有 `.vscode/settings.json` 修改保留、不提交。
@@ -14,7 +58,7 @@
 1. `Settings.file_base/storage_dir/backups_dir/frontend_dist` 统一后端资源与持久化路径。成果包、任务包、桌面交接包、在线影像、上传空间检查和备份 CLI 共用这一配置。数据库中的 `storage/...` 引用保持兼容。修复原同源 SPA 路径层级错误。正式模式禁用旧清空工具。
 2. 独立 `deployment` 核心处理配置原子保存、无密码定位文件、数据库身份绑定、初始化阶段、专用空库检查、Alembic head 检查、同库部署互斥和安全接续。不会创建数据库；无法连接时不会建立替代空库。已有标识但 storage 目录丢失时拒绝继续，避免创建空目录替代已有成果。
 3. 使用现有 Alembic 迁移、正式主数据种子、密码哈希和首位管理员创建。迁移环境增加显式传入连接支持，以便初始化在同一数据库连接和 advisory lock 下执行。接续保留管理员和业务数据。
-4. `YindaWebCenterV1` 正式 Windows Service 管理：归属按 SCM 注册的精确 wrapper 路径判断；安装、启动、停止、重启、查询；自动启动、LocalService、目录权限设置、有限恢复策略、旧计划任务阻断。独立 Server EXE 通过部署专属命名互斥量防重复，命名事件通知 Uvicorn 优雅停止，不按端口或任意 PID 杀进程。
+4. 正式 Windows Service 管理：归属按 SCM 注册的精确 wrapper 路径判断；安装、启动、停止、重启、查询；自动启动、LocalService、目录权限设置、有限恢复策略、旧计划任务阻断。首轮曾使用草案 ID `YindaWebCenterV1`，本轮已修正为稳定的 `YindaWebCenterService`。独立 Server EXE 通过部署专属命名互斥量防重复，命名事件通知 Uvicorn 优雅停止，不按端口或任意 PID 杀进程。
 5. 中文 PySide6 控制台，概览、运行管理、网络访问、日志与诊断、设置与关于，四步部署向导。数据备份、系统升级入口禁用；复杂操作放入线程。真实活动网卡 IPv4 通过 Windows API 读取，无 PowerShell、Python 或 Node 运行依赖。
 6. 明确的生产内网 HTTP 配置，不切换为 development；保留会话、Argon2、CSRF、业务权限、精确 Host、生产安全头，关闭 API 文档和开发 CORS。界面记录 HTTP 不加密边界。
 7. 双 PyInstaller onedir 程序 + WinSW + 编译后 Vue 页面、Shared、Alembic 和正式模板。构建只写自己新建的时间戳目录，不删除既有产物或业务文件。
@@ -90,7 +134,7 @@
 
 1. 首先在授权的 Windows 11 测试机以管理员身份安装服务，实测 LocalService 文件权限、自动恢复、退出控制台、注销和重启。完成后才能判断正式后台服务路线全程通过。
 2. 在办公室另一台电脑验证真实访问，手工按网络范围设置所需 Web 防火墙入站规则；不要开放 PostgreSQL 端口。
-3. 旧版同名计划任务即使禁用也会被 V1 的保守检测阻止。维护人员应先停止旧实例，导出任务留档后移除，再切换正式服务；不要只按界面短提示禁用后反复重试。
+3. 旧版同名计划任务即使禁用也会被 V1 的保守检测阻止。维护人员应先确认旧 Web 服务/进程停止，必要时导出任务配置，再人工移除任务。代码、GUI 和文档本轮已统一，不再提示仅禁用任务。
 4. 备份恢复、版本升级、管理员维护界面尚未实现；正式历史数据迁入前需要制定并演练完整备份及回退步骤。V1 的 releases/packages/backups 和部署状态是扩展入口。
 
 开发分支提交与推送结果以本次最终回复和 Git 记录为准。无正式 tag、无 main 合并、无正式发布资产覆盖。

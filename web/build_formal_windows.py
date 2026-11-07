@@ -68,6 +68,8 @@ def main():
     shutil.copy2(args.winsw, service / "YindaWebService.exe")
     shutil.copy2(license_file, service / "WinSW-LICENSE.txt")
     shutil.copy2(ROOT / "docs" / "web" / "SERVER_CONSOLE_V1.md", package / "部署说明.md")
+    for name in ("SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md", "SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md"):
+        shutil.copy2(ROOT / "docs" / "web" / name, package / name)
     (package / "打开服务控制台.bat").write_text('@echo off\nstart "" "%~dp0console\\YindaServerConsole.exe"\n', encoding="utf-8")
     manifest = {"version": "server-console-v1-foundation", "winsw": "2.12.0", "winsw_sha256": WINSW_SHA256,
                 "files": {}}

@@ -107,6 +107,8 @@ def test_service_xml_low_privilege_and_graceful_stop(config):
     manager = ServiceManager(config)
     manager.write_xml()
     xml = ET.parse(manager.wrapper.with_suffix(".xml")).getroot()
+    assert xml.findtext("id") == service.SERVICE_ID == "YindaWebCenterService"
+    assert xml.findtext("name") == "Yinda Web Center"
     assert xml.findtext("serviceaccount/user") == "LocalService"
     assert xml.findtext("startmode") == "Automatic"
     assert "--stop" in xml.findtext("stoparguments")
@@ -151,7 +153,54 @@ def test_real_port_occupancy_never_terminates_owner():
 
 
 def test_event_names_are_install_specific(config):
+    assert event_name(config, "stop").startswith(r"Global\YindaWebCenterService-stop-")
     assert event_name(config, "stop") != event_name(replace(config, data_root=config.data_root / "other"), "stop")
+
+
+@pytest.mark.parametrize("enabled", ["true", "false"])
+def test_legacy_task_is_blocking_even_when_disabled(config, monkeypatch, enabled):
+    calls = []
+    def query(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout=f"<Task><Settings><Enabled>{enabled}</Enabled></Settings></Task>", stderr="")
+    monkeypatch.setattr(service, "run", query)
+    assert ServiceManager(config).legacy_task()
+    assert calls == [["schtasks.exe", "/Query", "/TN", "YindaWebCenter", "/XML"]]
+
+
+@pytest.mark.parametrize("message", ["The system cannot find the path specified.", "系统找不到指定的文件。"])
+def test_absent_legacy_task_is_not_blocking(config, monkeypatch, message):
+    monkeypatch.setattr(service, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=message))
+    assert not ServiceManager(config).legacy_task()
+
+
+def test_legacy_task_query_denied_does_not_proceed(config, monkeypatch):
+    monkeypatch.setattr(service, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="Access is denied."))
+    with pytest.raises(RuntimeError, match="无法确认"):
+        ServiceManager(config).legacy_task()
+
+
+@pytest.mark.parametrize("operation", ["deploy", "install", "start", "restart"])
+def test_legacy_task_notice_is_consistent_without_mutations(config, monkeypatch, operation):
+    from deployment import installer
+    if sys.platform != "win32":
+        pytest.skip("Windows administrator check")
+    monkeypatch.setattr(service.ctypes.windll.shell32, "IsUserAnAdmin", lambda: True)
+    monkeypatch.setattr(ServiceManager, "status", lambda self: {"state": "absent" if operation in {"install", "deploy"} else "stopped", "owned": True})
+    monkeypatch.setattr(ServiceManager, "legacy_task", lambda self: True)
+    monkeypatch.setattr(service, "run", lambda *a, **k: pytest.fail("must not mutate service/task"))
+    monkeypatch.setattr(installer, "install_payload", lambda *a: pytest.fail("must not copy payload"))
+    monkeypatch.setattr(config, "save", lambda: pytest.fail("must not save configuration"))
+    with pytest.raises(RuntimeError) as error:
+        if operation == "deploy":
+            installer.deploy(config.install_root, config, "new", "admin", "test-only-password")
+        elif operation == "install":
+            ServiceManager(config).install()
+        else:
+            ServiceManager(config).control(operation)
+    assert str(error.value) == service.LEGACY_TASK_NOTICE
+    for text in ("已禁用", "已停止", "导出", "移除", "不会自动删除"):
+        assert text in str(error.value)
 
 
 def test_database_errors_do_not_expose_credentials():

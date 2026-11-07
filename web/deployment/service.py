@@ -17,7 +17,14 @@ from xml.etree import ElementTree as ET
 
 from deployment.config import DeploymentConfig
 
-SERVICE_ID = "YindaWebCenterV1"
+SERVICE_ID = "YindaWebCenterService"
+SERVICE_NAME = "Yinda Web Center"
+LEGACY_TASK_NAME = "YindaWebCenter"
+LEGACY_TASK_NOTICE = (
+    "旧版 YindaWebCenter 计划任务存在时（包括已禁用），部署和启动均会被阻止。"
+    "请先确认旧 Web 服务/进程已停止，必要时导出旧任务配置，再由维护人员移除该任务。"
+    "本程序不会自动删除历史任务。"
+)
 
 
 def run(args, **kwargs):
@@ -131,7 +138,7 @@ class ServiceManager:
         return {"state": state, "owned": owned, "account": account}
 
     def legacy_task(self) -> bool:
-        result = run(["schtasks.exe", "/Query", "/TN", "YindaWebCenter", "/XML"])
+        result = run(["schtasks.exe", "/Query", "/TN", LEGACY_TASK_NAME, "/XML"])
         if result.returncode == 0:
             return True
         # Missing task is distinguished from denied/failed query through exit + text.
@@ -145,7 +152,7 @@ class ServiceManager:
         def add(key, value):
             ET.SubElement(root, key).text = str(value)
         add("id", SERVICE_ID)
-        add("name", "Yinda Web Center V1")
+        add("name", SERVICE_NAME)
         add("description", "引大调查 Web 中心正式后台服务")
         add("executable", self.server)
         add("startarguments", subprocess.list2cmdline(["--config", str(cfg.config_file), "--serve"]))
@@ -176,7 +183,7 @@ class ServiceManager:
                 raise RuntimeError("同名服务不属于此安装目录，拒绝修改。")
             return "此安装目录的服务已安装。"
         if self.legacy_task():
-            raise RuntimeError("检测到旧版 YindaWebCenter 计划任务。请先停用旧部署并手动禁用该任务，再安装正式服务。")
+            raise RuntimeError(LEGACY_TASK_NOTICE)
         if not self.wrapper.is_file() or not self.server.is_file():
             raise RuntimeError("缺少正式交付程序或 WinSW，请使用完整交付包。")
         self.server_action("--check")
@@ -205,7 +212,7 @@ class ServiceManager:
             return "服务已运行，不会重复启动。"
         if action in {"start", "restart"}:
             if self.legacy_task():
-                raise RuntimeError("仍存在旧版计划任务，拒绝启动以避免重复实例。")
+                raise RuntimeError(LEGACY_TASK_NOTICE)
             self.server_action("--check")
             if status["state"] == "stopped" and not port_available(self.config.listen_host, self.config.web_port):
                 raise RuntimeError("Web 监听端口已被占用；不会停止占用端口的其他程序。")
@@ -223,4 +230,4 @@ class ServiceManager:
 
 def event_name(config: DeploymentConfig, kind: str) -> str:
     token = hashlib.sha256(str(config.config_file.resolve()).lower().encode()).hexdigest()[:24]
-    return rf"Global\YindaWebV1-{kind}-{token}"
+    return rf"Global\{SERVICE_ID}-{kind}-{token}"

@@ -38,13 +38,15 @@ YindaWeb/
 
 ## 服务机制
 
-服务 ID 为 `YindaWebCenterV1`。WinSW v2.12.0 x64 使用 MIT 许可，官方来源和 SHA256 固定在构建脚本，许可证随包分发。Windows 11 自带 .NET Framework 4.x，WinSW v2 x64 的 .NET Framework 运行要求在正式目标机仍须实测。
+稳定服务 ID 为 `YindaWebCenterService`，显示名为 `Yinda Web Center`，后续应用版本长期复用，不随版本号变化。WinSW v2.12.0 x64 使用 MIT 许可，官方来源和 SHA256 固定在构建脚本，许可证随包分发。Windows 11 自带 .NET Framework 4.x，WinSW v2 x64 的 .NET Framework 运行要求在正式目标机仍须实测。
+
+早期开发提交 b40c83d 使用过 `YindaWebCenterV1`，不属于正式稳定名称。若测试机已注册该草案服务，应暂停新安装，先确认其归属和数据边界，由管理员使用原服务配置处理停服及卸载；新控制台不会自动删除或迁移旧服务。不要在旧服务运行时改写其 XML 或覆盖程序目录。
 
 服务开机延迟自动启动，以 `NT AUTHORITY\LocalService` 运行，不依赖登录或控制台。持久化目录仅授予管理员、SYSTEM 和 LocalService；程序目录对 LocalService 只读执行。安装需要管理员权限；启动、停止等 SCM 操作通常也需要管理员权限，普通控制台不会自行提升整个服务。
 
 每次服务启动先检查 PostgreSQL 17、配置、部署标识、迁移 head、正式页面和监听端口。命名互斥量防重复实例，独占端口检测防误用端口；服务归属按 SCM 注册的精确 wrapper 路径判断，不按端口杀进程。停止由 WinSW 启动同账户 helper 发送部署专属 Windows 命名事件，Uvicorn 最多 30 秒优雅退出；WinSW 最多等待 45 秒后收回其子进程。异常最多连续自动重启三次，之后停止，连续正常一小时后重置计数。
 
-发现旧 `YindaWebCenter` 任务即阻止部署和启动。维护人员需先停止旧实例并删除/导出保留该任务；即使任务禁用也应导出后删除，V1 保守地阻止任何同名任务。程序不会自动停止旧程序或其他端口占用者。
+旧版 `YindaWebCenter` 计划任务存在时（包括已禁用），部署和启动均会被阻止。请先确认旧 Web 服务/进程已停止，必要时导出旧任务配置，再由维护人员移除该任务。本程序不会自动删除历史任务，也不会自动停止旧程序或其他端口占用者。只禁用任务不能通过检测；查询任务失败或无权查询时也不继续部署。
 
 控制台所有耗时操作在工作线程执行；退出不发送停服命令。控制台只把本机 HTTP、数据库健康检查成功报告为已验证；局域网候选地址始终标记需要其他电脑实测。下一批可基于 deployment-state、releases、packages、backups 扩展升级、备份恢复和管理员维护。
 
@@ -58,4 +60,4 @@ web/build/console-native-venv/Scripts/python.exe web/build_formal_windows.py --w
 
 产物为 `web/release/server-console-v1/<时间戳>/YindaWeb/` 和同目录 ZIP。每次使用全新输出目录，不删除已有构建、不清理业务目录。构建后运行两个 EXE 的资源/启动烟测，再打 ZIP；包内只有显式程序资源，无 .env、PostgreSQL 数据、业务成果、生产密码或源码环境。build-manifest.json 记录文件哈希；完整依赖环境可用 `pip freeze` 留档。
 
-实际验收结果另见 SERVER_CONSOLE_V1_ACCEPTANCE.md。注销、真实其他电脑访问等未执行检查不能以单元测试替代。
+实际验收结果另见 SERVER_CONSOLE_V1_ACCEPTANCE.md。管理员人工操作步骤见 [Windows 服务验收步骤](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md)，逐项记录使用 [验收记录模板](SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md)。这两份文件随新交付包提供。注销、开机自启、真实其他电脑访问等未执行检查不能以单元测试或独立进程测试替代。

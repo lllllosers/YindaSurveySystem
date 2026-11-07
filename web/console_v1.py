@@ -19,7 +19,7 @@ WEB = Path(__file__).resolve().parent
 sys.path.insert(0, str(WEB / "backend"))
 
 from deployment.config import DeploymentConfig, safe_error
-from deployment.service import ServiceManager, health, lan_ipv4, run
+from deployment.service import LEGACY_TASK_NOTICE, ServiceManager, health, lan_ipv4, run
 
 
 STYLE = """
@@ -104,7 +104,7 @@ class SetupWizard(QWizard):
         form.addRow("部署方式", self.mode)
         text(form, "username", "首位管理员账号", "admin")
         text(form, "admin_password", "管理员密码（至少 12 位）", "", True)
-        note = QLabel("已有管理员不会重置。点击部署后将检查数据库、执行现有 Alembic 迁移、安装服务并启动。\n旧版 YindaWebCenter 计划任务须先由维护人员停用。\n安装失败可修正配置后使用“安全接续”重试。")
+        note = QLabel("已有管理员不会重置。点击部署后将检查数据库、执行现有 Alembic 迁移、安装服务并启动。\n" + LEGACY_TASK_NOTICE + "\n安装失败可修正配置后使用“安全接续”重试。")
         note.setWordWrap(True)
         form.addRow(note)
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 
 from deployment.config import DeploymentConfig
-from deployment.service import ServiceManager
+from deployment.service import LEGACY_TASK_NOTICE, ServiceManager
 
 
 def install_payload(source: Path, destination: Path) -> None:
@@ -52,7 +52,7 @@ def deploy(source: Path, config: DeploymentConfig, mode: str, username: str, pas
     if status["state"] != "absent" and not status["owned"]:
         raise RuntimeError("同名服务属于其他安装目录，拒绝部署。")
     if manager.legacy_task():
-        raise RuntimeError("检测到旧版计划任务，请先停用旧部署并人工禁用任务。")
+        raise RuntimeError(LEGACY_TASK_NOTICE)
     install_payload(source, config.install_root)
     config.save()
     message = manager.server_action("--initialize", payload={"mode": mode, "username": username, "password": password})
