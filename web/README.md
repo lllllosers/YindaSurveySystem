@@ -1,6 +1,6 @@
 # Web Center 开发入口
 
-Server Console V1 的 Windows Service 与独立 EXE 正式路线见 [部署说明](../docs/web/SERVER_CONSOLE_V1.md)，使用 `web/build_formal_windows.py` 构建；旧便携包和历史验收记录继续保留。
+Server Console V1 已整合为唯一正式入口 `web/launcher.py`，运维核心为 `web/server_console_core.py`。功能对照见 [统一控制台记录](../docs/web/SERVER_CONSOLE_UNIFICATION.md)，安装见 [部署说明](../docs/web/SERVER_CONSOLE_V1.md)，正式构建使用 `web/build_formal_windows.py`。原便携运行源码退出当前路线，历史 Git、旧包与验收记录保留。
 
 Vue 3 + FastAPI + PostgreSQL。当前为 acceptance baseline / version pending，没有人工确认的正式 Web 产品版本。
 

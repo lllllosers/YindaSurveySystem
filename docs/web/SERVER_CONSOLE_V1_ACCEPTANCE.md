@@ -2,7 +2,46 @@
 
 日期：2026-11-07（Asia/Shanghai）。结论：**实际代码与可运行 Windows EXE 已交付，服务级现场验收尚未完成，不能标记为正式投产通过。**
 
-## 本轮验收收口（基于 b40c83d）
+## 最新：唯一正式控制台整合（基于 1255f2c）
+
+本轮纠正产品路线，升级原 `web/launcher.py`，不再并行维护 `console_v1.py`。原控制台的实际功能、第一批差距及逐项整合结果见 [功能对照与唯一入口方案](SERVER_CONSOLE_UNIFICATION.md)。本轮不修改 Web 业务、Desktop，不启动正式数据迁移；原有 `.vscode/settings.json` 修改保留。
+
+唯一 GUI 为 `web/launcher.py` → `console/YindaServerConsole.exe`；统一运维门面为 `web/server_console_core.py` 的 `ServerManager`。保留启停重启、打开管理端、完整预检、备份、自启设置、分类日志、托盘，以及可选 HTTPS 地址检查；正式实现复用 `deployment/` 的稳定服务与持久化底座。删除重复 GUI、旧 PID worker 和嵌入式 PG 运行器，旧源码/交付包继续保留在 Git 历史与既有磁盘目录。旧构建命令重定向或明确退役，不再产生第二套正式 GUI。
+
+向导支持受控创建本机 PG17 专用数据库与普通账号，无需甲方操作 pgAdmin。先检查同名对象并拒绝覆盖；数据库管理凭据仅通过标准输入临时使用，未保存。部分创建失败保留阶段与对象，不自动删除或另建库替代。已有部署不能进入建库路径。立即备份恢复了旧能力，并明确暂停 Web 写入后备份数据库与完整 storage；结束后恢复原运行状态。历史无完成标识的备份显示待核对，不冒充新完整备份。
+
+### 本轮已通过与证据
+
+| 项目 | 实际结果与证据 |
+|---|---|
+| 完整 Web 后端回归 | **100 passed、2 skipped**，`web/build/unified-final-tests.log`。默认跳过两个需显式隔离库条件的集成测试；本轮新建库集成已单独执行通过，旧接续集成未单独重跑，保留历史记录 |
+| 隔离 PG17 集成 | **1 passed**，`web/build/unified-provision-integration.log`：实际建库/建普通账号、验证无超级用户/建库/建角色/复制/绕过行权限、同名对象拒绝、初始化、数据库与成果文件备份、pg_restore 列表可读、完整诊断及管理密码不落盘 |
+| 冻结 EXE 运行验收 | **13 项通过**，`web/build/unified-frozen-final.log` 与 `.test-runtime/unified-frozen-final/acceptance.json`，包含 EXE 实际创建专用库/账号、Alembic 初始化、完整预检、Web/DB 健康、关闭 GUI 后独立 Web 进程存活、Vue 页面、登录/CSRF、创建项目、重复实例拒绝、命名事件优雅停止、dump + storage 完整备份、重启后数据文件保留、重复初始化拒绝 |
+| 唯一入口二进制核对 | `web/build/unified-entry-verification.json`：仅 `console/YindaServerConsole.exe` 的 PE Subsystem=2；WinSW 和 Web Server 均为 3。GUI PYZ 确认包含 `server_console_core`/`server_setup`，不含 `console_v1`/`server_worker`/`portable_runtime`；manifest 指向 launcher.py 和统一核心，962 个文件哈希逐一验证 |
+| 原有操作回归 | 同一完整测试集覆盖备份成功/失败后恢复、原先停止保持停止、外来服务不操作、恢复服务失败明确报告、完整/部分/历史备份区分、预检记录和分类日志、SCM 自启而非注册计划任务、数据库独立于 Web 状态检查 |
+| 源码交付合同 | 更新并通过原模板/源码包测试，14 张模板与 Shared renderer 完整，解压后实际导入业务后端成功；源码包不混入旧 EXE 或 worker |
+| 真实 UI 检查 | 使用 computer-use 实际打开 EXE，检查首屏、六个常用操作、设置页及自动创建向导。另将同一程序复制到隔离运行目录，实际显示 PG17“连接正常/结构当前”、真实完整备份日期与 Web“未安装”并列，不伪造运行状态；取消向导后正常退出，未输入真实凭据或点击安装服务 |
+
+独立 Web 进程测试仍然**不等同于 Windows SCM 服务验收**。数据库测试全部只使用本轮新建的 `.test-runtime/unified-console-pg`（127.0.0.1:56438，独立 PG17 集群），不连接已有真实业务实例或账号。前端与 Shared 未修改，沿用此前已构建的 Vue 资产，本轮没有重复执行其测试。
+
+### 最新交付包
+
+`web/release/server-console-v1/20261107-192028-244346/YindaWeb/`，ZIP 为同目录 `yinda-server-console-v1-windows-x64.zip`，**85,966,228 字节**，SHA256：`08f98e45f304065b28781c916f41a0dacbd9f23e040fd6cb50596be44fcbe144`。构建和双 EXE 烟测记录为 `web/build/unified-build-final.log`。编译程序验收后仅同步了人工步骤/模板的文档更新并重新生成文件清单及 ZIP，程序二进制未变。包内附部署说明、整合对照、管理员人工步骤和记录模板；无实际运行密码、数据库、成果文件或源码开发环境。持久化摘要见 [唯一入口及产物证据](evidence/server-console-unified-entry-20261107.json) 和 [冻结运行证据](evidence/server-console-unified-runtime-20261107.json)。
+
+### 本轮失败后修正
+
+- 原源码包测试仍要求已经退役的 server_worker.py，已改为验证唯一 GUI、统一核心、独立 server_entry 和部署适配模块，仍保留模板数量、源码包敏感文件排除及解压后真实导入验证。最终完整回归无失败。
+- 静态退出测试一度把 timer.stop() 误判为停止 Web，已限定检查运维停止调用；冻结 EXE 的实际退出/独立 Web 存活验证也通过。
+
+### 未执行、限制与后续门槛
+
+当前仍无 Windows 管理员令牌，没有绕过权限、安装 SCM 服务、注销或重启电脑。WinSW/LocalService 实际安装、真实服务的启停/重启、服务备份停复服、注销存活、开机自启和办公室其他电脑 LAN 访问均需按人工模板补验。当前 GUI 可以如实显示数据库连接与完整备份成功、同时报告服务未安装；不能据此声称正式后台服务已通过验收。
+
+本轮完成了产品入口整合与可执行交付，**服务级现场验收尚未闭环，不能宣称已具备正式投产或完整进入第二批的条件**。数据库创建是新部署能力，不提供对旧真实业务库的自动迁移；备份恢复界面、升级管理和定时备份未实现。人工步骤与模板已同步新向导。
+
+## 上轮验收收口历史（1255f2c，基于 b40c83d）
+
+以下阶段的“本轮”均指 1255f2c 的历史收口，不是上述最新整合结果。
 
 本轮只完成第一批修正和验收准备，不进入第二批、不修改业务或 Desktop。原分支为 `feat/web-server-console-v1-foundation`，起点提交为 `b40c83de4d7b227da3a785ffa5251f741be0fd51`，原有 `.vscode/settings.json` 修改保留。
 

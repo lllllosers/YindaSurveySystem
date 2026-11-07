@@ -1,13 +1,13 @@
 # Server Console V1 · 正式部署基础
 
-本路线独立于旧便携包。Windows x64 交付包包含两个 PyInstaller onedir 程序、Vue 正式页面、后端、Shared、Alembic、正式 Excel 模板和 WinSW。甲方运行不需要 Python、Git、Node。PostgreSQL 17 由独立 Windows 服务运行。
+本路线升级原有 `web/launcher.py`，它是唯一正式 GUI 入口；运维统一从 `web/server_console_core.py` 进入。功能差距与入口合同见 [统一控制台整合记录](SERVER_CONSOLE_UNIFICATION.md)。旧便携路线已退役，历史 Git 和既有交付资产保留。Windows x64 包包含唯一 Console GUI、独立后台 Web Server、Vue 正式页面、Shared、Alembic、模板和 WinSW；正常运行无需 Python、Git、Node。PostgreSQL 17 独立运行。
 
 ## 首次安装
 
 1. 解压完整 `YindaWeb` 到固定程序目录。不要只复制 EXE。
-2. 安装 PostgreSQL 17，使用其图形管理工具建立专用空数据库和具备该数据库 schema 建表权限的账号。向导不创建数据库、不连接其他数据库、不探测其他业务库。PostgreSQL 未安装时，向导提供官方下载入口。
-3. 右键 `console/YindaServerConsole.exe`，以管理员身份运行。选择“首次部署 / 修复配置”，配置程序位置和持久化目录（默认 `YindaWeb/persistent`）。
-4. 填写专用数据库连接、监听地址、Web 端口、允许的主机和管理员账号。新部署只接受空数据库和空成果目录。确认后执行正式 Alembic 迁移及现有管理员创建能力，安装服务并验证本机 HTTP。
+2. 先安装 PostgreSQL 17。无需使用 pgAdmin 手动建库：向导推荐自动创建本系统专用数据库和普通运行账号。创建时临时填写 PostgreSQL 安装时的管理账号/密码，不保存管理密码。也可使用已准备的空库或接续已登记部署。
+3. 右键 `console/YindaServerConsole.exe`，以管理员身份运行。在“安装与设置”选择“首次安装 / 修改运行配置”，配置程序位置和成果、备份文件夹（默认 `YindaWeb/persistent`）。
+4. 按向导选择数据保存方式、网站端口、办公室地址及网页登录账号。自动创建仅支持本机、显式选择的新部署，发现同名数据库或账号立即停止，不修改已有对象。之后复用正式 Alembic 迁移及管理员创建，安装服务并验证本机 HTTP。部分创建失败保留对象与进度，需核对后处理，不自动删除或另建空库掩盖失败。
 5. 在“网络访问”复制候选内网地址，在办公室其他电脑实际访问。需要时由管理员在 Windows 防火墙中只允许办公室网络范围访问所选 Web TCP 端口。控制台不改防火墙、路由器，不开放数据库端口。
 
 默认是明确选择的 `APP_ENV=production` + `TRANSPORT_MODE=lan_http`，Cookie 的 Secure=false；认证、Argon2 密码、会话、CSRF、业务权限、精确 TrustedHost、生产安全头继续有效。生产 API 文档关闭，无开发 CORS。内网 HTTP 传输不加密，只适合受信办公室网络，不能向公网映射。HTTPS 生产配置仍要求 Secure Cookie，第一批不包含证书、反向代理或 HTTPS 安装管理。
@@ -32,7 +32,7 @@ YindaWeb/
 
 数据库数据目录由已安装 PostgreSQL 独立管理，不包含在发布目录。程序替换仅允许触及 console、service、releases；不得删除 config、persistent 或外部持久化目录。V1 向导仅复制缺失的相同版本程序，拒绝覆盖不同版本文件，不实现版本升级。
 
-所有数据库文件引用继续保存 `storage/...`，只由统一的 Settings.file_base 解析到 `persistent/data`；源码开发未配置 DATA_ROOT 时保持 `backend/storage` 的旧行为。备份 CLI 也使用统一配置。旧清空 CLI 在正式持久化模式下禁用。源代码旧便携入口和历史验收记录保留，不再作为新路线的依赖。
+所有数据库文件引用继续保存 `storage/...`，只由统一的 Settings.file_base 解析到 `persistent/data`；源码开发未配置 DATA_ROOT 时保持 `backend/storage` 的旧行为。备份 CLI 也使用统一配置，正式模式下成果目录缺失时拒绝完整备份。旧清空 CLI 在正式持久化模式下禁用。旧便携运行源码已退出当前路线，历史 Git、验收记录和既有交付资产保留，不删除旧数据。
 
 已有旧源码或便携部署不能直接接管。维护人员须先停旧 Web/计划任务，离线备份并搬迁**完整 storage**，核对数据库 Alembic 版本及成果引用，然后登记部署标识。V1 向导不会猜测路径、自动复制部分业务文件或为失败连接创建空库。已由 V1 登记的部署可选“安全接续”，重复运行迁移和管理员检查，不重置数据或管理员。失败时保留 initializing 阶段；修正同一数据库连接后可接续重试。数据库身份和数据目录不能在同一安装上改绑。
 

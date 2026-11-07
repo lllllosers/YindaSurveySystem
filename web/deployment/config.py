@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from urllib.parse import urlparse
 
 from dotenv import dotenv_values
 
@@ -37,6 +38,9 @@ class DeploymentConfig:
     web_port: int = 8000
     allowed_hosts: str = "127.0.0.1,localhost"
     transport_mode: str = "lan_http"
+    pg_bin: str = ""
+    postgres_service_name: str = ""
+    public_base_url: str = ""
 
     @property
     def config_file(self) -> Path:
@@ -72,6 +76,12 @@ class DeploymentConfig:
             raise ValueError("数据库名只能使用字母、数字、下划线，不能以数字开头。")
         if self.transport_mode != "lan_http":
             raise ValueError("本批向导支持明确的内网 HTTP；HTTPS 请由后续部署流程配置。")
+        if self.pg_bin and not Path(self.pg_bin).is_absolute():
+            raise ValueError("PostgreSQL 工具目录必须为绝对路径。")
+        if self.public_base_url:
+            parsed = urlparse(self.public_base_url)
+            if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/") or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ValueError("外部访问地址应为不含账号或参数的 HTTPS 网站根地址。")
         if any('\n' in str(v) or '\r' in str(v) or '\x00' in str(v) for v in asdict(self).values()):
             raise ValueError("配置项不能含换行或空字符。")
         if len(self.db_password) < 12 or self.db_password.lower() in {"replace-with-local-password", "<strong-password>", "password123456", "changeme123456"}:

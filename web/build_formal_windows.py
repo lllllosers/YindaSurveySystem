@@ -59,7 +59,7 @@ def main():
         "--add-data", f"{ROOT / 'templates' / 'excel'}{os.pathsep}templates/excel", str(WEB / "server_entry.py")]
     subprocess.run(server, cwd=WEB, env=env, check=True)
     console = common + ["--name", "YindaServerConsole", "--windowed", "--exclude-module", "app",
-                       str(WEB / "console_v1.py")]
+                       str(WEB / "launcher.py")]
     subprocess.run(console, cwd=WEB, env=env, check=True)
     service = package / "service"
     service.mkdir()
@@ -68,10 +68,10 @@ def main():
     shutil.copy2(args.winsw, service / "YindaWebService.exe")
     shutil.copy2(license_file, service / "WinSW-LICENSE.txt")
     shutil.copy2(ROOT / "docs" / "web" / "SERVER_CONSOLE_V1.md", package / "部署说明.md")
-    for name in ("SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md", "SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md"):
+    for name in ("SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE.md", "SERVER_CONSOLE_V1_WINDOWS_ACCEPTANCE_RECORD.md", "SERVER_CONSOLE_UNIFICATION.md"):
         shutil.copy2(ROOT / "docs" / "web" / name, package / name)
     (package / "打开服务控制台.bat").write_text('@echo off\nstart "" "%~dp0console\\YindaServerConsole.exe"\n', encoding="utf-8")
-    manifest = {"version": "server-console-v1-foundation", "winsw": "2.12.0", "winsw_sha256": WINSW_SHA256,
+    manifest = {"version": "server-console-v1-unified", "gui_entry": "launcher.py", "operations_entry": "server_console_core.py", "winsw": "2.12.0", "winsw_sha256": WINSW_SHA256,
                 "files": {}}
     for path in sorted(package.rglob("*")):
         if path.is_file():

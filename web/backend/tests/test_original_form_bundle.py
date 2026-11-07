@@ -21,10 +21,13 @@ def test_bundle_contains_templates_and_renderer_without_runtime_data(tmp_path, m
         assert not any(name.startswith(("src/", "desktop/")) for name in names)
         assert "web_center/backend/app/services/original_form_export.py" in names
         assert "web_center/server_console_core.py" in names
-        assert "web_center/server_worker.py" in names
+        assert "web_center/server_entry.py" in names
+        assert "web_center/server_setup.py" in names
+        assert "web_center/deployment/service.py" in names
+        assert "web_center/server_worker.py" not in names
+        assert "web_center/console_v1.py" not in names
         assert "web_center/launcher.py" in names
-        if (build_deploy_bundle.OUTPUT_ROOT / "YindaWebServerConsole.exe").is_file():
-            assert "web_center/YindaWebServerConsole.exe" in names
+        assert not any(name.endswith(".exe") for name in names)
         requirements = archive.read("web_center/backend/requirements.txt").decode("utf-8")
         assert "openpyxl" in requirements
         assert not any(name.endswith("/.env") or "/storage/" in name or "/backups/" in name or "/.runtime/" in name for name in names)

@@ -1,16 +1,10 @@
-"""Build the Windows x64 production console without application secrets."""
+"""Compatibility build command and environment helper for the single formal bundle."""
 
 from __future__ import annotations
 
-import importlib.util
 import os
 from pathlib import Path
-import platform
-import subprocess
 import sys
-
-
-ROOT = Path(__file__).resolve().parent
 
 
 def clean_build_environment() -> dict[str, str]:
@@ -31,32 +25,9 @@ def clean_build_environment() -> dict[str, str]:
 
 
 def main() -> None:
-    if sys.platform != "win32" or platform.architecture()[0] != "64bit":
-        raise SystemExit("服务控制台 EXE 仅能在 Windows x64 构建。")
-    for module in ("PySide6", "PyInstaller"):
-        if importlib.util.find_spec(module) is None:
-            raise SystemExit(f"缺少构建依赖 {module}，请安装 web/console-requirements.txt。")
-    try:
-        from PySide6.QtWidgets import QApplication  # noqa: F401
-    except ImportError as exc:
-        raise SystemExit("PySide6 Qt DLL 无法加载；请使用独立的 Windows x64 Python 虚拟环境构建。") from exc
-    build_env = clean_build_environment()
-    subprocess.run(
-        [
-            sys.executable, "-m", "PyInstaller", "--onefile", "--windowed",
-            "--noconfirm", "--clean", "--name", "YindaWebServerConsole",
-            "--distpath", str(ROOT / "release"),
-            "--workpath", str(ROOT / "build" / "server_console"),
-            "--specpath", str(ROOT / "build" / "server_console"),
-            str(ROOT / "launcher.py"),
-        ],
-        cwd=ROOT,
-        check=True,
-        env=build_env,
-    )
-    executable = ROOT / "release" / "YindaWebServerConsole.exe"
-    subprocess.run([str(executable), "--smoke-test"], cwd=ROOT, check=True, timeout=45, env=build_env)
-    print(f"控制台（启动验证通过）：{executable}")
+    # Compatibility command, not a second builder or a standalone old GUI.
+    from build_formal_windows import main as build
+    build()
 
 
 if __name__ == "__main__":

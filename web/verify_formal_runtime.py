@@ -24,13 +24,16 @@ def main():
     parser.add_argument("--database", required=True)
     parser.add_argument("--db-port", type=int, required=True)
     parser.add_argument("--web-port", type=int, default=58137)
+    parser.add_argument("--create-database", action="store_true")
+    parser.add_argument("--pg-bin", default="")
     args = parser.parse_args()
     if not args.database.startswith("yinda_console_") or not args.root.is_absolute():
         raise SystemExit("只允许显式的 yinda_console_* 测试数据库及绝对测试目录。")
     config = DeploymentConfig(install_root=args.root / "program", data_root=args.root / "persistent",
         db_host="127.0.0.1", db_port=args.db_port, db_name=args.database,
-        db_user=os.environ["YINDA_TEST_DB_USER"], db_password=os.environ["YINDA_TEST_DB_PASSWORD"],
-        listen_host="127.0.0.1", web_port=args.web_port)
+        db_user=args.database + "_app" if args.create_database else os.environ["YINDA_TEST_DB_USER"],
+        db_password="Frozen-App-Test-Password-2026!" if args.create_database else os.environ["YINDA_TEST_DB_PASSWORD"],
+        listen_host="127.0.0.1", web_port=args.web_port, pg_bin=args.pg_bin)
     config.save()
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
     command = [str(args.server.resolve()), "--config", str(config.config_file)]
@@ -39,11 +42,23 @@ def main():
         return subprocess.run([*command, action], input=json.dumps(payload) if payload else None,
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, **options)
     checks = []
+    package = args.server.resolve().parents[2]
+    manifest = json.loads((package / "build-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["gui_entry"] == "launcher.py" and manifest["operations_entry"] == "server_console_core.py"
+    checks.append("single_gui_and_operations_entry_in_manifest")
+    if args.create_database:
+        provision = call("--provision", {"username": os.environ["YINDA_TEST_DB_USER"],
+            "password": os.environ["YINDA_TEST_DB_PASSWORD"], "create_dedicated": True})
+        assert provision.returncode == 0, provision.stdout + provision.stderr
+        checks.append("frozen_controlled_dedicated_database_and_user_creation")
     init = call("--initialize", {"mode": "new", "username": "admin", "password": password})
     assert init.returncode == 0, init.stdout + init.stderr
     checks.append("frozen_initialize_postgresql17_alembic_admin")
     assert call("--check").returncode == 0
     checks.append("frozen_preflight")
+    diagnostic = call("--diagnose")
+    assert diagnostic.returncode == 0 and json.loads(diagnostic.stdout)["ok"], diagnostic.stdout
+    checks.append("frozen_full_environment_diagnostics")
     log = (args.root / "server.log").open("wb")
     process = None
     def start():
@@ -93,6 +108,13 @@ def main():
         assert call("--stop").returncode == 0
         assert process.wait(timeout=40) == 0
         checks.append("windows_named_event_graceful_stop")
+        backup = call("--backup")
+        assert backup.returncode == 0, backup.stdout + backup.stderr
+        backup_path = Path(backup.stdout.strip().removeprefix("备份完成："))
+        assert (backup_path / "database.dump").read_bytes().startswith(b"PGDMP")
+        assert (backup_path / "storage/runtime-retention.bin").read_bytes() == b"must-survive-restart"
+        assert json.loads((backup_path / "manifest.json").read_text(encoding="utf-8"))["complete"]
+        checks.append("frozen_database_and_storage_backup_with_completion_marker")
         process = start()
         with httpx.Client(base_url=config.local_url, trust_env=False) as client:
             login = client.post("/api/v1/auth/login", json={"username": "admin", "password": password})
@@ -110,7 +132,7 @@ def main():
             process.wait(timeout=40)
         log.close()
     (args.root / "acceptance.json").write_text(json.dumps({"passed": checks,
-        "not_verified": ["SCM_install_start_stop_LocalService", "Windows_logoff", "other_LAN_computer_access"]}, indent=2), encoding="utf-8")
+        "not_verified": ["SCM_install_start_stop_LocalService", "SCM_backup_stop_resume", "Windows_logoff", "Windows_reboot_automatic_start", "other_LAN_computer_access"]}, indent=2), encoding="utf-8")
     print(json.dumps({"passed": checks}, indent=2))
 
 

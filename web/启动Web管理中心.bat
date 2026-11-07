@@ -1,5 +1,5 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-call "run_dev.bat"
+"backend\.venv\Scripts\python.exe" "launcher.py"
 endlocal

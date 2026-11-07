@@ -48,12 +48,9 @@ def main() -> None:
             raise FileNotFoundError("正式原表模板不完整。")
         copy_file(template, bundle / "templates" / "excel" / filename)
 
-    for name in ("launcher.py", "server_console_core.py", "portable_runtime.py", "server_worker.py", "build_server_console.py", "console-requirements.txt"):
+    copy_python_tree(WEB_ROOT / "deployment", bundle / "web_center" / "deployment")
+    for name in ("launcher.py", "server_console_core.py", "server_setup.py", "server_entry.py", "console-requirements.txt"):
         copy_file(WEB_ROOT / name, bundle / "web_center" / name)
-    console_exe = OUTPUT_ROOT / "YindaWebServerConsole.exe"
-    if console_exe.is_file():
-        copy_file(console_exe, bundle / "web_center" / console_exe.name)
-
     copy_file(REPO_ROOT / "docs" / "web" / "DEPLOY.md", bundle / "DEPLOY.md")
     forbidden_parts = {".env", ".venv", "node_modules", "storage", "backups", ".runtime", ".git", ".pytest_cache"}
     forbidden_suffixes = {".key", ".pem", ".p12", ".token"}

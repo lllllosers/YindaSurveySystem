@@ -35,8 +35,10 @@ def install_payload(source: Path, destination: Path) -> None:
             shutil.copy2(path, target)
 
 
-def deploy(source: Path, config: DeploymentConfig, mode: str, username: str, password: str) -> str:
+def deploy(source: Path, config: DeploymentConfig, mode: str, username: str, password: str, *, database_admin: dict | None = None) -> str:
     config.validate()
+    if database_admin is not None and mode != "new":
+        raise ValueError("接续已有部署时不能创建新库。")
     if os.name == "nt" and not ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError("首次部署和服务安装需要管理员权限，请右键以管理员身份运行控制台。")
     pointer = config.install_root / "config" / "deployment.json"
@@ -55,6 +57,8 @@ def deploy(source: Path, config: DeploymentConfig, mode: str, username: str, pas
         raise RuntimeError(LEGACY_TASK_NOTICE)
     install_payload(source, config.install_root)
     config.save()
+    if database_admin is not None:
+        manager.server_action("--provision", payload=database_admin)
     message = manager.server_action("--initialize", payload={"mode": mode, "username": username, "password": password})
     message += "\n" + manager.install()
     message += "\n" + manager.control("start")

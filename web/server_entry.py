@@ -88,7 +88,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path)
     group = parser.add_mutually_exclusive_group(required=True)
-    for action in ("serve", "stop", "check", "initialize", "smoke-test"):
+    for action in ("serve", "stop", "check", "initialize", "smoke-test", "diagnose", "status", "backup", "provision"):
         group.add_argument("--" + action, action="store_true")
     args = parser.parse_args()
     if args.smoke_test:
@@ -131,6 +131,19 @@ def main() -> int:
         from deployment.database import initialize, preflight
         if args.check:
             print(preflight(config))
+        elif args.status:
+            from deployment.diagnostics import database_status
+            print(json.dumps(database_status(config)))
+        elif args.diagnose:
+            from deployment.diagnostics import diagnose
+            print(json.dumps(diagnose(config), ensure_ascii=False))
+        elif args.backup:
+            preflight(config)
+            from app.cli.backup_web_center import create_backup
+            print(f"备份完成：{create_backup()}")
+        elif args.provision:
+            from deployment.provision import create_dedicated_database
+            print(create_dedicated_database(config, json.loads(sys.stdin.read(16384))))
         elif args.initialize:
             payload = json.loads(sys.stdin.read(16384))
             print(initialize(config, payload["mode"], payload["username"], payload["password"]))

@@ -14,18 +14,20 @@ from app.core.config import BACKEND_DIR, settings
 from app.core.windows_subprocess import hidden_run
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="备份 Web 中心 PostgreSQL 与文件存储")
-    parser.add_argument("--database-only", action="store_true", help="仅备份数据库，用于迁移前快速快照")
-    parser.add_argument("--output", type=Path, help="指定新的备份目录")
-    args = parser.parse_args()
-
-    pg_dump = shutil.which("pg_dump")
+def create_backup(*, database_only: bool = False, output: Path | None = None) -> Path:
+    if settings.data_root and not database_only and not settings.storage_dir.is_dir():
+        raise RuntimeError("成果目录丢失，拒绝生成缺少成果文件的完整备份。")
+    if settings.data_root:
+        from deployment.postgres import dump_executable
+        pg_dump = str(dump_executable(settings.pg_bin))
+    else:
+        pg_dump = shutil.which("pg_dump")
     if not pg_dump:
-        raise SystemExit("没有找到 pg_dump，请安装 PostgreSQL 客户端并加入 PATH。")
+        raise RuntimeError("没有找到 PostgreSQL 备份工具。")
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = (args.output or settings.backups_dir / stamp).resolve()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    target = (output or settings.backups_dir / stamp).resolve()
+    expected_parent = target.parent.resolve()
     target.mkdir(parents=True, exist_ok=False)
     dump_path = target / "database.dump"
     env = os.environ.copy()
@@ -39,6 +41,7 @@ def main() -> None:
         "--username", settings.db_user,
         "--dbname", settings.db_name,
         "--format", "custom",
+        "--no-password",
         "--file", str(dump_path),
     ]
     try:
@@ -48,22 +51,33 @@ def main() -> None:
             errors="replace", timeout=3600,
         )
         if result.returncode:
-            raise RuntimeError("pg_dump 失败：" + result.stderr.strip()[-500:])
+            raise RuntimeError(f"数据库备份失败（pg_dump 退出码 {result.returncode}），请检查数据库连接与备份工具版本。")
         storage = settings.storage_dir
-        if not args.database_only and storage.exists():
+        if not database_only and storage.exists():
             shutil.copytree(storage, target / "storage")
         (target / "manifest.json").write_text(
             json.dumps({
                 "created_at": datetime.now().astimezone().isoformat(),
                 "database": settings.db_name,
-                "database_only": args.database_only,
-                "storage_included": not args.database_only and storage.exists(),
+                "database_only": database_only,
+                "storage_included": not database_only and storage.exists(),
+                "complete": True,
             }, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
     except Exception:
-        shutil.rmtree(target, ignore_errors=True)
+        if target.resolve() == target and target.parent.resolve() == expected_parent and not target.is_symlink():
+            shutil.rmtree(target, ignore_errors=True)
         raise
+    return target
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="备份 Web 中心 PostgreSQL 与文件存储")
+    parser.add_argument("--database-only", action="store_true")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    target = create_backup(database_only=args.database_only, output=args.output)
     print(f"备份完成：{target}")
 
 

@@ -1,0 +1,24 @@
+{
+  "passed": [
+    "single_gui_and_operations_entry_in_manifest",
+    "frozen_controlled_dedicated_database_and_user_creation",
+    "frozen_initialize_postgresql17_alembic_admin",
+    "frozen_preflight",
+    "frozen_full_environment_diagnostics",
+    "frozen_server_http_database_health",
+    "console_exit_does_not_stop_independent_web_process",
+    "vue_spa_production_auth_cookie_csrf_project_creation",
+    "duplicate_instance_rejected_original_survives",
+    "windows_named_event_graceful_stop",
+    "frozen_database_and_storage_backup_with_completion_marker",
+    "project_admin_storage_survive_binary_restart",
+    "frozen_reinitialize_refused"
+  ],
+  "not_verified": [
+    "SCM_install_start_stop_LocalService",
+    "SCM_backup_stop_resume",
+    "Windows_logoff",
+    "Windows_reboot_automatic_start",
+    "other_LAN_computer_access"
+  ]
+}

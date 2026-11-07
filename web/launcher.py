@@ -1,40 +1,59 @@
-"""Yinda Web production server console. The Web process outlives this GUI."""
-
+"""The only formal Yinda Server Console GUI entry point."""
 from __future__ import annotations
 
+import argparse
 from concurrent.futures import ThreadPoolExecutor
-import os
 from pathlib import Path
 import sys
-import webbrowser
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QFontDatabase, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QMenu, QMessageBox, QPushButton, QSystemTrayIcon,
-    QTextEdit, QVBoxLayout, QWidget,
-)
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QGridLayout,
+    QHBoxLayout, QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit,
+    QPushButton, QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from server_console_core import ConsolePaths, LOCAL_URL, ServerManager, read_env_value, tail
+sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
+from server_console_core import CONSOLE_VERSION, ServerManager, safe_error
+from server_setup import SetupWizard
+
+STYLE = """
+QWidget { color:#243e3d; font-family:'Microsoft YaHei UI'; font-size:14px; }
+QMainWindow, QWidget#workspace { background:#f1f5f3; }
+QFrame#sidebar { background:#183b37; border:0; }
+QFrame#sidebar QLabel { color:#e0efeb; background:transparent; }
+QLabel#brand { font-size:25px; font-weight:700; } QLabel#brandSub { color:#9bbcb3; font-size:12px; }
+QListWidget { background:transparent; border:0; outline:0; color:#a8c5bc; }
+QListWidget::item { padding:15px 18px; margin:3px 0; border-radius:8px; }
+QListWidget::item:selected { background:#2a534a; color:white; font-weight:600; }
+QLabel#title { font-size:27px; font-weight:700; color:#183b37; }
+QLabel#hint { color:#6d827d; background:transparent; } QLabel#eyebrow { color:#66827a; font-size:12px; }
+QLabel#version { color:#376c5e; background:#e2eee6; padding:8px 14px; border-radius:15px; }
+QFrame#panel, QFrame#statusCard { background:white; border:1px solid #dae5df; border-radius:13px; }
+QFrame#statusCard QLabel, QFrame#panel QLabel { background:transparent; }
+QLabel#cardTitle { color:#6b8079; font-size:13px; } QLabel#cardValue { color:#234c40; font-size:23px; font-weight:700; }
+QLabel#section { font-size:16px; font-weight:600; } QLabel#address { font-size:23px; font-weight:600; color:#1a5d4c; }
+QLabel#banner { color:#5e704c; background:#e9eedb; border:1px solid #d8e0c5; border-radius:8px; padding:13px; }
+QPushButton { background:white; border:1px solid #cddbd2; border-radius:7px; padding:10px 16px; color:#2f5147; }
+QPushButton:hover { background:#e9f1eb; border-color:#7fa18b; } QPushButton:disabled { background:#edf1ed; color:#9caaa1; border-color:#e0e7e1; }
+QPushButton#primary { background:#256a50; border-color:#256a50; color:white; }
+QPushButton#primary:hover { background:#20583f; } QPushButton#danger { color:#ae594d; }
+QPushButton#primary:disabled, QPushButton#danger:disabled { background:#edf1ed; color:#9caaa1; border-color:#e0e7e1; }
+QPlainTextEdit, QTreeWidget { background:white; border:1px solid #d6e2d9; border-radius:8px; padding:12px; }
+QPlainTextEdit { font-family:'Cascadia Mono','Microsoft YaHei UI'; font-size:13px; }
+QHeaderView::section { background:#e9f0ea; padding:9px; border:0; }
+QLineEdit,QComboBox { background:white; border:1px solid #c8d9cd; border-radius:5px; padding:7px; color:#244b3c; }
+QWizard,QWizardPage { background:#f3f7f3; } QGroupBox { border:1px solid #d0ddd3; border-radius:7px; margin-top:13px; padding-top:16px; }
+QGroupBox::title { subcontrol-origin:margin; left:10px; } QStatusBar { background:#e5ede7; color:#688175; }
+"""
 
 
-class Bridge(QObject):
-    status = Signal(dict)
-    result = Signal(str)
-    error = Signal(str)
-    logs = Signal(str)
-
-
-def icon() -> QIcon:
+def icon():
     pixmap = QPixmap(64, 64)
-    pixmap.fill(QColor("#295ccc"))
+    pixmap.fill(QColor("#256a50"))
     painter = QPainter(pixmap)
     painter.setPen(QColor("white"))
     font = painter.font()
-    font.setFamily("Microsoft YaHei UI")
-    font.setPixelSize(39)
+    font.setPixelSize(38)
     font.setBold(True)
     painter.setFont(font)
     painter.drawText(pixmap.rect(), Qt.AlignCenter, "引")
@@ -42,339 +61,386 @@ def icon() -> QIcon:
     return QIcon(pixmap)
 
 
+class Bridge(QObject):
+    done = Signal(str, object)
+    error = Signal(str, str)
+
+
 class StatusCard(QFrame):
-    def __init__(self, title: str, detail: str):
+    def __init__(self, title, detail):
         super().__init__()
         self.setObjectName("statusCard")
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        heading = QLabel(title)
-        heading.setObjectName("cardHeading")
-        self.value = QLabel("正在检查…")
+        layout.setContentsMargins(20, 18, 20, 18)
+        caption = QLabel(title)
+        caption.setObjectName("cardTitle")
+        self.value = QLabel("正在检查")
         self.value.setObjectName("cardValue")
         self.detail = QLabel(detail)
-        self.detail.setObjectName("cardDetail")
         self.detail.setWordWrap(True)
-        layout.addWidget(heading)
+        self.detail.setObjectName("hint")
+        layout.addWidget(caption)
         layout.addWidget(self.value)
         layout.addWidget(self.detail)
 
-    def update_state(self, value: str, detail: str | None = None):
-        self.value.setText("●  " + value)
-        color = "#56d6a1" if value in {"运行正常", "正常", "连接正常"} else "#f1bd66" if value.startswith(("未配置", "已停止")) else "#f17d85"
-        self.value.setStyleSheet(f"color: {color};")
-        if detail is not None:
-            self.detail.setText(detail)
+    def set_state(self, value, detail, good=False):
+        self.value.setText(value)
+        self.value.setStyleSheet("color:#256a50;" if good else "color:#a27638;")
+        self.detail.setText(detail)
 
 
 class ServerConsole(QMainWindow):
-    def __init__(self, manager: ServerManager | None = None):
+    def __init__(self, manager=None):
         super().__init__()
         self.manager = manager or ServerManager()
-        self.paths = self.manager.paths
-        self.portable = self.paths.portable
-        self.bridge = Bridge()
-        self.pool = ThreadPoolExecutor(max_workers=2)
-        self.refreshing = False
+        self.current = None
+        self.addresses = []
+        self.last_status = {}
         self.busy = False
         self.exiting = False
-        self.setWindowTitle("引大调查 Web 中心服务")
+        self.pool = ThreadPoolExecutor(max_workers=1)
+        self.bridge = Bridge()
+        self.bridge.done.connect(self.finished)
+        self.bridge.error.connect(self.failed)
+        self.buttons = []
+        self.setWindowTitle("引大调查 · 服务器控制台")
         self.setWindowIcon(icon())
-        self.resize(1120, 760)
-        self.setMinimumSize(960, 670)
+        self.resize(1280, 850)
+        self.setMinimumSize(1120, 760)
         self._build()
         self._tray()
-        self.bridge.status.connect(self._show_status)
-        self.bridge.result.connect(self._show_result)
-        self.bridge.error.connect(self._show_error)
-        self.bridge.logs.connect(self.log_view.setPlainText)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(15000)
         self.refresh()
 
+    def button(self, text, action, kind=""):
+        button = QPushButton(text)
+        button.setObjectName(kind)
+        button.clicked.connect(action)
+        self.buttons.append(button)
+        return button
+
     def _build(self):
-        body = QWidget()
-        self.setCentralWidget(body)
-        outer = QVBoxLayout(body)
-        outer.setContentsMargins(32, 26, 32, 25)
-        outer.setSpacing(18)
-
-        header = QHBoxLayout()
-        titles = QVBoxLayout()
-        title = QLabel("引大调查 Web 中心服务")
-        title.setObjectName("title")
-        subtitle = QLabel("数据中心运行与维护控制台  ·  " + ("Windows 便携版" if self.portable else "Production"))
-        subtitle.setObjectName("muted")
-        titles.addWidget(title)
-        titles.addWidget(subtitle)
-        header.addLayout(titles)
-        header.addStretch()
-        self.overall = QLabel("● 正在检查")
-        self.overall.setObjectName("overall")
-        header.addWidget(self.overall)
-        outer.addLayout(header)
-
+        workspace = QWidget()
+        workspace.setObjectName("workspace")
+        self.setCentralWidget(workspace)
+        outer = QHBoxLayout(workspace)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        side = QFrame()
+        side.setObjectName("sidebar")
+        side.setFixedWidth(214)
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(20, 30, 20, 24)
+        brand = QLabel("引大调查")
+        brand.setObjectName("brand")
+        side_layout.addWidget(brand)
+        sub = QLabel("YINDA  /  SERVER CONSOLE")
+        sub.setObjectName("brandSub")
+        side_layout.addWidget(sub)
+        side_layout.addSpacing(32)
+        self.nav = QListWidget()
+        self.nav.addItems(["中心总览", "运行与诊断", "网络访问", "数据与备份", "安装与设置"])
+        side_layout.addWidget(self.nav, 1)
+        side_layout.addWidget(QLabel("办公室数据中心\nWindows 后台服务"))
+        outer.addWidget(side)
+        self.stack = QStackedWidget()
+        outer.addWidget(self.stack, 1)
+        self.pages = []
+        for title, subtitle in (("中心服务总览", "运行状态、访问地址与数据保护"), ("运行与诊断", "检查环境、管理后台服务、查看运行日志"),
+                ("网络访问", "区分本机检查和办公室其他电脑的访问"), ("数据与备份", "数据库与成果文件一起保存，完成后记录备份结果"),
+                ("安装与设置", "首次安装、运行配置与后台服务设置")):
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(30, 27, 30, 22)
+            layout.setSpacing(17)
+            header = QHBoxLayout()
+            headings = QVBoxLayout()
+            caption = QLabel(title)
+            caption.setObjectName("title")
+            hint = QLabel(subtitle)
+            hint.setObjectName("hint")
+            headings.addWidget(caption)
+            headings.addWidget(hint)
+            header.addLayout(headings)
+            header.addStretch()
+            version = QLabel(CONSOLE_VERSION)
+            version.setObjectName("version")
+            header.addWidget(version)
+            layout.addLayout(header)
+            self.stack.addWidget(page)
+            self.pages.append(layout)
+        overview = self.pages[0]
+        self.banner = QLabel("正在检查服务状态…")
+        self.banner.setWordWrap(True)
+        self.banner.setObjectName("banner")
+        overview.addWidget(self.banner)
+        self.setup_button = self.button("首次安装 / 运行配置", self.setup, "primary")
+        overview.addWidget(self.setup_button)
         cards = QHBoxLayout()
-        cards.setSpacing(12)
-        self.database_card = StatusCard("PostgreSQL", "本机数据库连接")
-        self.web_card = StatusCard("Web 服务", "127.0.0.1:8000 · /api/v1/health")
-        self.public_card = StatusCard("公网访问", "PUBLIC_BASE_URL")
-        for card in (self.database_card, self.web_card, self.public_card):
+        self.web_card = StatusCard("WEB 后台服务", "无需保持控制台打开")
+        self.database_card = StatusCard("POSTGRESQL 17", "独立于 Web 检查数据库连接")
+        self.backup_card = StatusCard("最近完整备份", "数据库 + 调查成果文件")
+        for card in (self.web_card, self.database_card, self.backup_card):
             cards.addWidget(card, 1)
-        outer.addLayout(cards)
-
+        overview.addLayout(cards)
+        access = QFrame()
+        access.setObjectName("panel")
+        access_layout = QVBoxLayout(access)
+        access_layout.setContentsMargins(20, 16, 20, 16)
+        label = QLabel("办公室访问地址")
+        label.setObjectName("cardTitle")
+        access_layout.addWidget(label)
+        self.url_label = QLabel("完成安装后显示访问地址")
+        self.url_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.url_label.setObjectName("address")
+        access_layout.addWidget(self.url_label)
+        self.url_hint = QLabel("局域网地址为候选地址，需由办公室另一台电脑验证。")
+        self.url_hint.setObjectName("hint")
+        access_layout.addWidget(self.url_hint)
+        self.copy_button = self.button("复制访问地址", self.copy_url)
+        access_layout.addWidget(self.copy_button)
+        overview.addWidget(access)
         actions = QGridLayout()
-        self.buttons = []
-        action_specs = [
-            ("启动 Web 服务", "start", "primary"),
-            ("停止 Web 服务", "stop", "danger"),
-            ("重启 Web 服务", "restart", "normal"),
-            ("打开管理端", "open", "normal"),
-        ]
-        if self.portable:
-            action_specs += [
-                ("初始化便携环境", "initialize", "normal"),
-                ("停止全部", "stop_all", "danger"),
-            ]
-        action_specs += [
-            ("运行环境预检", "preflight", "normal"),
-            ("立即备份", "backup", "normal"),
-        ]
-        if not self.portable:
-            action_specs.append(("设置开机自启", "autostart", "normal"))
-        for index, (label, command, kind) in enumerate(action_specs):
-            button = QPushButton(label)
-            button.setObjectName(kind)
-            button.clicked.connect(lambda checked=False, name=command: self.action(name))
-            actions.addWidget(button, index // 4, index % 4)
-            self.buttons.append(button)
-        outer.addLayout(actions)
-
-        diagnostics = QFrame()
-        diagnostics.setObjectName("panel")
-        grid = QGridLayout(diagnostics)
-        grid.setHorizontalSpacing(28)
-        grid.setVerticalSpacing(11)
-        fields = [
-            ("数据库连接", "database"), ("PostgreSQL 服务", "postgres_service"),
-            ("数据库结构", "alembic"), ("运行环境预检", "preflight"),
-            ("APP_ENV", "app_env"), ("管理页面", "frontend"),
-            ("storage", "storage"), ("backups", "backups"),
-            ("剩余磁盘空间", "disk"), ("最近检查", "checked_at"),
-        ]
-        self.fields = {}
-        for index, (label, key) in enumerate(fields):
-            row, pair = divmod(index, 2)
-            caption = QLabel(label)
-            caption.setObjectName("muted")
-            value = QLabel("—")
-            value.setObjectName("fieldValue")
-            grid.addWidget(caption, row, pair * 2)
-            grid.addWidget(value, row, pair * 2 + 1)
-            self.fields[key] = value
-        outer.addWidget(diagnostics)
-
-        log_panel = QFrame()
-        log_panel.setObjectName("panel")
-        log_layout = QVBoxLayout(log_panel)
-        log_header = QHBoxLayout()
-        log_header.addWidget(QLabel("运行日志"))
-        log_header.addStretch()
+        self.operation_buttons = {}
+        for index, (label, action, kind) in enumerate((("启动服务", "start", "primary"), ("停止服务", "stop", "danger"), ("重启服务", "restart", ""),
+                ("打开管理端", "open", ""), ("检查运行环境", "preflight", ""), ("立即备份", "backup", ""))):
+            button = self.button(label, lambda checked=False, name=action: self.action(name), kind)
+            self.operation_buttons[action] = button
+            actions.addWidget(button, index // 3, index % 3)
+        overview.addLayout(actions)
+        overview.addStretch()
+        self.overview_detail = QLabel("安装完成后，可在这里查看数据库版本、磁盘空间和环境检查结果。")
+        self.overview_detail.setObjectName("hint")
+        self.overview_detail.setWordWrap(True)
+        overview.addWidget(self.overview_detail)
+        diagnostic_layout = self.pages[1]
+        toolbar = QHBoxLayout()
+        for label, name in (("检查运行环境", "preflight"), ("安装后台服务", "install"), ("设置开机自启", "autostart")):
+            toolbar.addWidget(self.button(label, lambda checked=False, a=name: self.action(a)))
+        diagnostic_layout.addLayout(toolbar)
+        self.checks = QTreeWidget()
+        self.checks.setHeaderLabels(["检查项目", "结果", "说明"])
+        self.checks.setColumnWidth(0, 135)
+        self.checks.setColumnWidth(1, 70)
+        self.checks.setMinimumHeight(150)
+        diagnostic_layout.addWidget(self.checks, 1)
+        log_toolbar = QHBoxLayout()
+        log_label = QLabel("运行日志")
+        log_label.setObjectName("section")
+        log_toolbar.addWidget(log_label)
         self.log_choice = QComboBox()
-        for label, name in (("Web 服务", "server"), ("控制台操作", "operations"), ("备份", "backup"), ("环境预检", "preflight")):
-            self.log_choice.addItem(label, name)
-        self.log_choice.currentIndexChanged.connect(self.refresh_logs)
-        log_header.addWidget(self.log_choice)
-        log_button = QPushButton("查看运行日志")
-        log_button.clicked.connect(self.refresh_logs)
-        log_header.addWidget(log_button)
-        log_layout.addLayout(log_header)
-        self.log_view = QTextEdit()
+        for label, value in (("Web 服务", "server"), ("控制台操作", "operations"), ("环境检查", "preflight"), ("备份", "backup")):
+            self.log_choice.addItem(label, value)
+        log_toolbar.addWidget(self.log_choice)
+        log_toolbar.addWidget(self.button("读取日志", self.read_logs))
+        diagnostic_layout.addLayout(log_toolbar)
+        self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.setPlaceholderText("仅显示最近 100 行日志。")
-        log_layout.addWidget(self.log_view)
-        outer.addWidget(log_panel, 1)
-
-        foot = QLabel("关闭控制台仅收起窗口；服务持续运行。便携版请点击“停止全部”关闭 Web 与数据库。" if self.portable else "关闭控制台仅收起窗口；Web 服务持续运行。请使用“停止 Web 服务”明确停服。")
-        foot.setObjectName("muted")
-        outer.addWidget(foot)
-        self.setStyleSheet("""
-            QMainWindow, QWidget { background: #101826; color: #e9edf5; font-family: 'Microsoft YaHei UI'; font-size: 13px; }
-            QLabel { background: transparent; }
-            QLabel#title { font-size: 25px; font-weight: 700; }
-            QLabel#muted, QLabel#cardDetail { color: #91a1b8; }
-            QLabel#overall { font-size: 17px; font-weight: 700; color: #f1bd66; }
-            QFrame#statusCard, QFrame#panel { background: #1b2739; border: 1px solid #304159; border-radius: 12px; }
-            QFrame#statusCard { min-height: 110px; }
-            QLabel#cardHeading { font-size: 15px; font-weight: 650; }
-            QLabel#cardValue { font-size: 20px; font-weight: 700; }
-            QLabel#fieldValue { font-weight: 600; }
-            QPushButton { background: #293950; color: #e9edf5; border: 1px solid #40536e; border-radius: 8px; padding: 9px 12px; }
-            QPushButton:hover { background: #3b4d67; }
-            QPushButton#primary { background: #3563c6; border-color: #3563c6; }
-            QPushButton#danger { background: #52323a; border-color: #65434d; }
-            QPushButton:disabled { color: #7b899b; background: #253246; }
-            QTextEdit { background: #121c2a; border: 1px solid #304159; border-radius: 7px; font-family: Consolas; }
-            QComboBox { background: #293950; padding: 5px 10px; border: 1px solid #40536e; border-radius: 6px; }
-        """)
+        self.log_view.setPlaceholderText("每份日志只显示最近 100 行。")
+        diagnostic_layout.addWidget(self.log_view, 1)
+        self.network = QPlainTextEdit()
+        self.network.setReadOnly(True)
+        self.pages[2].addWidget(self.network)
+        self.pages[2].addWidget(self.button("复制局域网候选地址", self.copy_url))
+        self.pages[2].addWidget(self.button("打开本机管理页面", lambda: self.open_web(local=True)))
+        self.backup_details = QPlainTextEdit()
+        self.backup_details.setReadOnly(True)
+        self.pages[3].addWidget(self.backup_details)
+        self.pages[3].addWidget(self.button("立即备份数据库与成果文件", lambda: self.action("backup"), "primary"))
+        self.pages[3].addWidget(self.button("打开备份文件夹", self.open_backups))
+        self.settings = QLabel()
+        self.settings.setWordWrap(True)
+        self.settings.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.pages[4].addWidget(self.settings)
+        self.pages[4].addWidget(self.button("首次安装 / 修改运行配置", self.setup, "primary"))
+        self.tray_option = QCheckBox("关闭窗口时收起到托盘，后台服务保持运行")
+        self.tray_option.setChecked(True)
+        self.pages[4].addWidget(self.tray_option)
+        self.pages[4].addWidget(self.button("退出控制台（不停止后台服务）", self.exit_console))
+        self.pages[4].addStretch()
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.setCurrentRow(0)
 
     def _tray(self):
         self.tray = QSystemTrayIcon(icon(), self)
-        self.tray.setToolTip("引大调查 Web 中心服务")
+        self.tray.setToolTip("引大服务器控制台")
         menu = QMenu()
-        menu_actions = [
-            ("打开控制台", "show"), ("打开管理端", "open"),
-            ("启动 Web", "start"), ("重启 Web", "restart"),
-            ("停止 Web", "stop"),
-        ]
-        if self.portable:
-            menu_actions.append(("停止全部", "stop_all"))
-        menu_actions.append(("退出控制台", "exit"))
-        for label, command in menu_actions:
+        for label, handler in (("打开控制台", self.show_console), ("打开管理端", self.open_web), ("启动", lambda: self.action("start")),
+                ("停止", lambda: self.action("stop")), ("重启", lambda: self.action("restart")), ("立即备份", lambda: self.action("backup")), ("退出控制台", self.exit_console)):
             item = QAction(label, menu)
-            item.triggered.connect(lambda checked=False, name=command: self.action(name))
+            item.triggered.connect(handler)
             menu.addAction(item)
         self.tray.setContextMenu(menu)
-        self.tray.activated.connect(lambda reason: self.showNormal() if reason == QSystemTrayIcon.DoubleClick else None)
-        self.tray.show()
+        self.tray.activated.connect(lambda reason: self.show_console() if reason == QSystemTrayIcon.DoubleClick else None)
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray.show()
 
-    def refresh(self):
-        if self.refreshing:
-            return
-        self.refreshing = True
-        def work():
-            try:
-                self.bridge.status.emit(self.manager.status())
-            except Exception:
-                self.bridge.error.emit("状态检查失败，请查看运行日志。")
-            finally:
-                self.refreshing = False
-        self.pool.submit(work)
-        self.refresh_logs()
+    def show_console(self):
+        self.showNormal()
+        self.activateWindow()
 
-    def _show_status(self, status: dict):
-        self.database_card.update_state(status["database"], f"localhost:{status['db_port']} · {status['postgres_service']}")
-        self.web_card.update_state(status["web"], f"127.0.0.1:8000 · PID {status['pid']}")
-        self.public_card.update_state(status["public"], status["public_url"] or "未配置公网访问地址")
-        for key, label in self.fields.items():
-            label.setText(status.get(key, "—"))
-        if status["web"] == "运行正常" and status["postgresql"] == "连接端口正常" and status["database"] == "连接正常" and status["public"] in {"正常", "未配置公网访问地址"}:
-            self.overall.setText("● 正常")
-            self.overall.setStyleSheet("color: #56d6a1;")
-        elif status["web"] == "已停止":
-            self.overall.setText("● 已停止")
-            self.overall.setStyleSheet("color: #91a1b8;")
-        else:
-            self.overall.setText("● 部分异常")
-            self.overall.setStyleSheet("color: #f1bd66;")
-
-    def refresh_logs(self):
-        name = self.log_choice.currentData()
-        self.bridge.logs.emit(tail(self.paths.runtime / "logs" / f"{name}.log"))
-
-    def _show_result(self, message: str):
-        self.busy = False
-        for button in self.buttons:
-            button.setEnabled(True)
-        self.refresh()
-        QMessageBox.information(self, "操作完成", message)
-
-    def _show_error(self, message: str):
-        self.busy = False
-        for button in self.buttons:
-            button.setEnabled(True)
-        QMessageBox.warning(self, "操作未完成", message)
-
-    def action(self, command: str):
-        if command == "show":
-            self.showNormal()
-            self.activateWindow()
-            return
-        if command == "exit":
-            self.exiting = True
-            self.tray.hide()
-            QApplication.instance().quit()
-            return
-        if command == "open":
-            app_env = read_env_value(self.paths.backend / ".env", "APP_ENV")
-            public_url = read_env_value(self.paths.backend / ".env", "PUBLIC_BASE_URL")
-            webbrowser.open(public_url if app_env == "production" and public_url.startswith("https://") else LOCAL_URL)
-            return
+    def submit(self, name, function):
         if self.busy:
             return
-        credentials = None
-        if command == "initialize":
-            credentials = self._ask_admin_credentials()
-            if credentials is None:
-                return
         self.busy = True
         for button in self.buttons:
             button.setEnabled(False)
-        def work():
+        self.statusBar().showMessage("正在处理，请稍候…")
+        def worker():
             try:
-                if command == "preflight":
-                    ok, detail = self.manager.preflight()
-                    if not ok:
-                        raise RuntimeError(detail)
-                    message = "运行环境预检通过。\n" + detail
-                elif command == "initialize":
-                    message = self.manager.initialize_portable(*credentials)
-                elif command == "autostart":
-                    message = self.manager.install_autostart()
-                else:
-                    message = getattr(self.manager, command)()
-                self.bridge.result.emit(message)
-            except RuntimeError as exc:
-                self.bridge.error.emit(str(exc))
-            except Exception:
-                self.bridge.error.emit("操作失败，请查看运行日志并检查服务器配置。")
-        self.pool.submit(work)
+                self.bridge.done.emit(name, function())
+            except Exception as exc:
+                self.bridge.error.emit(name, safe_error(exc))
+        self.pool.submit(worker)
 
-    def _ask_admin_credentials(self) -> tuple[str, str, str] | None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("初始化便携环境")
-        form = QFormLayout(dialog)
-        username = QLineEdit("admin")
-        display_name = QLineEdit("系统管理员")
-        password = QLineEdit()
-        repeat = QLineEdit()
-        password.setEchoMode(QLineEdit.Password)
-        repeat.setEchoMode(QLineEdit.Password)
-        for label, field in (("管理员账号", username), ("显示名称", display_name), ("密码（至少 6 位）", password), ("重复密码", repeat)):
-            form.addRow(label, field)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        form.addRow(buttons)
-        if dialog.exec() != QDialog.Accepted:
-            return None
-        if not username.text().strip() or not 6 <= len(password.text()) <= 128 or password.text() != repeat.text():
-            QMessageBox.warning(self, "输入无效", "请填写管理员账号、6～128 位密码，并确认两次密码一致。")
-            return None
-        return username.text().strip(), display_name.text().strip() or "系统管理员", password.text()
+    def refresh(self):
+        self.submit("status", self.manager.status)
+
+    def finished(self, name, result):
+        self.busy = False
+        for button in self.buttons:
+            button.setEnabled(True)
+        if name == "status":
+            self.show_status(result)
+        elif name == "preflight":
+            self.show_checks(result)
+            self.nav.setCurrentRow(1)
+            self.statusBar().showMessage("环境检查通过。" if result["ok"] else "环境检查发现问题，请查看详细说明。")
+        elif name == "logs":
+            self.log_view.setPlainText(str(result))
+        else:
+            self.log_view.setPlainText(str(result))
+            self.statusBar().showMessage(str(result).splitlines()[-1])
+            QTimer.singleShot(0, self.refresh)
+
+    def show_checks(self, result):
+        self.checks.clear()
+        for row in result.get("checks", []):
+            item = QTreeWidgetItem([row["name"], {"pass": "通过", "error": "需处理", "notice": "提示"}[row["level"]], row["detail"]])
+            item.setForeground(1, QColor("#a65247" if row["level"] == "error" else "#256a50"))
+            self.checks.addTopLevelItem(item)
+
+    def show_status(self, result):
+        self.last_status = result
+        self.current = result["config"]
+        self.addresses = result["addresses"]
+        self.statusBar().showMessage("最近检查 " + result["checked_at"])
+        self.copy_button.setEnabled(self.current is not None)
+        self.setup_button.setVisible(self.current is None)
+        if not self.current:
+            self.banner.setText("尚未完成首次安装。请到“安装与设置”开始，控制台会引导创建本系统专用数据库。")
+            self.web_card.set_state("尚未安装", "正式 Windows 后台服务")
+            self.database_card.set_state("等待配置", "使用本机 PostgreSQL 17")
+            self.backup_card.set_state("暂无备份", "完成安装后可立即备份")
+            self.network.setPlainText("尚未配置网站。检测到本机内网 IPv4：\n" + "\n".join(self.addresses))
+            self.settings.setText(f"版本：{CONSOLE_VERSION}\n程序目录：{self.manager.home}\n\n请使用完整交付包。旧版数据接续需由维护人员先制定离线备份方案，本向导不会自动搬迁真实业务数据。")
+            self.backup_details.setPlainText("尚未完成安装。完整备份包含 PostgreSQL 数据库和全部调查成果文件。")
+        else:
+            config = self.current
+            state = result["service"]
+            connected = result["database"].get("connected", False)
+            self.banner.setText("后台服务和数据库检查通过。局域网可达性仍需其他电脑确认。" if result["web"] and connected else "部分项目尚未验证通过。可先检查运行环境，查看具体原因。")
+            names = {"absent": "未安装", "running": "运行中", "stopped": "已停止", "starting": "启动中", "stopping": "停止中"}
+            service_label = "服务归属不符" if state["state"] != "absent" and not state["owned"] else names.get(state["state"], "未确认")
+            self.web_card.set_state("运行正常" if result["web"] else service_label, "开机自启：" + ("已配置" if state.get("automatic") else "未确认") + " · 本机 HTTP " + ("通过" if result["web"] else "未通过"), result["web"])
+            database = result["database"]
+            revision = database.get("revision")
+            self.database_card.set_state("连接正常" if connected else "未连接", f"{config.db_host}:{config.db_port}\n结构：" + ("当前版本" if revision and revision == database.get("head") else "未确认") , connected)
+            backup = result["backup"]
+            self.backup_card.set_state("历史备份待核对" if backup.get("legacy") else "已有完整备份" if backup else "暂无完整备份", backup.get("created_at", "建议在使用前创建第一份备份"), bool(backup) and not backup.get("legacy"))
+            urls = result["urls"]
+            self.url_label.setText(urls[0] if urls else config.local_url)
+            self.url_hint.setText("局域网候选地址 · 需其他电脑实测" if urls else "仅本机地址或尚无匹配的局域网地址")
+            self.overview_detail.setText(f"版本 {CONSOLE_VERSION}   /   数据盘剩余 {result['disk']}   /   PostgreSQL 服务：{result['postgres_service']}\n环境检查：" + ("通过" if result["preflight"].get("ok") else "尚未执行或需处理"))
+            self.network.setPlainText(f"本机诊断\n{config.local_url}\n\n办公室候选地址（未证明其他电脑可达）\n" + ("\n".join(urls) or "暂无") + f"\n\n已有 HTTPS 地址\n{config.public_base_url or '未配置'} · {result['public']}\n\n控制台不改路由器和防火墙，不开放数据库端口。\n访问失败时，请维护人员核对 Web 端口与办公室网络隔离。\n办公室 HTTP 不加密，不得映射到公网。")
+            self.backup_details.setPlainText(("最近完整备份\n" + backup["created_at"] + "\n" + backup["path"] if backup else "暂无经完成标识确认的完整备份。") + f"\n\n备份位置\n{config.data_root / 'backups'}\n\n立即备份会短暂停止本系统 Web 写入，完成后恢复原有运行状态。\n数据库备份与全部成果文件一起保存；失败不会显示为完成。\n恢复界面不在本轮范围内。")
+            self.settings.setText(f"{CONSOLE_VERSION}\n程序：{config.install_root}\n成果与备份：{config.data_root}\n运行配置：{config.config_file}\n服务账户：{state.get('account', '尚未确认')}\n\n修改配置前请先停止服务。数据库管理密码仅在创建新库时临时使用，不保存。")
+            self.show_checks(result["preflight"])
+        for button in self.operation_buttons.values():
+            button.setEnabled(self.current is not None)
+
+    def failed(self, name, message):
+        self.busy = False
+        for button in self.buttons:
+            button.setEnabled(True)
+        self.statusBar().showMessage(message)
+        self.log_view.setPlainText(message)
+        if name == "status":
+            self.banner.setText("状态检查未完成：" + message)
+        else:
+            QMessageBox.warning(self, "操作未完成", message)
+
+    def copy_url(self):
+        QApplication.clipboard().setText("\n".join(self.last_status.get("urls", [])) or (self.current.local_url if self.current else ""))
+
+    def open_web(self, checked=False, *, local=False):
+        if self.current:
+            QDesktopServices.openUrl(QUrl(self.current.local_url if local else self.current.public_base_url or self.current.local_url))
+
+    def open_backups(self):
+        if self.current:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.current.data_root / "backups")))
+
+    def action(self, name):
+        if name == "open":
+            return self.open_web()
+        if not self.current or self.busy:
+            return
+        if name == "backup" and QMessageBox.question(self, "备份数据库与成果", "备份期间将短暂停止本系统 Web，完成后恢复原有状态。现在开始备份？") != QMessageBox.Yes:
+            return
+        handler = {"preflight": self.manager.preflight, "backup": self.manager.backup, "autostart": self.manager.install_autostart, "install": self.manager.install}.get(name)
+        self.submit(name, handler or getattr(self.manager, name))
+
+    def setup(self):
+        if self.busy:
+            return
+        wizard = SetupWizard(self.manager.home, self.current, self.addresses, self)
+        if wizard.exec() == QWizard.Accepted:
+            args = (wizard.config, wizard.deploy_mode, wizard.username, wizard.password, wizard.database_admin)
+            wizard.clear_secrets()
+            self.submit("deploy", lambda: self.manager.deploy(*args))
+
+    def read_logs(self):
+        if self.current:
+            name = self.log_choice.currentData()
+            self.submit("logs", lambda: self.manager.logs(name))
+
+    def exit_console(self):
+        if self.busy:
+            return
+        self.exiting = True
+        self.close()
 
     def closeEvent(self, event):
-        if not self.exiting and self.tray.isVisible():
-            self.hide()
-            self.tray.showMessage("引大调查 Web 中心服务", "控制台已收起，Web 服务继续运行。")
+        if self.busy:
             event.ignore()
-            return
-        event.accept()
+        elif not self.exiting and self.tray_option.isChecked() and self.tray.isVisible():
+            self.hide()
+            event.ignore()
+        else:
+            self.timer.stop()
+            self.tray.hide()
+            self.pool.shutdown(wait=False)
+            event.accept()
 
 
 def main():
-    app = QApplication([])
-    font_path = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / "msyh.ttc"
-    if font_path.is_file():
-        QFontDatabase.addApplicationFont(str(font_path))
-    app.setQuitOnLastWindowClosed(not QSystemTrayIcon.isSystemTrayAvailable())
-    window = ServerConsole()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--home", type=Path)
+    parser.add_argument("--smoke-test", action="store_true")
+    args = parser.parse_args()
+    app = QApplication(sys.argv)
+    app.setStyleSheet(STYLE)
+    window = ServerConsole(ServerManager(args.home))
     window.show()
-    if "--smoke-test" in sys.argv:
-        QTimer.singleShot(500, app.quit)
-    raise SystemExit(app.exec())
+    if args.smoke_test:
+        timer = QTimer(window)
+        timer.timeout.connect(window.exit_console)
+        timer.start(1200)
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

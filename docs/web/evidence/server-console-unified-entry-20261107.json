@@ -1,0 +1,24 @@
+{
+  "package": "web\\release\\server-console-v1\\20261107-192028-244346\\YindaWeb",
+  "zip_bytes": 85966228,
+  "sha256": "08f98e45f304065b28781c916f41a0dacbd9f23e040fd6cb50596be44fcbe144",
+  "executables": [
+    {
+      "path": "console/YindaServerConsole.exe",
+      "subsystem": 2
+    },
+    {
+      "path": "service/YindaWebService.exe",
+      "subsystem": 3
+    },
+    {
+      "path": "service/YindaWebServer/YindaWebServer.exe",
+      "subsystem": 3
+    }
+  ],
+  "gui_count": 1,
+  "compiled_core_verified": true,
+  "obsolete_modules_absent": true,
+  "manifest_files": 962,
+  "latest_manual_documents_included": true
+}

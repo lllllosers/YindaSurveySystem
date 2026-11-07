@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     transport_mode: Literal["https", "lan_http"] = "https"
     data_root: Path | None = None
+    pg_bin: str = ""
     allowed_hosts: str = ""
     registration_mode: Literal["open", "invite_only", "closed"] | None = None
     enable_hsts: bool = False

@@ -30,8 +30,9 @@ LEGACY_TASK_NOTICE = (
 def run(args, **kwargs):
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
     encoding = kwargs.pop("encoding", "mbcs" if os.name == "nt" else "utf-8")
+    timeout = kwargs.pop("timeout", 120)
     return subprocess.run([str(a) for a in args], capture_output=True, text=True,
-                          encoding=encoding, errors="replace", timeout=120, **options, **kwargs)
+                          encoding=encoding, errors="replace", timeout=timeout, **options, **kwargs)
 
 
 def lan_ipv4() -> list[str]:
@@ -114,7 +115,7 @@ class ServiceManager:
         raise RuntimeError("交付包缺少独立 Web Server 程序。")
 
     def server_action(self, action: str, *, payload: dict | None = None) -> str:
-        result = run(self.server_command(action), input=json.dumps(payload) if payload else None, encoding="utf-8")
+        result = run(self.server_command(action), input=json.dumps(payload) if payload else None, encoding="utf-8", timeout=3700 if action == "--backup" else 120)
         if result.returncode:
             # server_entry emits only sanitized operational errors.
             raise RuntimeError(result.stdout.strip()[-1800:] or "服务程序检查失败，请查看日志与诊断。")
@@ -128,6 +129,7 @@ class ServiceManager:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SYSTEM\CurrentControlSet\Services\{SERVICE_ID}") as key:
                 image = winreg.QueryValueEx(key, "ImagePath")[0].strip()
                 account = winreg.QueryValueEx(key, "ObjectName")[0]
+                startup = winreg.QueryValueEx(key, "Start")[0]
         except FileNotFoundError:
             return {"state": "absent", "owned": False}
         # Only our exact registered wrapper may be controlled. No PID killing.
@@ -135,7 +137,15 @@ class ServiceManager:
         result = run(["sc.exe", "query", SERVICE_ID])
         match = re.search(r":\s*(\d+)\s+(STOPPED|START_PENDING|STOP_PENDING|RUNNING|CONTINUE_PENDING|PAUSE_PENDING|PAUSED)\b", result.stdout)
         state = {1: "stopped", 2: "starting", 3: "stopping", 4: "running"}.get(int(match[1]), "unknown") if match else "unknown"
-        return {"state": state, "owned": owned, "account": account}
+        return {"state": state, "owned": owned, "account": account, "automatic": startup == 2}
+
+    def install_autostart(self) -> str:
+        if not self.status()["owned"]:
+            raise RuntimeError("请先安装此目录的正式 Windows 服务。")
+        result = run(["sc.exe", "config", SERVICE_ID, "start=", "delayed-auto"])
+        if result.returncode:
+            raise RuntimeError("设置开机自启失败，请以管理员身份运行控制台。")
+        return "已设置 Windows 服务开机延迟自动启动，无需登录或打开控制台。"
 
     def legacy_task(self) -> bool:
         result = run(["schtasks.exe", "/Query", "/TN", LEGACY_TASK_NAME, "/XML"])
